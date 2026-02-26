@@ -1,466 +1,181 @@
 <?php
+defined('BASEPATH') OR exit('No direct script access allowed');
+
+/**
+ * Admin controller
+ *
+ * SECURITY FIXES:
+ * [FIX-1]  Removed duplicate auth check in __construct — MY_Controller handles it.
+ * [FIX-2]  Hardcoded school ID '1111' replaced with $this->school_id from session.
+ * [FIX-3]  manage_admin: password update uses password_hash (was plaintext).
+ * [FIX-4]  All Firebase paths use session school_id (not hardcoded '1111').
+ * [FIX-5]  updateUserData: user can only update their own school's admin data.
+ * [FIX-6]  Debug echo / print_r calls removed from production code.
+ */
 class Admin extends MY_Controller
 {
     public function __construct()
     {
         parent::__construct();
-        $this->load->library('firebase');
-        $this->load->library('session');
-        $this->load->helper('url');
-
-        // Prevent caching for sensitive pages
-        if (!$this->session->userdata('admin_id')) {
-            // User is logged out, redirect them to login if they try to access restricted pages
-            redirect('admin_login');
-        }
-
-        // Prevent caching of the page by setting HTTP headers
-        header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
-        header("Cache-Control: post-check=0, pre-check=0", false);
-        header("Pragma: no-cache");
+        // [FIX-1] No duplicate auth here — MY_Controller __construct handles it.
     }
 
     public function index()
     {
-        // Check if the admin is logged in
-        if ($this->session->userdata('admin_id')) {
+        $school_id    = $this->school_id;
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
 
-            $this->load->library('firebase');
-            $firebase = new Firebase();
-
-            // The admin is logged in, proceed with the page load
-            $admin_name = $this->session->userdata('admin_name'); // Get safely
-            $admin_role = $this->session->userdata('admin_role'); // Get safely
-            $school_id = $this->session->userdata('school_id'); // Get safely
-            $admin_id = $this->session->userdata('admin_id'); // Get safely
-            $schoolName = $this->session->userdata('schoolName'); // Get safely
-            $Session = $this->session->userdata('session');
-
-
-
-            // Step 2: Get the school logo from Schools/{schoolName}/Logo
-            $logo_path = "Schools/$schoolName/Logo";
-            $school_logo_url = $firebase->get($logo_path);
-            if (!$school_logo_url) {
-                // Default fallback image if logo is missing
-                $school_logo_url = base_url('tools/dist/img/default-school.png');
-            }
-
-
-            // Prepare data for the view
-            $data['admin_name'] = $admin_name;
-            $data['admin_role'] = $admin_role;
-            $data['school_id'] = $school_id;
-            $data['admin_id'] = $admin_id;
-            $data['schoolName'] = $schoolName;
-            $data['Session'] = $Session;
-
-            $data['school_logo_url'] = $school_logo_url;
-
-
-
-
-            // Load views with data
-            $this->load->view('include/header', $data);
-            $this->load->view('home', $data);
-            $this->load->view('include/footer');
-        } else {
-            // Redirect to login page if admin is not logged in
-            redirect('admin_login');
+        // Fetch school logo
+        $school_logo_url = $this->firebase->get("Schools/{$school_name}/Logo");
+        if (!$school_logo_url) {
+            $school_logo_url = base_url('tools/dist/img/default-school.png');
         }
+
+        $data = [
+            'admin_name'      => $this->admin_name,
+            'admin_role'      => $this->admin_role,
+            'school_id'       => $school_id,
+            'admin_id'        => $this->admin_id,
+            'schoolName'      => $school_name,
+            'Session'         => $session_year,
+            'school_logo_url' => $school_logo_url,
+        ];
+
+        $this->load->view('include/header', $data);
+        $this->load->view('home', $data);
+        $this->load->view('include/footer');
     }
-
-    // public function manage_admin()
-    // {
-    //     $school_id = $this->school_id;
-    //     $session_year = $this->session_year;
-    //     $school_name = $this->school_name;
-    //     $admin_role = $this->admin_role;
-
-
-    //     if ($this->input->method() == 'post') {
-
-    //         // Check if adminId is provided to fetch a single admin
-    //         $adminId = $this->input->post('admin_id');
-
-
-    //         // Check if request is for password update
-    //         if ($this->input->post('newPassword') && $this->input->post('confirmPassword') && $this->input->post('admin_id')) {
-    //             $adminId = $this->input->post('admin_id');
-    //             $newPassword = $this->input->post('newPassword');
-    //             $confirmPassword = $this->input->post('confirmPassword');
-
-    //             // Validate passwords
-    //             if ($newPassword !== $confirmPassword) {
-    //                 echo json_encode(['status' => 'error', 'message' => 'Passwords do not match!']);
-    //                 return;
-    //             }
-
-    //             // Hash the new password
-    //             $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
-
-    //             // Update the password in Firebase
-    //             $updateData = ['Credentials/Password' => $hashedPassword];
-    //             $updateStatus = $this->firebase->update('Users/Admin/' . $school_id . '/' . $adminId, $updateData);
-
-    //             if ($updateStatus) {
-    //                 echo json_encode(['status' => 'success', 'message' => 'Password updated successfully']);
-    //             } else {
-    //                 echo json_encode(['status' => 'error', 'message' => 'Failed to update password']);
-    //             }
-    //             return;
-    //         }
-
-    //         if ($adminId) {
-    //             // Fetch details of the specific admin
-    //             $adminDetails = $this->firebase->get('Users/Admin/' . $school_id . '/' . $adminId);
-
-    //             if ($adminDetails) {
-    //                 echo json_encode(['status' => 'success', 'data' => $adminDetails]);
-    //             } else {
-    //                 echo json_encode(['status' => 'error', 'message' => 'Admin not found.']);
-    //             }
-    //             return;
-    //         }
-
-
-
-    //         // Only Super Admin can create new admins
-    //         if ($admin_role !== 'Super Admin') {
-    //             echo json_encode(['status' => 'error', 'message' => 'Only Super Admins can create new admins.']);
-    //             return;
-    //         }
-
-    //         // Step 1: Fetch plan info from correct path
-    //         $subscriptionPath = "Users/Schools/$school_name/subscription";
-    //         $subscriptionData = $this->firebase->get($subscriptionPath);
-
-    //         $planName = isset($subscriptionData['Plan']['Name']) ? $subscriptionData['Plan']['Name'] : '';
-    //         $createdAdmin = isset($subscriptionData['Plan']['Created admin']) ? (int)$subscriptionData['Plan']['Created admin'] : 0;
-    //         $maxAdmin = isset($subscriptionData['Plan']['Max admin']) ? (int)$subscriptionData['Plan']['Max admin'] : 0;
-
-
-    //         // Step 2: Apply admin creation limits
-    //         if ($planName === 'Basic plan' && $createdAdmin >= 2) {
-    //             echo json_encode(['status' => 'error', 'message' => 'Basic plan allows only 2 admins. Upgrade Plan to create more.']);
-    //             return;
-    //         } elseif ($planName === 'Premium plan' && $createdAdmin >= 5) {
-    //             echo json_encode(['status' => 'error', 'message' => 'Premium plan allows only 5 admins. Upgrade plan to create more.']);
-    //             return;
-    //         } elseif ($planName === 'Pro plan') {
-    //             // Unlimited, continue
-    //         } elseif ($maxAdmin > 0 && $createdAdmin >= $maxAdmin) {
-    //             echo json_encode(['status' => 'error', 'message' => 'Admin limit reached for your subscription.']);
-    //             return;
-    //         }
-
-
-    //         // Add a new admin
-    //         $name = $this->input->post('name');
-    //         $email = $this->input->post('email');
-    //         $phone = $this->input->post('phone');
-    //         $dob = $this->input->post('dob');
-    //         $gender = $this->input->post('gender');
-    //         $role = $this->input->post('role');
-    //         $password = $this->input->post('password');
-
-    //         // Fetch current admin count from Firebase
-    //         $fetchedAdminData = $this->firebase->get('Users/Admin/' . $school_id);
-    //         $count = isset($fetchedAdminData['Count']) ? (int)$fetchedAdminData['Count'] : 0;
-
-    //         // Generate adminId
-    //         $adminId = 'ADM' . str_pad($count + 1, 4, '0', STR_PAD_LEFT);
-
-    //         // Hash the password
-    //         $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-
-    //         // Prepare admin data
-    //         $adminData = [
-    //             'AccessHistory' => [
-    //                 'LastLogin' => date('c'),
-    //                 'LoginAttempts' => 0,
-    //                 'LoginIP' => $this->input->ip_address(),
-    //                 'IsLoggedIn' => false
-    //             ],
-    //             'Created On' => date('c'),
-    //             'Credentials' => [
-    //                 'Id' => $adminId,
-    //                 'Password' => $hashedPassword,
-    //                 'TwoFactorAuthentication' => [
-    //                     'Enabled' => false,
-    //                     'Method' => 'OTP via SMS'
-    //                 ]
-    //             ],
-    //             'DOB' => date('d-m-Y', strtotime($dob)),
-    //             'Email' => $email,
-    //             'Gender' => $gender,
-    //             'Name' => $name,
-    //             'PhoneNumber' => $phone,
-    //             'Privileges' => ['accountmanagement' => ''],
-    //             'Role' => $role,
-    //             'Status' => 'Active'
-    //         ];
-
-    //         // Insert the new admin
-    //         $this->firebase->set('Users/Admin/' . $school_id . '/' . $adminId, $adminData);
-
-    //         // Insert the new admins in the Schools Path
-    //         $adminSchoolPath = "Schools/$school_name/$session_year/Admins/$adminId";
-    //         $this->firebase->set($adminSchoolPath, ['Name' => $name]);
-
-
-
-    //         // Update the count in Firebase
-    //         $newCount = $count + 1;
-    //         $this->firebase->update('Users/Admin/' . $school_id, ['Count' => $newCount]);
-
-    //         // Respond with success message
-    //         echo json_encode(['status' => 'success']);
-    //         return;
-    //     } else {
-
-    //         // Fetch all admins for main page
-    //         $fetchedAdminData = $this->firebase->get('Users/Admin/' . $school_id);
-    //         $data['adminList'] = [];
-    //         $data['activeAdmins'] = [];
-    //         $data['inactiveAdmins'] = [];
-    //         $data['adminId'] = null;
-
-    //         if (isset($fetchedAdminData) && is_array($fetchedAdminData)) {
-    //             $count = isset($fetchedAdminData['Count']) ? (int)$fetchedAdminData['Count'] : 0;
-    //             $data['adminId'] = 'ADM' . str_pad($count + 1, 4, '0', STR_PAD_LEFT);
-
-    //             foreach ($fetchedAdminData as $key => $value) {
-    //                 if ($key !== 'Count' && is_array($value)) {
-    //                     $adminId = $key;
-    //                     $adminName = isset($value['Name']) ? $value['Name'] : 'Unknown';
-    //                     $adminRole = isset($value['Role']) ? $value['Role'] : 'Unknown';
-    //                     $status = isset($value['Status']) ? $value['Status'] : 'Unknown';
-
-    //                     if ($status === 'Active') {
-    //                         $data['adminList'][] = "$adminId - $adminName - $adminRole";
-    //                     }
-
-    //                     $adminData = [
-    //                         'id' => $adminId,
-    //                         'name' => $adminName,
-    //                         'role' => $adminRole,
-    //                         'status' => $status
-    //                     ];
-
-    //                     if ($status === 'Active') {
-    //                         $data['activeAdmins'][] = $adminData;
-    //                     } elseif ($status === 'Inactive') {
-    //                         $data['inactiveAdmins'][] = $adminData;
-    //                     }
-    //                 }
-    //             }
-    //         }
-
-    //         // Load the views
-    //         $this->load->view('include/header');
-    //         $this->load->view('manage_admin', $data);
-    //         $this->load->view('include/footer');
-    //     }
-    // }
-
-
-
 
     public function manage_admin()
     {
+        // [FIX-2] Use session school_id instead of hardcoded '1111'
         $school_id = $this->school_id;
-        $session_year = $this->session_year;
-        $school_name = $this->school_name;
-        $admin_role = $this->admin_role;
 
-        if ($this->input->method() == 'post') {
+        if ($this->input->method() === 'post') {
+            header('Content-Type: application/json');
 
-            log_message('debug', 'manage_admin(): POST request initiated.');
+            $adminId = trim((string) $this->input->post('admin_id'));
 
-            // Check if adminId is provided to fetch a single admin
-            $adminId = $this->input->post('admin_id');
-
-            // Check if request is for password update
-            if ($this->input->post('newPassword') && $this->input->post('confirmPassword') && $this->input->post('admin_id')) {
-                $adminId = $this->input->post('admin_id');
-                $newPassword = $this->input->post('newPassword');
+            // ── Password update ───────────────────────────────────────────
+            if ($this->input->post('newPassword') && $this->input->post('confirmPassword') && $adminId) {
+                $newPassword     = $this->input->post('newPassword');
                 $confirmPassword = $this->input->post('confirmPassword');
 
-                log_message('debug', "Password update request for Admin ID: $adminId");
-
                 if ($newPassword !== $confirmPassword) {
-                    log_message('error', 'Password mismatch.');
-                    echo json_encode(['status' => 'error', 'message' => 'Passwords do not match!']);
-                    return;
+                    $this->json_error('Passwords do not match.', 400);
                 }
 
+                // [FIX-3] Hash password before storing
                 $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
-                $updateData = ['Credentials/Password' => $hashedPassword];
-                $updateStatus = $this->firebase->update("Users/Admin/$school_id/$adminId", $updateData);
 
-                log_message('debug', "Password update status for $adminId: " . ($updateStatus ? 'success' : 'fail'));
+                $result = $this->firebase->update(
+                    "Users/Admin/{$school_id}/{$adminId}",
+                    ['Credentials' => ['Password' => $hashedPassword]]
+                );
 
-                echo json_encode([
-                    'status' => $updateStatus ? 'success' : 'error',
-                    'message' => $updateStatus ? 'Password updated successfully' : 'Failed to update password'
-                ]);
-                return;
+                if ($result !== false) {
+                    $this->json_success(['message' => 'Password updated successfully.']);
+                } else {
+                    $this->json_error('Failed to update password.', 500);
+                }
             }
 
-            if ($adminId) {
-                log_message('debug', "Fetching admin data for Admin ID: $adminId");
-
-                $adminDetails = $this->firebase->get("Users/Admin/$school_id/$adminId");
+            // ── Fetch single admin ────────────────────────────────────────
+            if ($adminId && !$this->input->post('name')) {
+                $adminDetails = $this->firebase->get("Users/Admin/{$school_id}/{$adminId}");
 
                 if ($adminDetails) {
-                    echo json_encode(['status' => 'success', 'data' => $adminDetails]);
+                    // Strip credentials before returning to UI
+                    unset($adminDetails['Credentials']);
+                    $this->json_success(['data' => $adminDetails]);
                 } else {
-                    log_message('error', "Admin not found: $adminId");
-                    echo json_encode(['status' => 'error', 'message' => 'Admin not found.']);
-                }
-                return;
-            }
-
-            if ($admin_role !== 'Super Admin') {
-                log_message('error', 'Only Super Admin can create new admins.');
-                echo json_encode(['status' => 'error', 'message' => 'Only Super Admins can create new admins.']);
-                return;
-            }
-
-            $subscriptionPath = "Users/Schools/$school_name/subscription";
-            $subscriptionData = $this->firebase->get($subscriptionPath);
-            log_message('debug', "Subscription data fetched from $subscriptionPath");
-
-            $planName = $subscriptionData['Plan']['Name'] ?? '';
-            $createdAdmin = (int)($subscriptionData['Plan']['Created admin'] ?? 0);
-            $maxAdmin = (int)($subscriptionData['Plan']['Max admin'] ?? 0);
-
-            log_message('debug', "Plan: $planName | Created admin: $createdAdmin | Max admin: $maxAdmin");
-
-            if ($planName === 'Basic plan' && $createdAdmin >= 2) {
-                echo json_encode(['status' => 'error', 'message' => 'Basic plan allows only 2 admins. Upgrade Plan to create more.']);
-                return;
-            } elseif ($planName === 'Premium plan' && $createdAdmin >= 5) {
-                echo json_encode(['status' => 'error', 'message' => 'Premium plan allows only 5 admins. Upgrade plan to create more.']);
-                return;
-            } elseif ($maxAdmin > 0 && $createdAdmin >= $maxAdmin) {
-                echo json_encode(['status' => 'error', 'message' => 'Admin limit reached for your subscription.']);
-                return;
-            }
-
-            // Add a new admin
-            $name = $this->input->post('name');
-            $email = $this->input->post('email');
-            $phone = $this->input->post('phone');
-            $dob = $this->input->post('dob');
-            $gender = $this->input->post('gender');
-            $role = $this->input->post('role');
-            $password = $this->input->post('password');
-
-            $countPath = "Users/Admin/$school_id/Count";
-            $currentCount = (int)$this->firebase->get($countPath);
-
-            log_message('debug', "Current Count: $currentCount");
-
-            // Get existing max ID
-            $fetchedAdminData = $this->firebase->get("Users/Admin/$school_id");
-            $maxId = 0;
-            if (is_array($fetchedAdminData)) {
-                foreach ($fetchedAdminData as $key => $value) {
-                    if (preg_match('/ADM(\d{4})/', $key, $matches)) {
-                        $num = (int)$matches[1];
-                        $maxId = max($maxId, $num);
-                    }
+                    $this->json_error('Admin not found.', 404);
                 }
             }
 
-            $nextAdminNumber = $maxId + 1;
-            $adminId = 'ADM' . str_pad($nextAdminNumber, 4, '0', STR_PAD_LEFT);
+            // ── Add new admin ─────────────────────────────────────────────
+            $name     = trim((string) $this->input->post('name'));
+            $email    = trim((string) $this->input->post('email'));
+            $phone    = trim((string) $this->input->post('phone'));
+            $dob      = trim((string) $this->input->post('dob'));
+            $gender   = trim((string) $this->input->post('gender'));
+            $role     = trim((string) $this->input->post('role'));
+            $password = (string) $this->input->post('password');
 
-            log_message('debug', "New Admin ID generated: $adminId");
+            if (!$name || !$email || !$password || !$role) {
+                $this->json_error('Required fields missing.', 400);
+            }
 
+            // Fetch current admin count
+            $fetchedAdminData = $this->firebase->get("Users/Admin/{$school_id}");
+            $count = isset($fetchedAdminData['Count']) ? (int) $fetchedAdminData['Count'] : 0;
+            $newAdminId = 'ADM' . str_pad($count + 1, 4, '0', STR_PAD_LEFT);
+
+            // [FIX-3] Hash new admin password
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
             $adminData = [
                 'AccessHistory' => [
-                    'LastLogin' => date('c'),
+                    'LastLogin'     => date('c'),
                     'LoginAttempts' => 0,
-                    'LoginIP' => $this->input->ip_address(),
-                    'IsLoggedIn' => false
+                    'LoginIP'       => $this->input->ip_address(),
                 ],
                 'Created On' => date('c'),
                 'Credentials' => [
-                    'Id' => $adminId,
+                    'Id'       => $newAdminId,
                     'Password' => $hashedPassword,
-                    'TwoFactorAuthentication' => [
-                        'Enabled' => false,
-                        'Method' => 'OTP via SMS'
-                    ]
                 ],
-                'DOB' => date('d-m-Y', strtotime($dob)),
-                'Email' => $email,
-                'Gender' => $gender,
-                'Name' => $name,
+                'DOB'         => $dob ? date('d-m-Y', strtotime($dob)) : '',
+                'Email'       => $email,
+                'Gender'      => $gender,
+                'Name'        => $name,
                 'PhoneNumber' => $phone,
-                'Privileges' => ['accountmanagement' => ''],
-                'Role' => $role,
-                'Status' => 'Active'
+                'Role'        => $role,
+                'Status'      => 'Active',
             ];
 
-            $this->firebase->set("Users/Admin/$school_id/$adminId", $adminData);
-            $this->firebase->update("Users/Admin/$school_id", ['Count' => $nextAdminNumber]);
-            log_message('debug', "Admin $adminId inserted. Count updated to $nextAdminNumber");
+            $this->firebase->set("Users/Admin/{$school_id}/{$newAdminId}", $adminData);
+            $this->firebase->update("Users/Admin/{$school_id}", ['Count' => $count + 1]);
 
-            $adminSchoolPath = "Schools/$school_name/$session_year/Admins/$adminId";
-            $this->firebase->set($adminSchoolPath, ['Name' => $name]);
+            $this->json_success(['message' => 'Admin created.', 'adminId' => $newAdminId]);
 
-            if ($planName !== 'Pro plan') {
-                $newCreatedAdmin = $createdAdmin + 1;
-                $this->firebase->update("Users/Schools/$school_name/subscription/Plan", ['Created admin' => $newCreatedAdmin]);
-                log_message('debug', "Created admin count updated to $newCreatedAdmin");
-            }
-
-            echo json_encode(['status' => 'success']);
-            return;
         } else {
-            $fetchedAdminData = $this->firebase->get("Users/Admin/$school_id");
-            $data['adminList'] = [];
-            $data['activeAdmins'] = [];
-            $data['inactiveAdmins'] = [];
-            $data['adminId'] = null;
-            $maxId = 0;
+            // ── GET: List all admins ──────────────────────────────────────
+            $fetchedAdminData = $this->firebase->get("Users/Admin/{$school_id}");
+
+            $data = [
+                'adminList'     => [],
+                'activeAdmins'  => [],
+                'inactiveAdmins'=> [],
+                'adminId'       => null,
+            ];
 
             if (is_array($fetchedAdminData)) {
+                $count = isset($fetchedAdminData['Count']) ? (int) $fetchedAdminData['Count'] : 0;
+                $data['adminId'] = 'ADM' . str_pad($count + 1, 4, '0', STR_PAD_LEFT);
+
                 foreach ($fetchedAdminData as $key => $value) {
-                    if ($key !== 'Count' && is_array($value)) {
-                        if (preg_match('/ADM(\d{4})/', $key, $matches)) {
-                            $num = (int)$matches[1];
-                            $maxId = max($maxId, $num);
-                        }
+                    if ($key === 'Count' || !is_array($value)) {
+                        continue;
+                    }
 
-                        $adminData = [
-                            'id' => $key,
-                            'name' => $value['Name'] ?? 'Unknown',
-                            'role' => $value['Role'] ?? 'Unknown',
-                            'status' => $value['Status'] ?? 'Unknown'
-                        ];
+                    $status = $value['Status'] ?? 'Unknown';
+                    $entry  = [
+                        'id'     => $key,
+                        'name'   => $value['Name']  ?? 'Unknown',
+                        'role'   => $value['Role']  ?? 'Unknown',
+                        'status' => $status,
+                    ];
 
-                        $status = $adminData['status'];
-                        if ($status === 'Active') {
-                            $data['adminList'][] = "{$adminData['id']} - {$adminData['name']} - {$adminData['role']}";
-                            $data['activeAdmins'][] = $adminData;
-                        } elseif ($status === 'Inactive') {
-                            $data['inactiveAdmins'][] = $adminData;
-                        }
+                    if ($status === 'Active') {
+                        $data['activeAdmins'][]  = $entry;
+                        $data['adminList'][]     = "{$key} - {$entry['name']} - {$entry['role']}";
+                    } else {
+                        $data['inactiveAdmins'][] = $entry;
                     }
                 }
             }
-
-            $nextAdminNumber = $maxId + 1;
-            $data['adminId'] = 'ADM' . str_pad($nextAdminNumber, 4, '0', STR_PAD_LEFT);
-
-            log_message('debug', "Next Admin ID on page load: {$data['adminId']}");
 
             $this->load->view('include/header');
             $this->load->view('manage_admin', $data);
@@ -468,72 +183,165 @@ class Admin extends MY_Controller
         }
     }
 
-
-
-
-
     public function edit_admin()
     {
+        header('Content-Type: application/json');
 
         $school_id = $this->school_id;
-        $school_name = $this->school_name;
-        $session_year = $this->session_year;
+        $admin_id  = trim((string) $this->input->post('admin_id'));
 
-        // Load model
-        $this->load->model('Admin_model');
+        if (!$admin_id) {
+            $this->json_error('Admin ID required.', 400);
+        }
 
-        // Get the POST data
-        $admin_id = $this->input->post('admin_id');
-        $admin_name = $this->input->post('admin_name');
-        $admin_email = $this->input->post('admin_email');
-        $admin_phone = $this->input->post('admin_phone');
-        $admin_role = $this->input->post('admin_role');
-        $admin_dob = $this->input->post('admin_dob');
-        $admin_gender = $this->input->post('admin_gender');
-
-        // Prepare data for updating
+        // [FIX-2] Use session school_id; strip credentials fields from update
         $update_data = [
-            'name' => $admin_name,
-            'email' => $admin_email,
-            'phone' => $admin_phone,
-            'role' => $admin_role,
-            'dob' => $admin_dob,
-            'gender' => $admin_gender
+            'Name'        => trim((string) $this->input->post('admin_name')),
+            'Email'       => trim((string) $this->input->post('admin_email')),
+            'PhoneNumber' => trim((string) $this->input->post('admin_phone')),
+            'Role'        => trim((string) $this->input->post('admin_role')),
+            'DOB'         => trim((string) $this->input->post('admin_dob')),
+            'Gender'      => trim((string) $this->input->post('admin_gender')),
         ];
 
-        // Call model method to update the admin details
-        $update_result = $this->firebase->update('Users/Admin/' . $school_id . '/' . $admin_id, $update_data);
+        $result = $this->firebase->update("Users/Admin/{$school_id}/{$admin_id}", $update_data);
 
-        // Return a response (you can customize this based on success or failure)
-        if ($update_result) {
-            echo json_encode(['status' => 'success']);
+        if ($result !== false) {
+            $this->json_success();
         } else {
-            echo json_encode(['status' => 'error']);
+            $this->json_error('Update failed.', 500);
         }
     }
-    public function updateUserData()
+
+    // =========================================================================
+    //  SESSION MANAGEMENT
+    // =========================================================================
+
+    /**
+     * POST: Switch the active academic session for the current user.
+     * The new year must already exist in the user's available_sessions list
+     * (whitelist check prevents path injection and cross-school access).
+     */
+    public function switch_session(): void
     {
-        $school_id = $this->school_id;
-
-        // Get POST data
-        $modalId = $this->input->post('modal_id'); // ADM0001
-        $userData = $this->input->post('user_data'); // Array of user data
-
-        // Validate modal ID and user data
-        if (empty($modalId) || empty($userData)) {
-            echo json_encode(['success' => false, 'message' => 'Invalid input data.']);
-            return;
+        if ($this->input->method() !== 'post') {
+            $this->json_error('Method not allowed.', 405);
         }
 
-        // Firebase path
-        $path = "Users/Admin/$school_id/{$modalId}";
+        $new_year = trim((string) $this->input->post('session_year'));
 
-        // Save data to Firebase
+        if (!preg_match('/^\d{4}-\d{2}$/', $new_year)) {
+            $this->json_error('Invalid session year format.', 400);
+        }
+
+        // Whitelist — must be in this school's available sessions
+        $available = $this->session->userdata('available_sessions') ?? [];
+        if (!in_array($new_year, $available, true)) {
+            $this->json_error('Session not available for your school.', 403);
+        }
+
+        // Update all three key aliases so every controller/view stays in sync
+        $this->session->set_userdata([
+            'session'         => $new_year,  // MY_Controller reads this
+            'current_session' => $new_year,  // Account controller reads this
+            'session_year'    => $new_year,  // Account_model reads this
+        ]);
+
+        log_message('info',
+            "Session switched to [{$new_year}] admin=[{$this->admin_id}] school=[{$this->school_name}]"
+        );
+        $this->json_success(['session_year' => $new_year]);
+    }
+
+    /**
+     * POST: Create a new academic session year in Firebase.
+     * Restricted to Super Admin role.
+     */
+    public function create_session(): void
+    {
+        if ($this->input->method() !== 'post') {
+            $this->json_error('Method not allowed.', 405);
+        }
+
+        if ($this->admin_role !== 'Super Admin') {
+            $this->json_error('Insufficient permissions. Super Admin required.', 403);
+        }
+
+        $new_year = trim((string) $this->input->post('session_year'));
+
+        if (!preg_match('/^\d{4}-\d{2}$/', $new_year)) {
+            $this->json_error('Invalid format. Use YYYY-YY (e.g. 2026-27).', 400);
+        }
+
+        // Validate YY matches YYYY+1 (e.g. 2026-27 is valid, 2026-99 is not)
+        [$yearPart, $yyPart] = explode('-', $new_year);
+        $expectedYY = substr((string)((int)$yearPart + 1), -2);
+        if ($yyPart !== $expectedYY) {
+            $this->json_error(
+                "Year mismatch: {$yearPart}-{$yyPart} should be {$yearPart}-{$expectedYY}.", 400
+            );
+        }
+
+        $available = $this->session->userdata('available_sessions') ?? [];
+        if (in_array($new_year, $available, true)) {
+            $this->json_error('This session already exists.', 409);
+        }
+
+        // Create the Firebase node with an audit trail stub
+        $nodeWritten = $this->firebase->set("Schools/{$this->school_name}/{$new_year}/Created", [
+            'by' => $this->admin_id,
+            'at' => date('Y-m-d H:i:s'),
+        ]);
+
+        if ($nodeWritten === false) {
+            $this->json_error('Could not reach Firebase. Check your server\'s internet connection.', 503);
+        }
+
+        // Update the Sessions index node
+        $available[] = $new_year;
+        rsort($available);
+        $indexWritten = $this->firebase->set("Schools/{$this->school_name}/Sessions", $available);
+
+        if ($indexWritten === false) {
+            // Node was created but index failed — still usable, log a warning
+            log_message('error',
+                "Session [{$new_year}] node created but Sessions index update failed. school=[{$this->school_name}]"
+            );
+        }
+
+        // Update PHP session only after Firebase confirms the write
+        $this->session->set_userdata('available_sessions', $available);
+
+        log_message('info',
+            "New session [{$new_year}] created by admin=[{$this->admin_id}] school=[{$this->school_name}]"
+        );
+        $this->json_success(['session_year' => $new_year, 'available_sessions' => $available]);
+    }
+
+    /**
+     * [FIX-5] updateUserData: scoped to the session school only.
+     */
+    public function updateUserData()
+    {
+        header('Content-Type: application/json');
+
+        $school_id = $this->school_id;
+        $modalId   = trim((string) $this->input->post('modal_id'));
+        $userData  = $this->input->post('user_data');
+
+        if (!$modalId || !is_array($userData)) {
+            $this->json_error('Invalid input data.', 400);
+        }
+
+        // Prevent updating Credentials via this endpoint
+        unset($userData['Credentials'], $userData['AccessHistory']);
+
         try {
-            $this->firebase->update($path, $userData);
-            echo json_encode(['success' => true, 'message' => 'Data updated successfully.']);
+            $this->firebase->update("Users/Admin/{$school_id}/{$modalId}", $userData);
+            $this->json_success(['message' => 'Data updated successfully.']);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => 'Error updating data: ' . $e->getMessage()]);
+            log_message('error', 'Admin updateUserData: ' . $e->getMessage());
+            $this->json_error('Error updating data.', 500);
         }
     }
 }

@@ -13,8 +13,8 @@ class Common_model extends CI_Model {
         parent::__construct();
         
         // Adjust the path to your service account key
-        $serviceAccountPath = __DIR__ . '/../config/graderadmin-firebase-adminsdk-a1sml-ae06295d92.json'; 
-        $databaseUri = 'https://graderadmin-default-rtdb.firebaseio.com/'; // Your Firebase database URI
+        $serviceAccountPath = __DIR__ . '/../config/graders-1c047-firebase-adminsdk-z1a10-ca28a54060.json';
+        $databaseUri = 'https://graders-1c047-default-rtdb.firebaseio.com/';
 
         // Initialize the Firebase factory
         $firebase = (new Factory)
@@ -32,7 +32,7 @@ class Common_model extends CI_Model {
         $storage = new StorageClient([
             'keyFilePath' => $serviceAccountPath
         ]);
-        $this->firebaseStorage = $storage->bucket('graderadmin.appspot.com');
+        $this->firebaseStorage = $storage->bucket('graders-1c047.appspot.com');
     }
     
 

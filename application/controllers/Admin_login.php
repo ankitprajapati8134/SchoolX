@@ -1,242 +1,509 @@
 <?php
 defined('BASEPATH') or exit('No direct script access allowed');
 
+/**
+ * Admin_login.php — Production-hardened login controller.
+ * Extends CI_Controller (NOT MY_Controller — avoids auth redirect loop).
+ *
+ * ╔══════════════════════════════════════════════════════════════════╗
+ * ║  SECURITY MEASURES                                               ║
+ * ╠══════════════════════════════════════════════════════════════════╣
+ * ║  [S-01]  POST-only enforcement on check_credentials             ║
+ * ║  [S-02]  Input length + format validation                        ║
+ * ║  [S-03]  Firebase path injection blocked (/ . # $ [ ] chars)    ║
+ * ║  [S-04]  Generic error messages — no user/school enumeration     ║
+ * ║  [S-05]  Timing-safe credential flow — dummy hash on miss        ║
+ * ║  [S-06]  Per-account brute-force lockout (5 attempts / 30 min)  ║
+ * ║  [S-07]  Per-IP rate limiting (20 fails / 15 min across any ID) ║
+ * ║  [S-08]  Password length capped at 72 chars (bcrypt DoS guard)  ║
+ * ║  [S-09]  password_hash / password_verify + plain-text migration ║
+ * ║  [S-10]  Session fixation prevented — sess_regenerate(TRUE)     ║
+ * ║  [S-11]  All session keys cleared on logout + Firebase updated  ║
+ * ║  [S-12]  Security + no-cache headers on every response          ║
+ * ║  [S-13]  Log injection prevented — inputs sanitised before log  ║
+ * ║  [S-14]  Subscription status + date gating at login time        ║
+ * ║  [S-15]  School name resolved safely — no raw ID in path        ║
+ * ╠══════════════════════════════════════════════════════════════════╣
+ * ║  AUDIT FIXES (this revision)                                     ║
+ * ║  [A-01]  Lockout check moved BEFORE bcrypt — saves CPU on lock  ║
+ * ║  [A-02]  SESSION_KEYS includes 'login_csrf' — no ghost keys     ║
+ * ╚══════════════════════════════════════════════════════════════════╝
+ */
 class Admin_login extends CI_Controller
 {
+    // ── Dummy bcrypt hash — timing-safe flow when admin not found (S-05) ─
+    private const DUMMY_HASH = '$2y$10$usesomesillystringfore2uDLvp1Ii2e./U9C8sBjqp8I/p7';
 
+    // ── Input limits (S-02 / S-08) ────────────────────────────────────────
+    private const MAX_ADMIN_ID_LEN  = 32;
+    private const MAX_SCHOOL_ID_LEN = 16;
+    private const MAX_PASSWORD_LEN  = 72;  // bcrypt silently ignores beyond 72
+
+    // ── Per-IP rate limit (S-07) ──────────────────────────────────────────
+    private const IP_MAX_FAILS  = 20;   // max fails from one IP
+    private const IP_WINDOW_SEC = 900;  // 15-minute sliding window
+
+    // ── Single source of truth for ALL session keys ───────────────────────
+    // Must stay in sync with MY_Controller::SESSION_KEYS.
+    // [A-02] 'login_csrf' included so logout clears it cleanly.
+    public const SESSION_KEYS = [
+        'admin_id', 'school_id', 'admin_role', 'admin_name',
+        'session', 'current_session', 'session_year',
+        'schoolName', 'school_features', 'available_sessions',
+        'subscription_expiry', 'subscription_grace_end', 'subscription_warning',
+        'sub_check_ts', 'login_csrf',
+    ];
+
+    // ─────────────────────────────────────────────────────────────────────
     public function __construct()
     {
         parent::__construct();
         $this->load->library('session');
-        // Load Firebase helper or service
-        $this->load->library('firebase'); // assumes you created one
-    }
+        $this->load->library('firebase');
+        $this->load->helper('url');
 
-    // Function to check if the user is logged in
-    public function is_logged_in()
-    {
-        if (!$this->session->userdata('admin_id')) {
-            // Redirect to login if not logged in
-            redirect('admin_login');
+        // [S-12] Security + no-cache headers on every response
+        $this->_send_security_headers();
+
+        // Redirect already-authenticated admins away from the login page only
+        if (
+            $this->session->userdata('admin_id') &&
+            $this->router->fetch_class()  === 'admin_login' &&
+            $this->router->fetch_method() === 'index'
+        ) {
+            redirect('admin/index');
         }
     }
 
-    public function index()
+    // ─────────────────────────────────────────────────────────────────────
+    //  INDEX
+    // ─────────────────────────────────────────────────────────────────────
+    public function index(): void
     {
         $this->load->view('admin_login');
     }
 
-    public function check_credentials()
+    // ─────────────────────────────────────────────────────────────────────
+    //  CHECK CREDENTIALS
+    // ─────────────────────────────────────────────────────────────────────
+    public function check_credentials(): void
     {
-        $adminId = $this->input->post('admin_id');
-        $schoolId = $this->input->post('school_id');
-        $password = $this->input->post('password');
-
-        $path2 = "School_ids/$schoolId";
-        $firebase = new Firebase(); // your helper
-
-        $schoolName = $firebase->get($path2);
-
-
-        // ✅ Step 1: Get admin data
-        $path = "Users/Admin/$schoolId/$adminId";
-        $adminData = $firebase->get($path);
-
-        if (!$adminData) {
-            $this->session->set_flashdata('error', 'Admin ID or School ID not found.');
+        // [S-01] POST only
+        if ($this->input->method() !== 'post') {
             redirect('admin_login');
         }
 
-        if ($adminData['Status'] !== 'Active') {
-            $this->session->set_flashdata('error', 'Account is not active.');
+        $now      = time();
+        $firebase = $this->firebase;
+        $ip       = $this->_get_real_ip();
+
+        // ── [S-02] Read + length-validate inputs ──────────────────────────
+        $rawAdminId  = (string) $this->input->post('admin_id');
+        $rawSchoolId = (string) $this->input->post('school_id');
+        $rawPassword = (string) $this->input->post('password');
+
+        if ($rawAdminId === '' || $rawSchoolId === '' || $rawPassword === '') {
+            $this->session->set_flashdata('error', 'All fields are required.');
             redirect('admin_login');
         }
 
-        // ✅ Check if already logged in
-        if (!empty($adminData['AccessHistory']['IsLoggedIn']) && $adminData['AccessHistory']['IsLoggedIn'] === true) {
-            $this->session->set_flashdata('error', 'This admin is already logged in on another device.');
+        if (
+            strlen($rawAdminId)  > self::MAX_ADMIN_ID_LEN  ||
+            strlen($rawSchoolId) > self::MAX_SCHOOL_ID_LEN ||
+            strlen($rawPassword) > self::MAX_PASSWORD_LEN
+        ) {
+            $this->_record_ip_fail($ip, $now, $firebase);
+            $this->session->set_flashdata('error', 'Invalid credentials.');
             redirect('admin_login');
         }
 
+        $adminId  = trim($rawAdminId);
+        $schoolId = trim($rawSchoolId);
+        $password = $rawPassword;   // do NOT trim — spaces in passwords are valid
 
-
-
-        // ✅ Step 2: Subscription Check
-        $subscriptionPath = "Users/Schools/$schoolName/subscription";
-        $subscription = $firebase->get($subscriptionPath);
-        // Log attempt to fetch subscription
-        log_message('info', "Checking subscription for school: $schoolName at path: $subscriptionPath");
-
-
-        if (!$subscription || $subscription['status'] !== 'Active') {
-            log_message('error', "Subscription inactive or missing for school: $schoolName. Data: " . json_encode($subscription));
-            $this->session->set_flashdata('error', 'Subscription is not active.');
+        // [S-03] Firebase path injection guard
+        if (! $this->_is_safe_id($adminId) || ! $this->_is_safe_id($schoolId)) {
+            $this->_record_ip_fail($ip, $now, $firebase);
+            $this->session->set_flashdata('error', 'Invalid credentials.');
             redirect('admin_login');
         }
 
-        $endDate = $subscription['duration']['endDate'] ?? null;
-        // log_message('info', "Subscription end date for school '$schoolName': " . ($endDate ?: 'Not found'));
-
-
-        if (!$endDate || strtotime($endDate) < time()) {
-            // log_message('error', "Subscription expired for school: $schoolName. End date: " . ($endDate ?: 'null'));
-            $this->session->set_flashdata('error', 'Subscription has expired on ' . $endDate . '. Please Renew your Subscription by contacting our Team.');
-            redirect('admin_login');
-        }
-        // Log success if subscription is valid
-        // log_message('info', "Subscription valid for school: $schoolName. Ends on: $endDate");
-
-
-        // === ACCESS CONTROL ===
-        $accessHistory = $adminData['AccessHistory'] ?? [];
-        $loginAttempts = $accessHistory['LoginAttempts'] ?? 0;
-        $lockedUntil = isset($accessHistory['LockedUntil']) ? strtotime($accessHistory['LockedUntil']) : 0;
-        $now = time();
-
-        // === AUTO RESET after lockout expires ===
-        if ($lockedUntil > 0 && $now >= $lockedUntil) {
-            // Reset login attempts and clear lock
-            $firebase->update("$path/AccessHistory", [
-                'LoginAttempts' => 0,
-                'LockedUntil' => null
-            ]);
-            $loginAttempts = 0; // Also reset locally
-            $lockedUntil = 0;
-        }
-
-        // === STILL LOCKED? ===
-        if ($lockedUntil > $now) {
-            $remaining = ceil(($lockedUntil - $now) / 60);
-            $this->session->set_flashdata('error', "Too many failed attempts. Please try again in $remaining minute(s).");
+        // ── [S-07] Per-IP rate limit ──────────────────────────────────────
+        if ($this->_is_ip_blocked($ip, $now, $firebase)) {
+            $this->session->set_flashdata('error', 'Too many login attempts. Please try again later.');
             redirect('admin_login');
         }
 
-        // === PASSWORD CHECK ===
-        $storedPassword = $adminData['Credentials']['Password'];
-        if ($password !== $storedPassword) {
-            $loginAttempts++;
-            $updateData = [
-                'LoginAttempts' => $loginAttempts
-            ];
+        // ── Resolve school name ───────────────────────────────────────────
+        $schoolName = $this->_resolveSchoolName($schoolId);
 
-            if ($loginAttempts >= 3) {
-                $lockedUntilTime = date('c', strtotime('+30 minutes'));
-                $updateData['LockedUntil'] = $lockedUntilTime;
+        // ── Fetch admin record ────────────────────────────────────────────
+        $adminData = null;
+        if ($schoolName !== null) {
+            $raw = $firebase->get("Users/Admin/{$schoolId}/{$adminId}");
+            $adminData = is_array($raw) ? $raw : null;
+        }
 
-                // Optional: send email alert here
-                // $this->send_login_alert($adminData['Email'], $adminData['Name'], $adminId, $schoolId);
+        // ── [A-01] Per-account lockout check BEFORE bcrypt ────────────────
+        // Saves CPU: no point running expensive bcrypt on a locked account.
+        if ($adminData !== null) {
+            $accessHistory = $adminData['AccessHistory'] ?? [];
+            $lockedUntil   = isset($accessHistory['LockedUntil'])
+                ? (int) strtotime((string) $accessHistory['LockedUntil'])
+                : 0;
 
-                $this->session->set_flashdata('error', 'Too many failed login attempts. Account locked for 30 minutes.');
-            } else {
-                $remaining = 3 - $loginAttempts;
-                $this->session->set_flashdata('error', "Incorrect password. $remaining attempt(s) left.");
+            // Auto-clear if lock has expired
+            if ($lockedUntil > 0 && $now >= $lockedUntil) {
+                $firebase->update(
+                    "Users/Admin/{$schoolId}/{$adminId}/AccessHistory",
+                    ['LoginAttempts' => 0, 'LockedUntil' => null]
+                );
+                $lockedUntil = 0;
             }
 
-            $firebase->update("$path/AccessHistory", $updateData);
+            if ($lockedUntil > $now) {
+                $minutes = (int) ceil(($lockedUntil - $now) / 60);
+                $this->session->set_flashdata(
+                    'error',
+                    "Account temporarily locked. Try again in {$minutes} minute(s)."
+                );
+                redirect('admin_login');
+            }
+        }
+
+        // ── [S-05] Timing-safe password verification ──────────────────────
+        $storedHash       = ($adminData !== null)
+            ? (string) ($adminData['Credentials']['Password'] ?? '')
+            : self::DUMMY_HASH;
+        $credentialsValid = false;
+
+        if ($adminData !== null && $schoolName !== null) {
+            $credentialsValid = password_verify($password, $storedHash);
+
+            // [S-09] Plain-text migration — remove once all passwords are hashed
+            if (! $credentialsValid && $password === $storedHash) {
+                $newHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+                $firebase->update(
+                    "Users/Admin/{$schoolId}/{$adminId}/Credentials",
+                    ['Password' => $newHash]
+                );
+                log_message('info', 'Plain-text password upgraded admin=' . $this->_log_safe($adminId));
+                $credentialsValid = true;
+            }
+        } else {
+            // Dummy compare — keeps response time consistent (S-05)
+            password_verify($password, self::DUMMY_HASH);
+        }
+
+        // ── Failed credentials ────────────────────────────────────────────
+        if (! $credentialsValid) {
+            $this->_record_ip_fail($ip, $now, $firebase);
+            if ($adminData !== null) {
+                $this->_record_account_fail($adminId, $schoolId, $adminData, $firebase, $now);
+            }
+            // [S-04] Same message regardless of which check failed
+            $this->session->set_flashdata('error', 'Invalid credentials. Please try again.');
             redirect('admin_login');
         }
 
-        // === SUCCESSFUL LOGIN ===
-        $ipAddress = $this->input->ip_address();
-        if ($ipAddress === '::1') $ipAddress = '127.0.0.1';
+        // ════════════════════════════════════════════════════════════════
+        //  CREDENTIALS VALID — continue with additional checks
+        // ════════════════════════════════════════════════════════════════
 
-        $firebase->update("$path/AccessHistory", [
-            'LastLogin' => date('c'),
-            'LoginIP' => $ipAddress,
+        // Account status (checked after verify to prevent enumeration)
+        if (($adminData['Status'] ?? '') !== 'Active') {
+            $this->session->set_flashdata('error', 'Your account is inactive. Contact your administrator.');
+            redirect('admin_login');
+        }
+
+        // ── [S-14] Subscription check ─────────────────────────────────────
+        $subPath      = "Users/Schools/{$schoolName}/subscription";
+        $subscription = $firebase->get($subPath);
+
+        log_message('info', 'Sub check school=' . $this->_log_safe($schoolName));
+
+        if (! $subscription || ! is_array($subscription)) {
+            log_message('error', 'Subscription missing school=' . $this->_log_safe($schoolName));
+            $this->session->set_flashdata('error', 'Subscription record not found. Please contact support.');
+            redirect('admin_login');
+        }
+
+        $status   = (string) ($subscription['status']   ?? 'Inactive');
+        $duration = is_array($subscription['duration'] ?? null) ? $subscription['duration'] : [];
+        $endDate  = trim((string) ($duration['endDate'] ?? ''));
+
+        // Step 1 — Status must be Active
+        if ($status !== 'Active') {
+            log_message('error',
+                'Subscription inactive school=' . $this->_log_safe($schoolName)
+                . ' status=' . $this->_log_safe($status)
+            );
+            $this->session->set_flashdata('error', 'Subscription is not active. Please contact support.');
+            redirect('admin_login');
+        }
+
+        // Step 2 — End date must not have passed
+        if ($endDate === '' || strtotime($endDate) < $now) {
+            $firebase->update($subPath, ['status' => 'Expired']);
+            $this->session->set_flashdata('error',
+                'Subscription expired on ' . htmlspecialchars($endDate, ENT_QUOTES, 'UTF-8')
+                . '. Please contact our team to renew.'
+            );
+            redirect('admin_login');
+        }
+
+        // Step 3 — Compute timestamps + optional 7-day warning
+        $endTs         = (int) strtotime($endDate . ' 23:59:59');
+        $graceEndTs    = $endTs + (7 * 86400);
+        $daysRemaining = (int) ceil(($endTs - $now) / 86400);
+        $subWarning    = ($daysRemaining <= 7)
+            ? "Subscription expires in {$daysRemaining} day(s) on {$endDate}. Please renew soon."
+            : null;
+
+        // ── Successful authentication ─────────────────────────────────────
+        $this->_clear_ip_fails($ip, $firebase);
+
+        $accessPath = "Users/Admin/{$schoolId}/{$adminId}/AccessHistory";
+        $firebase->update($accessPath, [
+            'LastLogin'     => date('c', $now),
+            'LoginIP'       => $ip,
             'LoginAttempts' => 0,
-            'LockedUntil' => null,
-            'IsLoggedIn' => true
+            'LockedUntil'   => null,
+            'IsLoggedIn'    => true,
         ]);
 
-        // Regenerate session ID to prevent session fixation
+        // [S-10] Prevent session fixation
         $this->session->sess_regenerate(TRUE);
 
-        // === Calculate Current Financial Year ===
-        $month = (int)date('m');
-        $year = (int)date('Y');
+        // Financial year
+        $month         = (int) date('m', $now);
+        $year          = (int) date('Y', $now);
+        $financialYear = ($month >= 4)
+            ? $year       . '-' . substr($year + 1, -2)   // Apr–Dec → 2025-26
+            : ($year - 1) . '-' . substr($year,     -2);  // Jan–Mar → 2024-25
 
-        if ($month >= 4) {
-            // April to December -> currentYear-nextYear
-            $currentYear = $year;
-            $nextYear = $year + 1;
-        } else {
-            // January to March -> previousYear-currentYear
-            $currentYear = $year - 1;
-            $nextYear = $year;
+        // ── Fetch / initialise available academic sessions ────────────────
+        $sessionsPath      = "Schools/{$schoolName}/Sessions";
+        $storedSessions    = $firebase->get($sessionsPath);
+        $availableSessions = (is_array($storedSessions) && !empty($storedSessions))
+            ? array_values(array_unique(array_filter($storedSessions, 'is_string')))
+            : [];
+
+        // Always ensure the current financial year is in the list
+        if (!in_array($financialYear, $availableSessions, true)) {
+            $availableSessions[] = $financialYear;
+            $firebase->set($sessionsPath, $availableSessions);
         }
 
-        $financialYear = $currentYear . '-' . substr($nextYear, -2);
+        rsort($availableSessions);              // latest year first
+        $financialYear = $availableSessions[0]; // default to most recent
 
-        $featuresPath = "Users/Schools/$schoolName/subscription/features";
-        $featuresData = $firebase->get($featuresPath);
-        // Ensure it's an array (in case Firebase returns an object)
-        $features = is_array($featuresData) ? array_values($featuresData) : [];
+        // Features
+        $featuresRaw    = $firebase->get("Users/Schools/{$schoolName}/subscription/features");
+        $schoolFeatures = is_array($featuresRaw) ? array_values($featuresRaw) : [];
 
-        if (empty($features)) {
-            // Optional: Handle if no features found or there's a connection issue
-            log_message('error', "No features found or failed to fetch features for $schoolName");
+        if (empty($schoolFeatures)) {
+            log_message('error', 'No features found school=' . $this->_log_safe($schoolName));
         }
-        // Set session data
+
+        // [S-11] Store all session data — three key aliases for full compatibility
         $this->session->set_userdata([
-            'admin_id'      => $adminId,
-            'school_id'     => $schoolId,
-            'admin_role'    => $adminData['Role'],
-            'admin_name'    => $adminData['Name'],
-            'session'  => $financialYear,
-            'schoolName'  => $schoolName,
-            'school_features'  => $features
-
-            // ✅ Added financial year session
+            'admin_id'               => $adminId,
+            'school_id'              => $schoolId,
+            'admin_role'             => $adminData['Role'] ?? '',
+            'admin_name'             => $adminData['Name'] ?? '',
+            'session'                => $financialYear,    // legacy key (MY_Controller reads this)
+            'current_session'        => $financialYear,    // Account controller reads this
+            'session_year'           => $financialYear,    // Account_model reads this
+            'schoolName'             => $schoolName,
+            'school_features'        => $schoolFeatures,
+            'available_sessions'     => $availableSessions, // session switcher dropdown
+            'subscription_expiry'    => $endTs,
+            'subscription_grace_end' => $graceEndTs,
+            'subscription_warning'   => $subWarning,
+            'sub_check_ts'           => 0,  // force MY_Controller to re-check on first load
         ]);
 
-        log_message('info', 'Admin logged in: ' . json_encode([
-            'admin_id'   => $adminId,
-            'school_id'  => $schoolId,
-            'admin_role' => $adminData['Role'],
-            'admin_name' => $adminData['Name'],
-            'schoolName'  => $schoolName,
-
-            'session'  => $financialYear,
-            'school_features'  => $features  // ✅ Added financial year session
-
-        ]));
+        log_message('info',
+            'Login OK admin=' . $this->_log_safe($adminId)
+            . ' school=' . $this->_log_safe($schoolId)
+            . ' ip=' . $ip
+        );
 
         redirect('admin/index');
     }
 
-    public function get_server_date()
+    // ─────────────────────────────────────────────────────────────────────
+    //  LOGOUT
+    // ─────────────────────────────────────────────────────────────────────
+    public function logout(): void
     {
-        echo json_encode(['date' => date('d-m-Y')]); // Format: DD-MM-YYYY
+        $adminId  = $this->session->userdata('admin_id');
+        $schoolId = $this->session->userdata('school_id');
+
+        if ($adminId && $schoolId && $this->_is_safe_id((string)$adminId) && $this->_is_safe_id((string)$schoolId)) {
+            $this->firebase->update(
+                "Users/Admin/{$schoolId}/{$adminId}/AccessHistory",
+                ['IsLoggedIn' => false, 'LoginIP' => null]
+            );
+        }
+
+        // [S-11] Clear ALL keys — no ghost data
+        $this->session->unset_userdata(self::SESSION_KEYS);
+        $this->session->set_flashdata('success', 'You have been successfully logged out.');
+        redirect('admin_login');
     }
 
-    public function logout()
+    // ─────────────────────────────────────────────────────────────────────
+    //  GET SERVER DATE
+    // ─────────────────────────────────────────────────────────────────────
+    public function get_server_date(): void
     {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['date' => date('d-m-Y')]);
+    }
 
-        $admin_id = $this->session->userdata('admin_id');
-        $school_id = $this->session->userdata('school_id');
+    // =========================================================================
+    //  PRIVATE HELPERS
+    // =========================================================================
 
+    /**
+     * [S-12] Emit all security + no-cache headers.
+     * Centralised here so both __construct and any future public methods use it.
+     */
+    private function _send_security_headers(): void
+    {
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
+        header('X-Frame-Options: DENY');
+        header('X-Content-Type-Options: nosniff');
+        header('X-XSS-Protection: 1; mode=block');
+        header('Referrer-Policy: strict-origin-when-cross-origin');
+    }
 
-        // ✅ Mark as logged out in Firebase
-        if ($admin_id && $school_id) {
-            $path = "Users/Admin/$school_id/$admin_id/AccessHistory";
-            $this->firebase->update($path, [
-                'IsLoggedIn' => false,
-                'LoginIP' => null
-            ]);
+    /**
+     * [S-15] Resolve school name from numeric school ID.
+     * Fast path: School_ids/{id} node (O(1)).
+     * Fallback:  scan Users/Schools for matching "School Id" field.
+     */
+    private function _resolveSchoolName(string $schoolId): ?string
+    {
+        $firebase = $this->firebase;
+
+        $direct = $firebase->get("School_ids/{$schoolId}");
+        if ($direct && is_string($direct) && trim($direct) !== '') {
+            return trim($direct);
         }
-        // Set the flashdata message before session destruction
-        $this->session->set_flashdata('error', 'You have been successfully logged out.');
+        if ($direct && is_array($direct)) {
+            $val = reset($direct);
+            if (is_string($val) && trim($val) !== '') return trim($val);
+        }
 
-        // Clear session variables
-        $this->session->unset_userdata('admin_id');
-        $this->session->unset_userdata('school_id');
-        $this->session->unset_userdata('admin_role');
-        $this->session->unset_userdata('admin_name');
+        $all = $firebase->get('Users/Schools');
+        if (empty($all) || ! is_array($all)) return null;
 
-        // Destroy the entire session (optional)
-        $this->session->sess_destroy();
+        foreach ($all as $name => $data) {
+            if (! is_array($data)) continue;
+            if ((string) ($data['School Id'] ?? '') === $schoolId) {
+                return (string) $name;
+            }
+        }
 
-        // Redirect to login page
-        redirect('admin_login');
+        return null;
+    }
+
+    /**
+     * [S-06] [A-01] Record a failed attempt on a specific account.
+     * Lock after 5 failures for 30 minutes.
+     */
+    private function _record_account_fail(
+        string $adminId,
+        string $schoolId,
+        array  $adminData,
+        object $firebase,
+        int    $now
+    ): void {
+        $path     = "Users/Admin/{$schoolId}/{$adminId}/AccessHistory";
+        $attempts = (int) ($adminData['AccessHistory']['LoginAttempts'] ?? 0) + 1;
+        $update   = ['LoginAttempts' => $attempts];
+
+        if ($attempts >= 5) {
+            $update['LockedUntil'] = date('c', $now + 1800);
+        }
+
+        $firebase->update($path, $update);
+    }
+
+    /**
+     * [S-07] Returns TRUE if this IP has exceeded the rate limit.
+     */
+    private function _is_ip_blocked(string $ip, int $now, object $firebase): bool
+    {
+        $record = $firebase->get($this->_ip_path($ip));
+        if (! is_array($record)) return false;
+
+        $windowStart = (int) ($record['windowStart'] ?? 0);
+        if ($now - $windowStart > self::IP_WINDOW_SEC) return false;
+
+        return (int) ($record['fails'] ?? 0) >= self::IP_MAX_FAILS;
+    }
+
+    /**
+     * [S-07] Record one failure for this IP.
+     */
+    private function _record_ip_fail(string $ip, int $now, object $firebase): void
+    {
+        $path   = $this->_ip_path($ip);
+        $record = $firebase->get($path);
+
+        if (! is_array($record) || ($now - (int)($record['windowStart'] ?? 0)) > self::IP_WINDOW_SEC) {
+            $firebase->update($path, ['windowStart' => $now, 'fails' => 1]);
+        } else {
+            $firebase->update($path, ['fails' => (int)($record['fails'] ?? 0) + 1]);
+        }
+    }
+
+    /**
+     * [S-07] Clear IP fail counter on successful login.
+     */
+    private function _clear_ip_fails(string $ip, object $firebase): void
+    {
+        $firebase->update($this->_ip_path($ip), ['fails' => 0, 'windowStart' => 0]);
+    }
+
+    /**
+     * [S-07] Firebase-safe path for an IP address.
+     * Replaces . and : (IPv4/IPv6 chars) with hyphens.
+     */
+    private function _ip_path(string $ip): string
+    {
+        $safeIp = str_replace(['.', ':'], '-', $ip);
+        return "RateLimit/Login/{$safeIp}";
+    }
+
+    /**
+     * [S-03] Returns TRUE if value is safe to use as a Firebase path segment.
+     * Allows: letters, digits, hyphens, underscores only (no spaces — for IDs).
+     */
+    private function _is_safe_id(string $value): bool
+    {
+        return $value !== '' && (bool) preg_match('/^[A-Za-z0-9_\-]+$/', $value);
+    }
+
+    /**
+     * Get the real client IP. Falls back to REMOTE_ADDR (cannot be spoofed).
+     */
+    private function _get_real_ip(): string
+    {
+        $ip = $this->input->ip_address();
+        return ($ip === '::1') ? '127.0.0.1' : $ip;
+    }
+
+    /**
+     * [S-13] Strip newlines/control chars before logging — prevents log injection.
+     */
+    private function _log_safe(string $value): string
+    {
+        return preg_replace('/[\r\n\t\x00-\x1F\x7F]/', '_', $value);
     }
 }
