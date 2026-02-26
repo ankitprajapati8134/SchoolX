@@ -25,7 +25,7 @@ class Firebase
     public function __construct()
     {
         $serviceAccountPath = __DIR__ . '/../config/graders-1c047-firebase-adminsdk-z1a10-ca28a54060.json';
-        $databaseUri        = 'https://graders-1c047-default-rtdb.firebaseio.com/';
+        $databaseUri        = 'https://graders-1c047-default-rtdb.asia-southeast1.firebasedatabase.app/';
 
         $factory = (new Factory)
             ->withServiceAccount($serviceAccountPath)
