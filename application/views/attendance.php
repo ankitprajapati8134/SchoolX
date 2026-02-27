@@ -198,7 +198,8 @@
             fetch('<?= base_url("student/get_sections_by_class") ?>', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
                     },
                     body: JSON.stringify({
                         class_name: this.value
@@ -246,7 +247,8 @@
             fetch('<?= base_url("student/fetchAttendance") ?>', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRF-Token': csrfToken
                     },
                     body: 'class=' + encodeURIComponent(cls) +
                         '&section=' + encodeURIComponent(sec) +

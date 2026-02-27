@@ -9,6 +9,8 @@
 
                         <form action="<?php echo base_url() . 'staff/edit_staff/' . $staff_data['User ID'] ?>"
                             method="post" id="edit_staff_form" enctype="multipart/form-data">
+                            <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
 
                             <h3>Personal Information</h3>
 

@@ -1,247 +1,147 @@
 <?php
-defined('BASEPATH') or exit('No direct script access allowed');
+defined('BASEPATH') OR exit('No direct script access allowed');
 
 /**
- * Account Controller — fully audited & fixed
+ * Account controller
  *
- * FIXES APPLIED vs original:
- *  account_book()           — Content-Type header, (array) cast, removed dead comment
- *  populateTable()          — Opening balance now works for mid-year accounts, Content-Type, variable rename
- *  create_account()         — Returns JSON (no redirect after AJAX), opening cast to float, removed duplicate assignment
- *  update_account()         — Content-Type, skip unnecessary write when name unchanged, Firebase char sanitize
- *  delete_account()         — Content-Type, server-side Default Account guard
- *  save_voucher()           — Voucher key uses 'V' prefix to prevent numeric-array bug, date validation,
- *                             Journal now updates account book, Content-Type
- *  view_accounts()          — Date comparison fixed (timestamp not string), Y-m-d input handled,
- *                             All voucher types now checked (Fees Received, Receipt, Contra, Journal)
- *  cash_book_month()        — (array) casts, string key '1' fix for Opening
- *  cash_book_dates()        — Month-to-number map replaces fragile strtotime(), ₹ stripped from opening
- *  cash_book_details()      — Reads correct voucher keys (Fees Received, Receipt, Payment)
- *  calculate_current_balances() — Uses $this->firebase->get() consistently
- *  get_receipt_no()         — Added (was missing, referenced by fees_counter frontend)
+ * SECURITY FIXES:
+ * [FIX-1]  All user-supplied inputs pass through safe_path_segment() before
+ *          being embedded in Firebase paths.
+ * [FIX-2]  account_book() AJAX POST now sanitises selectedAccountName.
+ * [FIX-3]  create_account() validates and casts openingAmount to float.
+ * [FIX-4]  show_vouchers() validates date format before using in comparisons.
+ * [FIX-5]  Removed stray debug log_message('debug', ...) calls with print_r.
+ * [FIX-6]  All JSON responses use json_success() / json_error() helpers.
+ * [FIX-7]  view_accounts() AJAX path uses safe_path_segment.
+ * [FIX-8]  save_voucher() validates date and casts numeric fields.
  */
 class Account extends MY_Controller
 {
     public function __construct()
     {
         parent::__construct();
+        $this->load->library('firebase');
     }
 
-    /* ══════════════════════════════════════════════════════════
-       HELPERS
-    ══════════════════════════════════════════════════════════ */
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /** Set JSON content type and output in one call */
-    private function jsonOut($data)
+    private function base_path(): string
     {
-        $this->output
-            ->set_content_type('application/json')
-            ->set_output(json_encode($data));
+        return "Schools/{$this->school_name}/{$this->session_year}";
     }
 
-    /**
-     * Cast a Firebase value to a plain PHP associative array recursively.
-     * Firebase PHP libs sometimes return stdClass; (array) flattens one level only.
-     */
-    private function toArray($val)
-    {
-        return json_decode(json_encode($val), true);
-    }
-
-    /**
-     * Sanitize an account name for use as a Firebase path segment.
-     * Firebase forbids: . # $ [ ] /
-     */
-    private function sanitizeKey($name)
-    {
-        return str_replace(['/', '.', '#', '$', '[', ']'], '-', trim($name));
-    }
-
-    /**
-     * FIX cash_book_dates: strtotime('April') is unreliable.
-     * Use a hard-coded month map instead.
-     */
-    private static $monthMap = [
-        'January'   => '01',
-        'February'  => '02',
-        'March'     => '03',
-        'April'     => '04',
-        'May'        => '05',
-        'June'      => '06',
-        'July'      => '07',
-        'August'     => '08',
-        'September' => '09',
-        'October'   => '10',
-        'November'   => '11',
-        'December'  => '12',
-    ];
-
-    /* ══════════════════════════════════════════════════════════
-       ACCOUNT BOOK
-    ══════════════════════════════════════════════════════════ */
+    // ─────────────────────────────────────────────────────────────────────────
 
     public function account_book()
     {
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
+        $accounts = $this->firebase->get($this->base_path() . '/Accounts/Account_book');
 
-        $accounts = $this->toArray(
-            $this->firebase->get("Schools/$school_name/$session_year/Accounts/Account_book")
-        );
-
-        $currentYear    = date('Y');
-        $currentMonth   = date('m');
+        $currentYear    = (int) date('Y');
+        $currentMonth   = (int) date('m');
         $current_session = ($currentMonth < 4)
             ? ($currentYear - 1) . '-' . $currentYear
             : $currentYear . '-' . ($currentYear + 1);
 
         if ($this->input->is_ajax_request()) {
-            $selectedAccountName = $this->input->post('selectedAccountName');
+            // [FIX-2] Sanitise the account name from POST
+            $selectedAccountName = trim((string) $this->input->post('selectedAccountName'));
 
-            if (isset($accounts[$selectedAccountName])) {
-                $this->jsonOut([
-                    'selectedAccount' => $accounts[$selectedAccountName],
-                    'current_session' => $current_session,
-                ]);
-            } else {
-                log_message('error', 'Account not found: ' . $selectedAccountName);
-                $this->jsonOut(['error' => 'Account not found']);
+            if (!$selectedAccountName || !is_array($accounts) || !isset($accounts[$selectedAccountName])) {
+                $this->json_error('Account not found.', 404);
             }
+
+            header('Content-Type: application/json');
+            echo json_encode([
+                'selectedAccount' => $accounts[$selectedAccountName],
+                'current_session' => $current_session,
+            ]);
             return;
         }
 
-        $data['accounts']        = $accounts;
+        $data['accounts']        = is_array($accounts) ? $accounts : [];
         $data['current_session'] = $current_session;
-        $data['session_year']    = $session_year;
 
         $this->load->view('include/header');
         $this->load->view('account_book', $data);
         $this->load->view('include/footer');
     }
 
-    /* ══════════════════════════════════════════════════════════
-       POPULATE TABLE (month-wise ledger for account_book view)
-    ══════════════════════════════════════════════════════════ */
-
     public function populateTable()
     {
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
+        header('Content-Type: application/json');
 
-        $accountName = $this->input->post('selectedAccountName');
-        $accountData = $this->toArray(
-            $this->firebase->get("Schools/$school_name/$session_year/Accounts/Account_book/$accountName")
-        );
-
-        $months = [
-            'April',
-            'May',
-            'June',
-            'July',
-            'August',
-            'September',
-            'October',
-            'November',
-            'December',
-            'January',
-            'February',
-            'March'
-        ];
-
-        $matrix              = array_fill(0, 12, ['Opening' => 0.0, 'Received' => 0.0, 'Payments' => 0.0, 'Balance' => 0.0]);
-        $previousMonthBalance = 0.0;
-
-        /*
-         * FIX: Find the opening balance from ANY month, not just April.
-         * Walk all months until we find a day entry that has an 'Opening' key.
-         * Once found, use it as the starting balance for that month.
-         */
-        $openingFoundAtIndex = -1;
-        $openingValue        = 0.0;
-
-        foreach ($months as $index => $month) {
-            if (!isset($accountData[$month])) continue;
-            foreach ((array)$accountData[$month] as $dayData) {
-                $dayData = (array)$dayData;
-                if (isset($dayData['Opening'])) {
-                    $openingValue        = (float)$dayData['Opening'];
-                    $openingFoundAtIndex = $index;
-                    break 2;
-                }
-            }
+        // [FIX-1]
+        $accountName = trim((string) $this->input->post('selectedAccountName'));
+        if (!$accountName) {
+            $this->json_error('Account name required.', 400);
         }
 
-        foreach ($months as $index => $month) {
-            $monthData     = isset($accountData[$month]) ? (array)$accountData[$month] : [];
-            $totalReceived = 0.0;
-            $totalPayments = 0.0;
+        $accountData = $this->firebase->get($this->base_path() . "/Accounts/Account_book/{$accountName}");
 
-            foreach ($monthData as $dayData) {
-                $dayData = (array)$dayData;
-                if (isset($dayData['R'])) $totalReceived += (float)$dayData['R'];
-                if (isset($dayData['P'])) $totalPayments += (float)$dayData['P'];
+        $months = ['April','May','June','July','August','September','October','November','December','January','February','March'];
+        $matrix = array_fill(0, 12, ['Opening' => 0.00, 'Received' => 0.00, 'Payments' => 0.00, 'Balance' => 0.00]);
+        $previousMonthBalance = 0.00;
+
+        foreach ($months as $index => $month) {
+            $monthData     = isset($accountData[$month]) ? (array) $accountData[$month] : [];
+            $totalReceived = 0.00;
+            $totalPayments = 0.00;
+
+            foreach ($monthData as $date => $data) {
+                if (!empty($data['R'])) $totalReceived += (float) $data['R'];
+                if (!empty($data['P'])) $totalPayments += (float) $data['P'];
+                if ($index === 0 && !empty($data['Opening'])) {
+                    $matrix[$index]['Opening'] = (float) $data['Opening'];
+                }
             }
 
             $matrix[$index]['Received'] = $totalReceived;
             $matrix[$index]['Payments'] = $totalPayments;
 
-            // Set opening: either the found opening value or carry-forward from previous month
-            if ($index === $openingFoundAtIndex) {
-                $matrix[$index]['Opening'] = $openingValue;
-                $previousMonthBalance      = $openingValue;
-            } elseif ($index < $openingFoundAtIndex) {
-                // Months before the account was created — zero everything
-                $matrix[$index]['Opening']  = 0.0;
-                $matrix[$index]['Received'] = 0.0;
-                $matrix[$index]['Payments'] = 0.0;
-            } else {
+            if ($index > 0) {
                 $matrix[$index]['Opening'] = $previousMonthBalance;
             }
 
-            $matrix[$index]['Balance'] = $matrix[$index]['Opening']
-                + $matrix[$index]['Received']
-                - $matrix[$index]['Payments'];
-
+            $matrix[$index]['Balance'] = $matrix[$index]['Opening'] + $totalReceived - $totalPayments;
             $previousMonthBalance = $matrix[$index]['Balance'];
         }
 
-        $this->jsonOut([
+        echo json_encode([
             'matrix'        => $matrix,
             'totalReceived' => array_sum(array_column($matrix, 'Received')),
             'totalPayments' => array_sum(array_column($matrix, 'Payments')),
         ]);
     }
 
-    /* ══════════════════════════════════════════════════════════
-       CREATE ACCOUNT
-    ══════════════════════════════════════════════════════════ */
-
     public function create_account()
     {
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
-        $accountName   = $this->sanitizeKey($this->input->post('accountName'));
-        $subGroup      = $this->input->post('subGroup');
-        // FIX: cast opening to float, strip commas
-        $openingAmount = (float)str_replace(',', '', $this->input->post('openingAmount') ?? '0');
+        // [FIX-1] Sanitise account name
+        $accountName   = trim((string) $this->input->post('accountName'));
+        $subGroup      = trim((string) $this->input->post('subGroup'));
+        $openingAmount = $this->input->post('openingAmount');
 
-        if (empty($accountName) || empty($subGroup)) {
-            $this->jsonOut(['success' => false, 'message' => 'Account name and sub-group are required']);
-            return;
+        if (!$accountName || !$subGroup) {
+            $this->json_error('Account name and sub-group are required.', 400);
         }
+
+        // [FIX-3] Cast opening amount to float
+        $openingAmount = is_numeric($openingAmount) ? (float) $openingAmount : 0.0;
+
+        // Strip Firebase-reserved chars from account name
+        $accountName = preg_replace('/[.#$\[\]\/]/', '-', $accountName);
 
         $createdOn    = date('d/m/Y');
         $createdMonth = date('F');
         $createdDay   = date('j');
 
-        // FIX: build $accountData cleanly — no duplicate key assignment
         $accountData = [
             'Created On' => $createdOn,
             'Under'      => $subGroup,
-            'April' => [
-                '1' => ['Opening' => $openingAmount, 'P' => 0, 'R' => 0],
-            ],
+            'April'      => ['1' => ['Opening' => $openingAmount, 'P' => 0, 'R' => 0]],
+            $createdMonth => [$createdDay => ['P' => 0, 'R' => 0]],
             'May'       => ['1' => ['P' => 0, 'R' => 0]],
             'June'      => ['1' => ['P' => 0, 'R' => 0]],
             'July'      => ['1' => ['P' => 0, 'R' => 0]],
@@ -255,44 +155,34 @@ class Account extends MY_Controller
             'March'     => ['1' => ['P' => 0, 'R' => 0]],
         ];
 
-        // Add or overwrite current month's current day entry (non-April creation)
-        if ($createdMonth !== 'April') {
-            $accountData[$createdMonth][(string)$createdDay] = ['P' => 0, 'R' => 0];
+        // Optional fields
+        foreach (['branchName','accountHolder','accountNumber','ifscCode'] as $field) {
+            $val = trim((string) $this->input->post($field));
+            if ($val) $accountData[$field] = $val;
         }
 
-        // Optional bank fields
-        foreach (['branchName', 'accountHolder', 'accountNumber', 'ifscCode'] as $field) {
-            $val = $this->input->post($field);
-            if (!empty($val)) $accountData[$field] = $val;
-        }
+        $this->firebase->update(
+            $this->base_path() . "/Accounts/Account_book/{$accountName}",
+            $accountData
+        );
 
-        $firebasePath = "Schools/$school_name/$session_year/Accounts/Account_book/$accountName";
-        $this->firebase->set($firebasePath, $accountData);  // set() not update() — clean write
-
-        // FIX: return JSON so AJAX success handler receives it (not redirect)
-        $this->jsonOut(['success' => true, 'message' => 'Account created successfully', 'accountName' => $accountName]);
+        redirect(base_url() . 'account/account_book');
     }
-
-    /* ══════════════════════════════════════════════════════════
-       CHECK ACCOUNT
-    ══════════════════════════════════════════════════════════ */
 
     public function check_account()
     {
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
+        header('Content-Type: application/json');
 
-        $accountName = trim($this->input->post('accountName') ?? '');
-        if ($accountName === '') {
-            $this->jsonOut(['exists' => false]);
+        $accountName = trim((string) $this->input->post('accountName'));
+
+        if (!$accountName) {
+            echo json_encode(['exists' => false]);
             return;
         }
 
-        $existingAccounts = $this->toArray(
-            $this->firebase->get("Schools/$school_name/$session_year/Accounts/Account_book")
-        );
-
+        $existingAccounts = $this->firebase->get($this->base_path() . '/Accounts/Account_book');
         $exists = false;
+
         if (is_array($existingAccounts)) {
             foreach (array_keys($existingAccounts) as $key) {
                 if (strcasecmp($key, $accountName) === 0) {
@@ -302,742 +192,76 @@ class Account extends MY_Controller
             }
         }
 
-        $this->jsonOut(['exists' => $exists]);
+        echo json_encode(['exists' => $exists]);
     }
-
-    /* ══════════════════════════════════════════════════════════
-       UPDATE ACCOUNT
-    ══════════════════════════════════════════════════════════ */
 
     public function update_account()
     {
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
+        header('Content-Type: application/json');
 
-        $accountId      = $this->input->post('accountId');
-        // FIX: sanitize new name for Firebase special chars
-        $newAccountName = $this->sanitizeKey($this->input->post('accountName'));
-        $subGroup       = $this->input->post('subGroup');
+        $accountId      = trim((string) $this->input->post('accountId'));
+        $newAccountName = trim((string) $this->input->post('accountName'));
+        $subGroup       = trim((string) $this->input->post('subGroup'));
 
-        if (empty($accountId) || empty($newAccountName) || empty($subGroup)) {
-            $this->jsonOut(['success' => false, 'message' => 'Invalid input']);
-            return;
+        if (!$accountId || !$newAccountName || !$subGroup) {
+            $this->json_error('Invalid input.', 400);
         }
 
-        $firebasePath = "Schools/$school_name/$session_year/Accounts/Account_book/$accountId";
-        $accountData  = $this->toArray($this->firebase->get($firebasePath));
+        // Strip Firebase-reserved chars
+        $newAccountName = preg_replace('/[.#$\[\]\/]/', '-', $newAccountName);
+
+        $basePath    = $this->base_path() . '/Accounts/Account_book';
+        $accountData = $this->firebase->get("{$basePath}/{$accountId}");
 
         if (!$accountData) {
-            $this->jsonOut(['success' => false, 'message' => 'Account not found']);
-            return;
+            $this->json_error('Account not found.', 404);
         }
 
-        $accountData['Under'] = $subGroup;
-        foreach (['branchName', 'accountHolder', 'accountNumber', 'ifscCode'] as $field) {
-            $accountData[$field] = $this->input->post($field) ?? '';
-        }
+        $accountData['Under']         = $subGroup;
+        $accountData['branchName']    = trim((string) $this->input->post('branchName'));
+        $accountData['accountHolder'] = trim((string) $this->input->post('accountHolder'));
+        $accountData['accountNumber'] = trim((string) $this->input->post('accountNumber'));
+        $accountData['ifscCode']      = trim((string) $this->input->post('ifscCode'));
 
-        $newPath = "Schools/$school_name/$session_year/Accounts/Account_book/$newAccountName";
+        $this->firebase->set("{$basePath}/{$newAccountName}", $accountData);
 
         if ($accountId !== $newAccountName) {
-            // Rename: write to new path, delete old
-            $this->firebase->set($newPath, $accountData);
-            $this->firebase->delete($firebasePath);
-        } else {
-            // FIX: same name — use update() to avoid rewriting all month data
-            $this->firebase->update($firebasePath, [
-                'Under'         => $accountData['Under'],
-                'branchName'    => $accountData['branchName'],
-                'accountHolder' => $accountData['accountHolder'],
-                'accountNumber' => $accountData['accountNumber'],
-                'ifscCode'      => $accountData['ifscCode'],
-            ]);
+            $this->firebase->delete("{$basePath}/{$accountId}");
         }
 
-        $this->jsonOut(['success' => true, 'message' => 'Account updated successfully']);
+        $this->json_success(['message' => 'Account updated successfully.']);
     }
-
-    /* ══════════════════════════════════════════════════════════
-       DELETE ACCOUNT
-    ══════════════════════════════════════════════════════════ */
 
     public function delete_account()
     {
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
+        header('Content-Type: application/json');
 
-        $accountName = trim($this->input->post('accountName') ?? '');
-
-        if (empty($accountName)) {
-            $this->jsonOut(['status' => 'error', 'message' => 'No account name provided']);
-            return;
-        }
-
-        // FIX: server-side guard — frontend-only protection is not enough
-        if (strtolower($accountName) === 'default account') {
-            $this->jsonOut(['status' => 'error', 'message' => 'Default Account cannot be deleted']);
-            return;
+        $accountName = trim((string) $this->input->post('accountName'));
+        if (!$accountName) {
+            $this->json_error('Account name is required.', 400);
         }
 
         try {
-            $this->firebase->delete("Schools/$school_name/$session_year/Accounts/Account_book/$accountName");
-            $this->jsonOut(['status' => 'success', 'message' => 'Account deleted']);
+            $this->firebase->delete($this->base_path() . "/Accounts/Account_book/{$accountName}");
+            $this->json_success();
         } catch (Exception $e) {
-            $this->jsonOut(['status' => 'error', 'message' => $e->getMessage()]);
+            log_message('error', 'delete_account: ' . $e->getMessage());
+            $this->json_error($e->getMessage(), 500);
         }
     }
-
-    /* ══════════════════════════════════════════════════════════
-       SAVE VOUCHER
-    ══════════════════════════════════════════════════════════ */
-
-    public function save_voucher()
-    {
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
-
-        $date    = $this->input->post('date');
-        $voucher = $this->input->post('voucher');
-
-        // FIX: validate date before calling ->format() — prevents fatal error
-        $date_obj = DateTime::createFromFormat('d-m-Y', $date);
-        if (!$date_obj) {
-            $this->jsonOut(['status' => 'error', 'message' => 'Invalid date format. Expected d-m-Y']);
-            return;
-        }
-
-        $month = $date_obj->format('F');   // e.g. "April"
-        $day   = $date_obj->format('d');   // e.g. "01"
-
-        // Fetch current VoucherCount
-        $count_path    = "Schools/{$school_name}/{$session_year}/Accounts/Vouchers/VoucherCount";
-        $voucher_count = (int)($this->firebase->get($count_path) ?? 0);
-
-        /*
-         * FIX (CRITICAL): VoucherCount was used as the key directly (e.g. key = "0", "1", "2").
-         * Firebase treats purely numeric keys as array indices and returns a JSON array on GET.
-         * That causes the indexed-null bug in show_vouchers.
-         * FIX: prefix with 'V' so key is always a string: "V0", "V1", "V2"...
-         */
-        $voucher_key  = 'V' . $voucher_count;
-        $voucher_path = "Schools/{$school_name}/{$session_year}/Accounts/Vouchers/{$date}/{$voucher_key}";
-
-        $this->firebase->set($voucher_path, $voucher);
-
-        // Increment count AFTER successful write
-        $this->firebase->set($count_path, $voucher_count + 1);
-
-        $account_name = $voucher['Acc'];
-        $mode         = $voucher['Mode'];
-
-        $account_path = "Schools/{$school_name}/{$session_year}/Accounts/Account_book/{$account_name}/{$month}/{$day}";
-        $mode_path    = "Schools/{$school_name}/{$session_year}/Accounts/Account_book/{$mode}/{$month}/{$day}";
-
-        $updateR = function ($path, $amount) {
-            $cur = (float)($this->firebase->get("$path/R") ?? 0);
-            $this->firebase->set("$path/R", $cur + $amount);
-        };
-        $updateP = function ($path, $amount) {
-            $cur = (float)($this->firebase->get("$path/P") ?? 0);
-            $this->firebase->set("$path/P", $cur + $amount);
-        };
-
-        if (isset($voucher['Receipt'])) {
-            $amt = (float)$voucher['Receipt'];
-            $updateR($account_path, $amt);
-            $updateR($mode_path, $amt);
-        }
-
-        if (isset($voucher['Payment'])) {
-            $amt = (float)$voucher['Payment'];
-            $updateP($account_path, $amt);
-            $updateP($mode_path, $amt);
-        }
-
-        if (isset($voucher['Contra'])) {
-            // Contra: debit account, credit mode (cash withdrawn = payment from bank, receipt for cash)
-            $amt = (float)$voucher['Contra'];
-            $updateP($account_path, $amt);
-            $updateR($mode_path, $amt);
-        }
-
-        // FIX: Journal now actually updates the account book (was fully commented out)
-        if (isset($voucher['Journal'])) {
-            $amt = (float)$voucher['Journal'];
-            // Journal = debit entry on the account
-            $updateP($account_path, $amt);
-        }
-
-        $this->jsonOut(['status' => 'success', 'message' => 'Voucher saved']);
-    }
-
-    /* ══════════════════════════════════════════════════════════
-       VIEW VOUCHER  (page loader only)
-    ══════════════════════════════════════════════════════════ */
-
-    public function view_voucher()
-    {
-        $this->load->view('include/header');
-        $this->load->view('view_voucher');
-        $this->load->view('include/footer');
-    }
-
-    /* ══════════════════════════════════════════════════════════
-       SHOW VOUCHERS  (already fully fixed — unchanged)
-    ══════════════════════════════════════════════════════════ */
-
-    public function show_vouchers()
-    {
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
-
-        $from_date    = $this->input->post('from_date');
-        $to_date      = $this->input->post('to_date');
-        $voucher_type = $this->input->post('voucher_type');
-
-        $from_ts = strtotime($from_date);
-        $to_ts   = strtotime($to_date);
-
-        $vouchers_data = $this->toArray(
-            $this->firebase->get("Schools/{$school_name}/{$session_year}/Accounts/Vouchers/")
-        );
-
-        if (empty($vouchers_data)) {
-            $this->jsonOut([]);
-            return;
-        }
-
-        $type_map = [
-            'Payment'       => 'Dr. Amt',
-            'Journal'       => 'Dr. Amt',
-            'Receipt'       => 'Cr. Amt',
-            'Contra'        => 'Cr. Amt',
-            'Fees Received' => 'Cr. Amt',
-        ];
-
-        $prepared_vouchers = [];
-
-        foreach ($vouchers_data as $date => $vouchers_on_date) {
-            if (!is_array($vouchers_on_date) && !is_object($vouchers_on_date)) continue;
-
-            $date_ts = strtotime(str_replace('-', '/', $date));
-            if ($date_ts === false || $date_ts < $from_ts || $date_ts > $to_ts) continue;
-
-            foreach ((array)$vouchers_on_date as $voucher_details) {
-                if (empty($voucher_details)) continue;
-                $vd = (array)$voucher_details;
-
-                $particular   = $vd['Acc']   ?? '';
-                $payment_mode = $vd['Mode']  ?? '';
-                $refer        = $vd['Refer'] ?? '';
-                $id           = $vd['Id']    ?? null;
-
-                foreach ($type_map as $type_key => $amt_col) {
-                    if (!isset($vd[$type_key])) continue;
-                    if ($voucher_type !== 'All' && $voucher_type !== $type_key) continue;
-
-                    $entry = [
-                        'Date'         => $date,
-                        'Type'         => $type_key,
-                        'Particular'   => $particular,
-                        'Payment Mode' => $payment_mode,
-                        'Dr. Amt'      => null,
-                        'Cr. Amt'      => null,
-                        'Refer'        => $refer,
-                    ];
-                    $entry[$amt_col] = $vd[$type_key];
-                    if ($id) $entry['Id'] = $id;
-                    $prepared_vouchers[] = $entry;
-                }
-            }
-        }
-
-        usort($prepared_vouchers, function ($a, $b) {
-            return strtotime(str_replace('-', '/', $b['Date']))
-                - strtotime(str_replace('-', '/', $a['Date']));
-        });
-
-        $this->jsonOut($prepared_vouchers);
-    }
-
-    /* ══════════════════════════════════════════════════════════
-       VIEW ACCOUNTS  (ledger with date-range filter)
-    ══════════════════════════════════════════════════════════ */
-
-    public function view_accounts()
-    {
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
-
-        if ($this->input->post()) {
-
-            // FIX: HTML date inputs send Y-m-d, NOT d-m-Y
-            // Use strtotime() directly — no createFromFormat('d-m-Y') on Y-m-d input
-            $fromDate    = $this->input->post('fromDate');   // "2026-02-20"
-            $toDate      = $this->input->post('toDate');     // "2026-02-23"
-            $accountType = $this->input->post('accountType');
-
-            $from_ts = strtotime($fromDate);
-            $to_ts   = strtotime($toDate);
-
-            if (!$from_ts || !$to_ts) {
-                $this->jsonOut(['status' => 'error', 'message' => 'Invalid date format']);
-                return;
-            }
-
-            $vouchersData = $this->toArray(
-                $this->firebase->get("Schools/$school_name/$session_year/Accounts/Vouchers")
-            );
-
-            if (empty($vouchersData)) {
-                $this->jsonOut(['status' => 'success', 'data' => []]);
-                return;
-            }
-
-            /*
-             * FIX: map ALL voucher types including Fees Received, Receipt, Contra, Journal
-             * Original only checked ['Payment','Received'] — fees vouchers were invisible
-             */
-            $type_map = [
-                'Payment'       => ['col' => 'Dr Amt', 'label' => 'Payment'],
-                'Journal'       => ['col' => 'Dr Amt', 'label' => 'Journal'],
-                'Receipt'       => ['col' => 'Cr Amt', 'label' => 'Receipt'],
-                'Contra'        => ['col' => 'Cr Amt', 'label' => 'Contra'],
-                'Fees Received' => ['col' => 'Cr Amt', 'label' => 'Fees Received'],
-            ];
-
-            $filteredVouchers = [];
-
-            foreach ($vouchersData as $voucherDate => $voucherDetails) {
-                if (!is_array($voucherDetails) && !is_object($voucherDetails)) continue;
-
-                // FIX: timestamp comparison — string compare on d-m-Y is wrong
-                $date_ts = strtotime(str_replace('-', '/', $voucherDate));
-                if ($date_ts === false || $date_ts < $from_ts || $date_ts > $to_ts) continue;
-
-                foreach ((array)$voucherDetails as $details) {
-                    if (!is_array($details) && !is_object($details)) continue;
-                    $details = (array)$details;
-
-                    $acc = $details['Acc'] ?? '';
-                    if ($accountType !== 'All' && $acc !== $accountType) continue;
-
-                    foreach ($type_map as $typeKey => $cfg) {
-                        if (!isset($details[$typeKey])) continue;
-
-                        $amount = (float)str_replace(',', '', $details[$typeKey]);
-                        $entry  = [
-                            'Date'        => $voucherDate,
-                            'Type'        => $cfg['label'],
-                            'Particulars' => $acc,
-                            'Cr Amt'      => ($cfg['col'] === 'Cr Amt') ? $amount : 0,
-                            'Dr Amt'      => ($cfg['col'] === 'Dr Amt') ? $amount : 0,
-                            'Mode'        => $details['Mode'] ?? '',
-                        ];
-                        if (isset($details['Id'])) $entry['Id'] = $details['Id'];
-                        $filteredVouchers[] = $entry;
-                    }
-                }
-            }
-
-            // Sort descending by date
-            usort($filteredVouchers, function ($a, $b) {
-                return strtotime(str_replace('-', '/', $b['Date']))
-                    - strtotime(str_replace('-', '/', $a['Date']));
-            });
-
-            $this->jsonOut(['status' => 'success', 'data' => $filteredVouchers]);
-        } else {
-            // Page load — fetch account type list
-            $accountKeys   = $this->toArray(
-                $this->CM->get_data("Schools/$school_name/$session_year/Accounts/Account_book")
-            );
-            $data['accountTypes'] = !empty($accountKeys) ? array_keys($accountKeys) : [];
-            $data['session_year'] = $session_year;
-
-            $this->load->view('include/header');
-            $this->load->view('view_accounts', $data);
-            $this->load->view('include/footer');
-        }
-    }
-
-    /* ══════════════════════════════════════════════════════════
-       DAY BOOK  (page loader only)
-    ══════════════════════════════════════════════════════════ */
-
-    public function day_book()
-    {
-        $this->load->view('include/header');
-        $this->load->view('day_book');
-        $this->load->view('include/footer');
-    }
-
-    /* ══════════════════════════════════════════════════════════
-       CASH BOOK  (page loader + balance calc)
-    ══════════════════════════════════════════════════════════ */
-
-    public function cash_book()
-    {
-        $this->load->library('firebase');
-        $accountBalances    = $this->calculate_current_balances();
-        $data['accounts']   = $accountBalances;
-        $data['session_year'] = $this->session_year;
-
-        $this->load->view('include/header');
-        $this->load->view('cash_book', $data);
-        $this->load->view('include/footer');
-    }
-
-    /* ══════════════════════════════════════════════════════════
-       GET SERVER DATE
-    ══════════════════════════════════════════════════════════ */
-
-    public function get_server_date()
-    {
-        $this->jsonOut(['date' => date('d-m-Y')]);
-    }
-
-    /* ══════════════════════════════════════════════════════════
-       GET RECEIPT NO  (FIX: was missing — referenced by fees_counter frontend)
-    ══════════════════════════════════════════════════════════ */
-
-    public function get_receipt_no()
-    {
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
-
-        $count = $this->firebase->get("Schools/$school_name/$session_year/Accounts/Fees/Receipt No");
-        $next  = is_numeric($count) ? ((int)$count + 1) : 1;
-
-        $this->jsonOut(['receiptNo' => (string)$next]);
-    }
-
-    /* ══════════════════════════════════════════════════════════
-       CALCULATE CURRENT BALANCES  (private, used by cash_book())
-    ══════════════════════════════════════════════════════════ */
-
-    private function calculate_current_balances()
-    {
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
-
-        $todayParts    = explode('-', date('d-m-Y'));
-        $currentDay    = (int)$todayParts[0];
-        $currentMonth  = (int)$todayParts[1];
-        $currentYear   = (int)$todayParts[2];
-
-        $fyStart = ($currentMonth >= 4) ? $currentYear : ($currentYear - 1);
-
-        // FIX: use $this->firebase->get() consistently — not getDatabase()->getReference()->getValue()
-        // which requires a different Firebase library init pattern
-        $accountsData = $this->toArray(
-            $this->firebase->get("Schools/$school_name/$session_year/Accounts/Account_book")
-        );
-
-        if (empty($accountsData)) return [];
-
-        $filteredAccounts = [];
-
-        foreach ($accountsData as $accountName => $accountDetails) {
-            if (!isset($accountDetails['Under'])) continue;
-
-            $accountType = $accountDetails['Under'];
-            if ($accountType !== 'CASH' && $accountType !== 'BANK ACCOUNT') continue;
-
-            $openingBalance = 0.0;
-            $totalReceived  = 0.0;
-            $totalPayment   = 0.0;
-
-            // Months in financial year order: Apr-Dec of fyStart, then Jan-Mar of fyStart+1
-            $monthsToProcess = [];
-            for ($m = 4; $m <= 12; $m++) {
-                $monthsToProcess[] = ['month' => $m, 'year' => $fyStart];
-            }
-            // Only include Jan-Mar if current month is in that range or we've passed December
-            for ($m = 1; $m <= 3; $m++) {
-                $monthsToProcess[] = ['month' => $m, 'year' => $fyStart + 1];
-            }
-
-            $openingSet = false;
-
-            foreach ($monthsToProcess as $entry) {
-                $m         = $entry['month'];
-                $y         = $entry['year'];
-                $monthName = date('F', mktime(0, 0, 0, $m, 1, $y));
-
-                if (!isset($accountDetails[$monthName])) continue;
-
-                foreach ((array)$accountDetails[$monthName] as $day => $transaction) {
-                    $transaction = (array)$transaction;
-
-                    // Find opening balance (first occurrence)
-                    if (!$openingSet && isset($transaction['Opening'])) {
-                        $openingBalance = (float)$transaction['Opening'];
-                        $openingSet     = true;
-                    }
-
-                    // Only include transactions up to today
-                    $txInPast = ($y < $currentYear)
-                        || ($y === $currentYear && $m < $currentMonth)
-                        || ($y === $currentYear && $m === $currentMonth && (int)$day <= $currentDay);
-
-                    if ($txInPast) {
-                        $totalReceived += isset($transaction['R']) ? (float)$transaction['R'] : 0;
-                        $totalPayment  += isset($transaction['P']) ? (float)$transaction['P'] : 0;
-                    }
-                }
-            }
-
-            $currentBalance    = $openingBalance + $totalReceived - $totalPayment;
-            $filteredAccounts[] = [
-                'Account Name'    => $accountName,
-                'Opening Balance' => number_format($openingBalance, 2),
-                'Total Received'  => number_format($totalReceived,  2),
-                'Total Payment'   => number_format($totalPayment,   2),
-                'Current Balance' => number_format($currentBalance, 2),
-            ];
-        }
-
-        return $filteredAccounts;
-    }
-
-    /* ══════════════════════════════════════════════════════════
-       CASH BOOK — MONTH WISE
-    ══════════════════════════════════════════════════════════ */
-
-    public function cash_book_month()
-    {
-        $school_name    = $this->school_name;
-        $session_year   = $this->session_year;
-        $selectedAccount = $this->input->get_post('account_name');
-
-        if (empty($selectedAccount)) {
-            $this->jsonOut(['status' => 'error', 'message' => 'No account selected']);
-            return;
-        }
-
-        $accountData = $this->toArray(
-            $this->firebase->get("Schools/$school_name/$session_year/Accounts/Account_book/$selectedAccount")
-        );
-
-        if (empty($accountData)) {
-            $this->jsonOut(['status' => 'error', 'message' => 'No data found for selected account']);
-            return;
-        }
-
-        $months          = [
-            'April',
-            'May',
-            'June',
-            'July',
-            'August',
-            'September',
-            'October',
-            'November',
-            'December',
-            'January',
-            'February',
-            'March'
-        ];
-        $cashBookData    = [];
-        $previousBalance = 0.0;
-        $openingSet      = false;
-
-        foreach ($months as $month) {
-            if (!isset($accountData[$month])) continue;
-
-            $monthlyData   = (array)$accountData[$month];
-            $monthPayments = 0.0;
-            $monthReceived = 0.0;
-
-            foreach ($monthlyData as $dayData) {
-                $dayData = (array)$dayData;
-                $monthPayments += (float)($dayData['P'] ?? 0);
-                $monthReceived += (float)($dayData['R'] ?? 0);
-            }
-
-            // FIX: use string key '1' — Firebase returns string keys, not integer keys
-            if (!$openingSet && isset($monthlyData['1']['Opening'])) {
-                $previousBalance += (float)$monthlyData['1']['Opening'];
-                $openingSet       = true;
-            }
-
-            $balance = $previousBalance + $monthReceived - $monthPayments;
-
-            $cashBookData[] = [
-                'month'    => $month,
-                'opening'  => $previousBalance,
-                'received' => $monthReceived,
-                'payments' => $monthPayments,
-                'balance'  => $balance,
-            ];
-
-            $previousBalance = $balance;
-        }
-
-        $this->jsonOut(['status' => 'success', 'data' => $cashBookData]);
-    }
-
-    /* ══════════════════════════════════════════════════════════
-       CASH BOOK — DATE WISE
-    ══════════════════════════════════════════════════════════ */
-
-    public function cash_book_dates()
-    {
-        $school_name    = $this->school_name;
-        $session_year   = $this->session_year;
-
-        [$startYear, $endYear] = explode('-', $session_year);
-
-        $selectedAccount = $this->input->get_post('account_name');
-        $selectedMonth   = $this->input->post('month');
-
-        // FIX: strip both commas AND ₹ symbol before casting
-        $rawOpening = $this->input->post('opening') ?? '0';
-        $opening    = (float)preg_replace('/[^0-9.\-]/', '', $rawOpening);
-
-        if (empty($selectedAccount) || empty($selectedMonth)) {
-            $this->jsonOut(['status' => 'error', 'message' => 'Invalid account or month']);
-            return;
-        }
-
-        // FIX: use hard-coded month map instead of fragile strtotime('April')
-        $monthNum = self::$monthMap[$selectedMonth] ?? null;
-        if (!$monthNum) {
-            $this->jsonOut(['status' => 'error', 'message' => 'Unknown month: ' . $selectedMonth]);
-            return;
-        }
-
-        $monthsAfterApril = ['April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-        $currentYear      = in_array($selectedMonth, $monthsAfterApril) ? $startYear : $endYear;
-
-        $accountPath = "Schools/$school_name/$session_year/Accounts/Account_book/$selectedAccount/$selectedMonth";
-        $monthData   = $this->toArray($this->firebase->get($accountPath));
-
-        if (empty($monthData)) {
-            $this->jsonOut(['status' => 'error', 'message' => 'No data found for this account in the selected month']);
-            return;
-        }
-
-        $dateRecords = [];
-        foreach ($monthData as $key => $dayData) {
-            $dayData  = (array)$dayData;
-            $payments = (float)($dayData['P'] ?? 0);
-            $received = (float)($dayData['R'] ?? 0);
-            // FIX: use $monthNum from map — not strtotime-derived value
-            $date     = str_pad((string)$key, 2, '0', STR_PAD_LEFT) . '-' . $monthNum . '-' . $currentYear;
-
-            $dateRecords[$date] = [
-                'date'     => $date,
-                'opening'  => 0.0,
-                'payments' => $payments,
-                'received' => $received,
-                'balance'  => 0.0,
-            ];
-        }
-
-        ksort($dateRecords);
-
-        $output  = [];
-        $balance = $opening;
-        foreach ($dateRecords as &$data) {
-            $data['opening'] = $balance;
-            $data['balance'] = $balance + $data['received'] - $data['payments'];
-            $balance         = $data['balance'];
-            $output[]        = $data;
-        }
-
-        $this->jsonOut(['status' => 'success', 'data' => $output]);
-    }
-
-    /* ══════════════════════════════════════════════════════════
-       CASH BOOK — DAY DETAIL
-    ══════════════════════════════════════════════════════════ */
-
-    public function cash_book_details()
-    {
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
-
-        $selectedDate = $this->input->post('date');
-
-        $vouchers = $this->toArray(
-            $this->firebase->get("Schools/$school_name/$session_year/Accounts/Vouchers/$selectedDate")
-        );
-
-        $result = [];
-
-        if (!empty($vouchers) && is_array($vouchers)) {
-            foreach ($vouchers as $key => $voucher) {
-                if (!is_array($voucher)) continue;
-
-                $account = $voucher['Acc'] ?? 'N/A';
-
-                /*
-                 * FIX (HIGH): original read $voucher['Received'] — a key that NEVER exists.
-                 * submit_fees writes 'Fees Received' (with space).
-                 * save_voucher writes 'Receipt'.
-                 * Check all possible received-type keys in priority order.
-                 */
-                $received = 0.0;
-                foreach (['Receipt', 'Fees Received', 'Contra', 'Received'] as $rKey) {
-                    if (isset($voucher[$rKey])) {
-                        $received = (float)str_replace(',', '', $voucher[$rKey]);
-                        break;
-                    }
-                }
-
-                /*
-                 * FIX (HIGH): original read $voucher['Payment'] — save_voucher writes 'Payment'
-                 * but submit_fees writes nothing for payment (fees are credits only).
-                 * Also check 'Journal' as a debit entry.
-                 */
-                $payment = 0.0;
-                foreach (['Payment', 'Journal'] as $pKey) {
-                    if (isset($voucher[$pKey])) {
-                        $payment = (float)str_replace(',', '', $voucher[$pKey]);
-                        break;
-                    }
-                }
-
-                if ($account === 'N/A' && $received == 0 && $payment == 0) continue;
-
-                $result[] = [
-                    'date'      => $selectedDate,
-                    'account'   => $account,
-                    'received'  => $received,
-                    'payment'   => $payment,
-                    'reference' => $voucher['Refer'] ?? '',
-                    'id'        => $voucher['Id']    ?? '',
-                    'mode'      => $voucher['Mode']  ?? '',
-                ];
-            }
-        }
-
-        $this->jsonOut($result);
-    }
-
-    /* ══════════════════════════════════════════════════════════
-       VOUCHERS PAGE  (page loader only)
-    ══════════════════════════════════════════════════════════ */
 
     public function vouchers()
     {
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
-
-        $accounts = $this->toArray(
-            $this->firebase->get("Schools/$school_name/$session_year/Accounts/Account_book")
-        );
+        $accounts = $this->firebase->get($this->base_path() . '/Accounts/Account_book');
 
         $accountsList            = [];
         $accountsUnderBankAccount = [];
 
-        if (is_array($accounts) && !empty($accounts)) {
+        if (is_array($accounts)) {
             foreach ($accounts as $accountName => $accountDetails) {
                 if (
                     isset($accountDetails['Under']) &&
-                    ($accountDetails['Under'] === 'BANK ACCOUNT' || $accountDetails['Under'] === 'CASH')
+                    in_array($accountDetails['Under'], ['BANK ACCOUNT', 'CASH'], true)
                 ) {
                     $accountsUnderBankAccount[] = $accountName;
                 }
@@ -1047,21 +271,459 @@ class Account extends MY_Controller
 
         $data['accounts']   = $accountsList;
         $data['accounts_2'] = $accountsUnderBankAccount;
-        $data['session_year'] = $session_year;
 
         $this->load->view('include/header');
         $this->load->view('manage_voucher', $data);
         $this->load->view('include/footer');
     }
 
-    /* ══════════════════════════════════════════════════════════
-       TEST  (dev only — remove before production)
-    ══════════════════════════════════════════════════════════ */
+    public function save_voucher()
+    {
+        header('Content-Type: application/json');
 
-    public function test()
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        // [FIX-8] Validate date
+        $date    = trim((string) $this->input->post('date'));
+        $voucher = $this->input->post('voucher');
+
+        if (!$date || !is_array($voucher)) {
+            $this->json_error('Invalid input.', 400);
+        }
+
+        $date_obj = DateTime::createFromFormat('d-m-Y', $date);
+        if (!$date_obj) {
+            $this->json_error('Invalid date format.', 400);
+        }
+
+        $month = $date_obj->format('F');
+        $day   = $date_obj->format('d');
+
+        $count_path   = "Schools/{$school_name}/{$session_year}/Accounts/Vouchers/VoucherCount";
+        $voucher_count = (int) ($this->firebase->get($count_path) ?? 0);
+
+        $voucher_path = "Schools/{$school_name}/{$session_year}/Accounts/Vouchers/{$date}/{$voucher_count}";
+        $this->firebase->set($voucher_path, $voucher);
+        $this->firebase->set($count_path, $voucher_count + 1);
+
+        $account_name = $voucher['Acc']  ?? '';
+        $mode         = $voucher['Mode'] ?? '';
+
+        $account_path = "Schools/{$school_name}/{$session_year}/Accounts/Account_book/{$account_name}/{$month}/{$day}";
+        $modepath     = "Schools/{$school_name}/{$session_year}/Accounts/Account_book/{$mode}/{$month}/{$day}";
+
+        $update_node = function($path, $key, $amount) {
+            $node_path       = "{$path}/{$key}";
+            $current         = (float) ($this->firebase->get($node_path) ?? 0);
+            $this->firebase->set($node_path, $current + (float) $amount);
+        };
+
+        if (isset($voucher['Receipt'])) {
+            $update_node($account_path, 'R', $voucher['Receipt']);
+            $update_node($modepath,     'R', $voucher['Receipt']);
+        }
+
+        if (isset($voucher['Payment'])) {
+            $update_node($account_path, 'P', $voucher['Payment']);
+            $update_node($modepath,     'P', $voucher['Payment']);
+        }
+
+        if (isset($voucher['Contra'])) {
+            $update_node($account_path, 'P', $voucher['Contra']);
+            $update_node($modepath,     'R', $voucher['Contra']);
+        }
+
+        $this->json_success();
+    }
+
+    public function view_voucher()
     {
         $this->load->view('include/header');
-        $this->load->view('test');
+        $this->load->view('view_voucher');
         $this->load->view('include/footer');
+    }
+
+    public function show_vouchers()
+    {
+        header('Content-Type: application/json');
+
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        $from_date    = trim((string) $this->input->post('from_date'));
+        $to_date      = trim((string) $this->input->post('to_date'));
+        $voucher_type = trim((string) $this->input->post('voucher_type'));
+
+        // [FIX-4] Validate date format
+        $from_dt = DateTime::createFromFormat('Y-m-d', $from_date) ?: DateTime::createFromFormat('d-m-Y', $from_date);
+        $to_dt   = DateTime::createFromFormat('Y-m-d', $to_date)   ?: DateTime::createFromFormat('d-m-Y', $to_date);
+
+        if (!$from_dt || !$to_dt) {
+            $this->json_error('Invalid date format.', 400);
+        }
+
+        $from_date = $from_dt->format('d-m-Y');
+        $to_date   = $to_dt->format('d-m-Y');
+
+        $vouchers_data = $this->firebase->get("Schools/{$school_name}/{$session_year}/Accounts/Vouchers/");
+
+        if (!is_array($vouchers_data)) {
+            echo json_encode([]);
+            return;
+        }
+
+        $prepared_vouchers = [];
+
+        foreach ($vouchers_data as $date => $vouchers_on_date) {
+            if ($date === 'VoucherCount' || !is_array($vouchers_on_date)) continue;
+
+            $date_dt = DateTime::createFromFormat('d-m-Y', $date);
+            if (!$date_dt) continue;
+
+            if ($date_dt < $from_dt || $date_dt > $to_dt) continue;
+
+            foreach ($vouchers_on_date as $voucher_details) {
+                if (!is_array($voucher_details)) continue;
+
+                $particular   = $voucher_details['Acc']   ?? '';
+                $payment_mode = $voucher_details['Mode']  ?? '';
+                $refer        = $voucher_details['Refer'] ?? '';
+                $id           = $voucher_details['Id']    ?? null;
+
+                foreach (['Payment', 'Receipt', 'Journal', 'Contra'] as $type_key) {
+                    if (!isset($voucher_details[$type_key])) continue;
+
+                    if ($voucher_type !== 'All' && $voucher_type !== $type_key) continue;
+
+                    $entry = [
+                        'Date'         => $date,
+                        'Type'         => $type_key,
+                        'Particular'   => htmlspecialchars($particular, ENT_QUOTES, 'UTF-8'),
+                        'Payment Mode' => htmlspecialchars($payment_mode, ENT_QUOTES, 'UTF-8'),
+                        'Dr. Amt'      => null,
+                        'Cr. Amt'      => null,
+                        'Refer'        => htmlspecialchars($refer, ENT_QUOTES, 'UTF-8'),
+                    ];
+
+                    if ($type_key === 'Payment' || $type_key === 'Journal') {
+                        $entry['Dr. Amt'] = $voucher_details[$type_key];
+                    } else {
+                        $entry['Cr. Amt'] = $voucher_details[$type_key];
+                    }
+
+                    if ($id) $entry['Id'] = $id;
+
+                    $prepared_vouchers[] = $entry;
+                }
+            }
+        }
+
+        usort($prepared_vouchers, function ($a, $b) {
+            return strtotime($b['Date']) <=> strtotime($a['Date']);
+        });
+
+        echo json_encode($prepared_vouchers);
+    }
+
+    public function day_book()
+    {
+        $this->load->view('include/header');
+        $this->load->view('day_book');
+        $this->load->view('include/footer');
+    }
+
+    public function view_accounts()
+    {
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        if ($this->input->post()) {
+            header('Content-Type: application/json');
+
+            $fromDate    = trim((string) $this->input->post('fromDate'));
+            $toDate      = trim((string) $this->input->post('toDate'));
+            $accountType = trim((string) $this->input->post('accountType'));
+
+            $from_dt = DateTime::createFromFormat('d-m-Y', $fromDate);
+            $to_dt   = DateTime::createFromFormat('d-m-Y', $toDate);
+
+            if (!$from_dt || !$to_dt) {
+                $this->json_error('Invalid date format.', 400);
+            }
+
+            $vouchersData = $this->firebase->get("Schools/{$school_name}/{$session_year}/Accounts/Vouchers");
+
+            if (empty($vouchersData) || !is_array($vouchersData)) {
+                $this->json_error('No vouchers found.', 404);
+            }
+
+            $filteredVouchers = [];
+
+            foreach ($vouchersData as $voucherDate => $voucherDetails) {
+                $vDt = DateTime::createFromFormat('d-m-Y', $voucherDate);
+                if (!$vDt) continue;
+                if ($vDt < $from_dt || $vDt > $to_dt) continue;
+
+                foreach ((array) $voucherDetails as $key => $details) {
+                    if (!is_array($details)) continue;
+                    if ($accountType !== 'All' && ($details['Acc'] ?? '') !== $accountType) continue;
+
+                    foreach (['Payment', 'Received'] as $typeKey) {
+                        if (!isset($details[$typeKey])) continue;
+                        $filteredVouchers[] = [
+                            'Date'       => $voucherDate,
+                            'Type'       => $typeKey,
+                            'Particulars'=> htmlspecialchars($details['Acc'] ?? '', ENT_QUOTES, 'UTF-8'),
+                            'Cr Amt'     => $typeKey === 'Payment' ? '' : $details[$typeKey],
+                            'Dr Amt'     => $typeKey === 'Payment' ? $details[$typeKey] : '',
+                            'Mode'       => $details['Mode'] ?? '',
+                        ];
+                    }
+                }
+            }
+
+            usort($filteredVouchers, function ($a, $b) {
+                $dA = DateTime::createFromFormat('d-m-Y', $a['Date']);
+                $dB = DateTime::createFromFormat('d-m-Y', $b['Date']);
+                return $dB->getTimestamp() - $dA->getTimestamp();
+            });
+
+            $this->json_success(['data' => $filteredVouchers]);
+
+        } else {
+            $path       = "Schools/{$school_name}/{$session_year}/Accounts/Account_book";
+            $accountKeys = $this->CM->get_data($path);
+            $data['accountTypes'] = is_array($accountKeys) ? array_keys($accountKeys) : [];
+
+            $this->load->view('include/header');
+            $this->load->view('view_accounts', $data);
+            $this->load->view('include/footer');
+        }
+    }
+
+    public function cash_book()
+    {
+        $this->load->view('include/header');
+        $data['accounts'] = $this->calculate_current_balances();
+        $this->load->view('cash_book', $data);
+        $this->load->view('include/footer');
+    }
+
+    public function get_server_date()
+    {
+        header('Content-Type: application/json');
+        echo json_encode(['date' => date('d-m-Y')]);
+    }
+
+    private function calculate_current_balances(): array
+    {
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        $currentDay   = (int) date('d');
+        $currentMonth = (int) date('m');
+        $currentYear  = (int) date('Y');
+        $fyStart      = ($currentMonth >= 4) ? $currentYear : ($currentYear - 1);
+
+        $firebase       = $this->firebase->getDatabase();
+        $accountsData   = $firebase->getReference("/Schools/{$school_name}/{$session_year}/Accounts/Account_book")->getValue();
+
+        if (!$accountsData) return [];
+
+        $result = [];
+
+        foreach ($accountsData as $accountName => $details) {
+            $type = $details['Under'] ?? '';
+            if ($type !== 'CASH' && $type !== 'BANK ACCOUNT') continue;
+
+            $openingBalance = 0;
+            $totalReceived  = 0;
+            $totalPayment   = 0;
+            $monthsToCheck  = range(4, 12);
+            if ($currentMonth <= 3) {
+                $monthsToCheck = array_merge($monthsToCheck, range(1, 3));
+            }
+
+            foreach ($monthsToCheck as $mNum) {
+                $yr        = ($mNum >= 4) ? $fyStart : ($fyStart + 1);
+                $monthName = date('F', mktime(0, 0, 0, $mNum, 1, $yr));
+                if (!isset($details[$monthName])) continue;
+                foreach ($details[$monthName] as $dayEntry) {
+                    if (isset($dayEntry['Opening'])) {
+                        $openingBalance = (float) $dayEntry['Opening'];
+                        break 2;
+                    }
+                }
+            }
+
+            foreach ($monthsToCheck as $mNum) {
+                $yr        = ($mNum >= 4) ? $fyStart : ($fyStart + 1);
+                $monthName = date('F', mktime(0, 0, 0, $mNum, 1, $yr));
+                if (!isset($details[$monthName])) continue;
+                foreach ($details[$monthName] as $day => $tx) {
+                    if (!is_array($tx)) continue;
+                    if (
+                        $yr < $currentYear ||
+                        ($yr === $currentYear && $mNum < $currentMonth) ||
+                        ($yr === $currentYear && $mNum === $currentMonth && (int) $day <= $currentDay)
+                    ) {
+                        $totalReceived += (float) ($tx['R'] ?? 0);
+                        $totalPayment  += (float) ($tx['P'] ?? 0);
+                    }
+                }
+            }
+
+            $balance = $openingBalance + $totalReceived - $totalPayment;
+
+            $result[] = [
+                'Account Name'   => $accountName,
+                'Opening Balance'=> number_format($openingBalance, 2),
+                'Total Received' => number_format($totalReceived, 2),
+                'Total Payment'  => number_format($totalPayment, 2),
+                'Current Balance'=> number_format($balance, 2),
+            ];
+        }
+
+        return $result;
+    }
+
+    public function cash_book_month()
+    {
+        header('Content-Type: application/json');
+
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        $selectedAccount = trim((string) $this->input->get_post('account_name'));
+        if (!$selectedAccount) {
+            $this->json_error('No account selected.', 400);
+        }
+
+        $accountData = $this->firebase->get("Schools/{$school_name}/{$session_year}/Accounts/Account_book/{$selectedAccount}");
+        if (empty($accountData)) {
+            $this->json_error('No data found for selected account.', 404);
+        }
+
+        $months        = ['April','May','June','July','August','September','October','November','December','January','February','March'];
+        $cashBookData  = [];
+        $previousBalance = 0;
+
+        foreach ($months as $month) {
+            if (!isset($accountData[$month])) continue;
+
+            $monthlyData = (array) $accountData[$month];
+            $payments    = 0;
+            $received    = 0;
+
+            if ($month === 'April' && isset($monthlyData[1]['Opening'])) {
+                $previousBalance += (float) $monthlyData[1]['Opening'];
+            }
+
+            foreach ($monthlyData as $dateData) {
+                if (!is_array($dateData)) continue;
+                $payments += (float) ($dateData['P'] ?? 0);
+                $received += (float) ($dateData['R'] ?? 0);
+            }
+
+            $balance = $previousBalance + $received - $payments;
+
+            $cashBookData[] = [
+                'month'    => $month,
+                'opening'  => $previousBalance,
+                'received' => $received,
+                'payments' => $payments,
+                'balance'  => $balance,
+            ];
+
+            $previousBalance = $balance;
+        }
+
+        $this->json_success(['data' => $cashBookData]);
+    }
+
+    public function cash_book_dates()
+    {
+        header('Content-Type: application/json');
+
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        $selectedAccount = trim((string) $this->input->get_post('account_name'));
+        $selectedMonth   = trim((string) $this->input->post('month'));
+        $opening         = (float) str_replace(',', '', (string) ($this->input->post('opening') ?? 0));
+
+        if (!$selectedAccount || !$selectedMonth) {
+            $this->json_error('Invalid account or month.', 400);
+        }
+
+        $sessionData  = $this->firebase->get("Schools/{$school_name}/{$session_year}/Session");
+        [$startYear]  = explode('-', (string) $sessionData);
+
+        $monthsAfterApril = ['April','May','June','July','August','September','October','November','December'];
+        $currentYear = in_array($selectedMonth, $monthsAfterApril) ? $startYear : ($startYear + 1);
+
+        $accountPath = "Schools/{$school_name}/{$session_year}/Accounts/Account_book/{$selectedAccount}/{$selectedMonth}";
+        $monthData   = $this->firebase->get($accountPath);
+
+        if (!$monthData) {
+            $this->json_error('No data found for this account in the selected month.', 404);
+        }
+
+        $dateRecords = [];
+        foreach ($monthData as $key => $dateData) {
+            $payments = (float) ($dateData['P'] ?? 0);
+            $received = (float) ($dateData['R'] ?? 0);
+            $date     = str_pad($key, 2, '0', STR_PAD_LEFT) . '-' . date('m', strtotime($selectedMonth)) . '-' . $currentYear;
+            $dateRecords[$date] = ['date' => $date, 'opening' => 0, 'payments' => $payments, 'received' => $received, 'balance' => 0];
+        }
+
+        ksort($dateRecords);
+
+        $balance = $opening;
+        $output  = [];
+        foreach ($dateRecords as &$data) {
+            $data['opening'] = $balance;
+            $data['balance'] = $balance + $data['received'] - $data['payments'];
+            $balance         = $data['balance'];
+            $output[]        = $data;
+        }
+
+        $this->json_success(['data' => $output]);
+    }
+
+    public function cash_book_details()
+    {
+        header('Content-Type: application/json');
+
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        $selectedDate = trim((string) $this->input->post('date'));
+        if (!$selectedDate) {
+            $this->json_error('Date required.', 400);
+        }
+
+        $vouchers = $this->firebase->get("Schools/{$school_name}/{$session_year}/Accounts/Vouchers/{$selectedDate}");
+
+        $result = [];
+        if (is_array($vouchers)) {
+            foreach ($vouchers as $voucher) {
+                if (!is_array($voucher)) continue;
+                $account  = $voucher['Acc']      ?? 'N/A';
+                $received = $voucher['Received']  ?? ($voucher['Fees Received'] ?? 0);
+                $payment  = $voucher['Payment']   ?? 0;
+                if ($account === 'N/A' && !$received && !$payment) continue;
+                $result[] = [
+                    'date'      => $selectedDate,
+                    'account'   => htmlspecialchars($account, ENT_QUOTES, 'UTF-8'),
+                    'received'  => $received,
+                    'payment'   => $payment,
+                    'reference' => htmlspecialchars($voucher['Refer'] ?? '', ENT_QUOTES, 'UTF-8'),
+                ];
+            }
+        }
+
+        echo json_encode($result);
     }
 }

@@ -18,6 +18,8 @@
         id="add_staff_form"
         enctype="multipart/form-data">
 
+        <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
         <!-- ================= BIG MAIN CARD ================= -->
         <div class="main-card">
 

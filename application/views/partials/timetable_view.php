@@ -1,26 +1,24 @@
 <div class="timetable-wrapper">
-    <!-- SCROLL CONTAINER (responsive) -->
+    <!-- SCROLL CONTAINER -->
     <div class="timetable-scroll">
-        <!-- TIMETABLE GRID -->
         <div class="timetable-grid" id="timetableGrid">
-            <!-- header + rows injected here -->
+            <!-- header + rows injected by JS -->
         </div>
     </div>
 
-    <!-- FOOTER - SMALL BUTTONS -->
+    <!-- FOOTER ACTIONS -->
     <div class="timetable-footer">
-        <button class="btn btn-warning btn-sm px-3 py-1 mr-2" id="editTimetableBtn">
-            Edit
-        </button>
-
-        <div id="timetableEditActions" class="hidden">
-            <button class="btn btn-outline-secondary btn-sm px-3 py-1 mr-2" id="cancelTimetableEdit">
-                Cancel
+        <div id="timetableEditActions" class="hidden" style="gap:10px;">
+            <button class="btn btn-outline-secondary" id="cancelTimetableEdit">
+                <i class="fa fa-times"></i> Cancel
             </button>
-            <button class="btn btn-success btn-sm px-3 py-1" id="saveTimetableEdit">
-                Save
+            <button class="btn btn-success" id="saveTimetableEdit">
+                <i class="fa fa-save"></i> Save
             </button>
         </div>
+        <button class="btn btn-warning" id="editTimetableBtn">
+            <i class="fa fa-pencil"></i> Edit Timetable
+        </button>
     </div>
 </div>
 
@@ -77,269 +75,251 @@
 
 
 <style>
-    /* =====================================================
-   TIMETABLE WRAPPER
-===================================================== */
-    .timetable-wrapper {
-        background: #ffffff;
-        border-radius: 16px;
-        padding: 24px;
-    }
+/* ══════════════════════════════════════════════════════
+   TIMETABLE — Professional ERP Design
+   Uses global theme vars from header.php so it responds
+   to the day/night theme toggle automatically.
+══════════════════════════════════════════════════════ */
 
-    /* Scroll container */
-    .timetable-scroll {
-        width: 100%;
-        overflow-x: hidden;
-    }
+/* ── Wrapper ── */
+.timetable-wrapper {
+    background: var(--bg2);
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+}
 
-    /* =====================================================
-   TIMETABLE GRID (ROW-BASED, SAFE)
-===================================================== */
-    .timetable-grid {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-    }
+/* ── Scroll container ── */
+.timetable-scroll {
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+.timetable-scroll::-webkit-scrollbar { height: 5px; }
+.timetable-scroll::-webkit-scrollbar-track { background: transparent; }
+.timetable-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
-    /* One row = day + periods */
-    .tt-row {
-        display: grid;
-        grid-template-columns: 110px repeat(auto-fit, minmax(120px, 1fr));
-        gap: 6px;
-    }
+/* ── Grid ── */
+.timetable-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 600px;
+    padding: 16px;
+}
 
-    /* =====================================================
-   CELLS
-===================================================== */
-    .tt-cell {
-        height: 38px;
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 11px;
-        font-weight: 500;
-        white-space: nowrap;
-    }
+/* One row = day label + period cells */
+.tt-row {
+    display: grid;
+    grid-template-columns: 100px repeat(auto-fill, minmax(110px, 1fr));
+    gap: 4px;
+    align-items: stretch;
+}
 
-    /* =====================================================
-   HEADER ROW
-===================================================== */
-    .tt-head {
-        position: sticky;
-        top: 0;
-        z-index: 20;
-        background: #ffffff;
-    }
+/* ── Base cell ── */
+.tt-cell {
+    height: 48px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 6px;
+    font-family: var(--font-b);
+    transition: all var(--ease);
+}
 
-    /* Day | Time cell */
-    .day-time-head {
-        height: 38px;
-        /* EXACT match with .tt-cell */
-        min-height: 38px;
-    }
+/* ── Header row ── */
+.tt-head {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+.tt-head .tt-cell { height: 42px; }
 
-    /* Ensure internal spans fill full height */
-    .day-time-head span {
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
+/* Day | Time corner cell */
+.day-time-head { border-radius: 8px; overflow: hidden; }
+.day-time-head span { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; font-family: var(--font-b); letter-spacing: .4px; }
+.day-label { background: linear-gradient(135deg, var(--gold) 0%, #D49800 100%); color: #fff; }
+.time-label { background: var(--bg3); color: var(--t3); border: 1px solid var(--border); }
 
-    .day-label {
-        background: #7f9fa9;
-        color: #fff;
-    }
+/* Period time header cells */
+.time-head {
+    background: linear-gradient(135deg, var(--gold) 0%, #D49800 100%);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .3px;
+}
 
-    .time-label {
-        background: #e9ecef;
-        color: #666;
-    }
+/* ── Day column (left) ── */
+.tt-cell.day {
+    background: var(--bg3);
+    color: var(--t1);
+    font-weight: 700;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+}
 
-    /* Time header cells */
-    .time-head {
-        background: #f5f7f9;
-        color: #666;
-        font-size: 11px;
-        font-weight: 500;
-    }
+/* ── Subject cells ── */
+.tt-cell.subject {
+    background: var(--bg3);
+    color: var(--t2);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 500;
+}
+.tt-cell.subject:not(:empty) {
+    background: var(--bg4, var(--bg3));
+    color: var(--t1);
+    font-weight: 600;
+}
 
-    /* =====================================================
-   DAY COLUMN
-===================================================== */
-    .day {
-        background: #7f9fa9;
-        color: #ffffff;
-        font-weight: 600;
-    }
+/* Edit mode */
+.timetable-wrapper.edit-mode .subject {
+    cursor: pointer;
+    border: 1.5px dashed var(--gold);
+    background: var(--gold-dim);
+}
+.timetable-wrapper.edit-mode .subject:hover {
+    background: rgba(245,175,0,.22);
+    border-color: var(--gold);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(245,175,0,.2);
+}
 
-    /* =====================================================
-   SUBJECT CELLS
-===================================================== */
-    .subject {
-        background: #7f8f96;
-        color: #ffffff;
-    }
+/* ── Break cells ── */
+.time-head.break-head {
+    background: var(--gold) !important;
+    color: #fff !important;
+    font-weight: 700;
+}
+.tt-cell.break-cell {
+    background: var(--gold-dim) !important;
+    color: var(--gold) !important;
+    font-weight: 700;
+    font-size: 11px;
+    border: 1px solid rgba(245,175,0,.35) !important;
+}
 
-    /* Edit mode */
-    .timetable-wrapper.edit-mode .subject {
-        cursor: pointer;
-        outline: 2px dashed rgba(255, 193, 7, 0.6);
-    }
+/* ── Footer buttons ── */
+.timetable-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+}
+/* When timetableEditActions is visible (Bootstrap removes .hidden) → flex */
+.timetable-footer #timetableEditActions { display: flex; gap: 10px; }
+.timetable-footer .btn {
+    font-size: 13px; font-weight: 600; border-radius: 8px; padding: 7px 20px;
+    display: inline-flex; align-items: center; gap: 6px; transition: all var(--ease);
+    font-family: var(--font-b);
+}
+.timetable-footer .btn-warning {
+    background: linear-gradient(135deg, var(--gold) 0%, #D49800 100%);
+    color: #fff; border: none; box-shadow: 0 2px 8px rgba(245,175,0,.3);
+}
+.timetable-footer .btn-warning:hover { opacity: .88; color: #fff; transform: translateY(-1px); }
+.timetable-footer .btn-success {
+    background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+    color: #fff; border: none; box-shadow: 0 2px 8px rgba(21,128,61,.28);
+}
+.timetable-footer .btn-success:hover { opacity: .88; color: #fff; transform: translateY(-1px); }
+.timetable-footer .btn-outline-secondary {
+    background: var(--bg3); border: 1px solid var(--border); color: var(--t2);
+}
+.timetable-footer .btn-outline-secondary:hover { background: var(--bg4, var(--bg3)); color: var(--t1); }
 
-    .timetable-wrapper.edit-mode .subject:hover {
-        background: #6f8289;
-    }
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .timetable-grid { padding: 10px; min-width: 500px; }
+    .tt-cell { height: 40px; font-size: 10px; }
+    .tt-head .tt-cell { height: 36px; }
+}
 
-    /* =====================================================
-   BREAK (STANDARD COLUMN – NOT MERGED)
-===================================================== */
-    .break-head {
-        background: #f4c430 !important;
-        color: #3b3b3b !important;
-        font-weight: 700;
-    }
-
-    .break-cell {
-        background: #fff3cd !important;
-        color: #856404 !important;
-        font-weight: 700;
-        font-size: 11px;
-    }
-
-    /* =====================================================
-   FOOTER BUTTONS
-===================================================== */
-    .timetable-footer {
-        margin-top: 24px;
-        text-align: center;
-    }
-
-    .timetable-footer .btn {
-        font-size: 12px;
-        line-height: 1.4;
-    }
-
-    /* =====================================================
-   RESPONSIVE
-===================================================== */
-    @media (max-width: 768px) {
-        .timetable-wrapper {
-            padding: 16px;
-        }
-
-        .tt-cell {
-            height: 36px;
-            font-size: 10px;
-        }
-
-        .time-head {
-            font-size: 9px;
-        }
-    }
-
-    /* =====================================================
+/* ══════════════════════════════════════════════════════
    SUBJECT MODAL
-===================================================== */
-    .subject-dialog {
-        max-width: 960px;
-    }
+══════════════════════════════════════════════════════ */
+.subject-dialog { max-width: 860px; }
 
-    .subject-modal {
-        border-radius: 24px;
-        border: none;
-        background: #ffffff;
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-    }
+.subject-modal {
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    box-shadow: var(--sh);
+}
 
-    /* Header */
-    .subject-modal-header {
-        border-bottom: 1px solid #e9ecef;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-    }
+.subject-modal-header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    background: linear-gradient(135deg, var(--gold) 0%, #D49800 100%);
+    border-radius: 16px 16px 0 0;
+    position: relative;
+}
+.subject-modal-header .modal-title {
+    font-size: 18px; font-weight: 700; color: #fff; font-family: var(--font-b);
+}
 
-    .subject-modal-header .modal-title {
-        font-size: 20px;
-        font-weight: 600;
-        color: #333;
-    }
+.subject-search-wrap {
+    position: relative; width: 100%; margin-top: 12px;
+}
+.subject-search-input {
+    width: 100%; height: 36px; border-radius: 20px;
+    font-size: 13px; padding: 0 32px 0 14px;
+    border: none; background: rgba(255,255,255,.9);
+    color: #333; font-family: var(--font-b);
+}
+.subject-search-input:focus {
+    outline: none; background: #fff;
+    box-shadow: 0 0 0 3px rgba(255,255,255,.3);
+}
+.subject-search-icon { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #888; }
 
-    /* Search */
-    .subject-search-wrap {
-        position: relative;
-        width: 100%;
-        margin-top: 12px;
-    }
+.subject-close {
+    position: absolute; right: 18px; top: 14px;
+    font-size: 24px; color: rgba(255,255,255,.8); background: none; border: none; padding: 0; cursor: pointer;
+}
+.subject-close:hover { color: #fff; }
 
-    .subject-search-input {
-        width: 100%;
-        height: 34px;
-        border-radius: 20px;
-        font-size: 12px;
-        padding: 0 32px 0 14px;
-        border: 1px solid #e0e4ea;
-    }
+.subject-modal-body { padding: 20px 24px 24px; background: var(--bg2); border-radius: 0 0 16px 16px; }
 
-    .subject-search-input:focus {
-        border-color: #f4b000;
-        box-shadow: 0 0 0 0.15rem rgba(244, 176, 0, 0.25);
-    }
+.subject-section-title {
+    font: 700 13px/1 var(--font-b);
+    color: var(--t3); text-transform: uppercase; letter-spacing: .7px;
+    margin: 0 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
 
-    .subject-search-icon {
-        position: absolute;
-        right: 12px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #aaa;
-    }
+.subject-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 
-    /* Close */
-    .subject-close {
-        position: absolute;
-        right: 20px;
-        top: 16px;
-        font-size: 26px;
-        color: #c0c4cc;
-    }
+.subject-item {
+    padding: 7px 14px; border-radius: 8px;
+    border: 1.5px solid var(--border);
+    background: var(--bg3);
+    color: var(--t2); font: 500 13px/1 var(--font-b);
+    cursor: pointer; transition: all var(--ease);
+}
+.subject-item:hover { background: var(--gold-dim); color: var(--gold); border-color: var(--gold); }
+.subject-item.selected {
+    background: linear-gradient(135deg, var(--gold) 0%, #D49800 100%);
+    border-color: var(--gold); color: #fff; font-weight: 700;
+    box-shadow: 0 2px 8px rgba(245,175,0,.3);
+}
 
-    .subject-close:hover {
-        color: #999;
-    }
-
-    /* Body */
-    .subject-modal-body {
-        padding: 16px 32px 28px;
-    }
-
-    /* Subject grids */
-    .subject-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-    }
-
-    
-
-   
-
-    .subject-item:hover {
-        background: #e9ecef;
-    }
-
-    .subject-item.selected {
-        background: #f4b000;
-        border-color: #f4b000;
-        color: #fff;
-        font-weight: 600;
-    }
-
-    /* Responsive modal */
-    @media (max-width: 576px) {
-        .subject-modal-body {
-            padding: 16px;
-        }
-    }
+@media (max-width: 576px) {
+    .subject-modal-body { padding: 16px; }
+    .subject-dialog { max-width: 100%; }
+}
 </style>

@@ -1,78 +1,76 @@
 <div class="content-wrapper">
     <section class="content section-students-page">
 
-        <!-- TOP HEADER ROW -->
-        <div class="top-header">
-            <h2 class="page-title">Class Management</h2>
+        <!-- ── Gold Gradient Header ── matching manage_classes.php ── -->
+        <div class="ss-header">
+            <div class="ss-header-inner">
+                <div class="ss-header-left">
+                    <a href="<?= base_url('classes/view/') . urlencode(preg_replace('/^Class\s+/i', '', $class_name)) ?>"
+                       class="ss-back-btn" title="Back to <?= htmlspecialchars($class_name) ?>">
+                        <i class="fa fa-arrow-left"></i>
+                    </a>
+                    <div class="ss-header-icon">
+                        <i class="fa fa-users" style="font-size:18px;color:#fff;"></i>
+                    </div>
+                    <div>
+                        <h1 class="ss-title"><?= htmlspecialchars($class_name) ?></h1>
+                        <p class="ss-subtitle">Section management &amp; timetable</p>
+                    </div>
+                </div>
 
-            <button class="btn btn-warning btn-lg  selected-class-btn" disabled>
-                <?= htmlspecialchars($class_name) ?>
-            </button>
-        </div>
-
-
-        <!-- SECTION NAV -->
-        <div class="section-nav position-relative mb-4">
-
-            <!-- PREV -->
-            <button id="prevSection" class="nav-arrow left">
-                <i class="fa fa-chevron-left"></i>
-            </button>
-
-            <!-- SECTION NAME (CENTERED) -->
-            <div class="section-name">
-                <?= htmlspecialchars($section_name) ?>
+                <div class="ss-header-right">
+                    <!-- Section nav -->
+                    <button id="prevSection" class="ss-nav-btn" title="Previous Section">
+                        <i class="fa fa-chevron-left"></i>
+                    </button>
+                    <div class="ss-section-pill" id="ssSectionName">
+                        <?= htmlspecialchars($section_name) ?>
+                    </div>
+                    <button id="nextSection" class="ss-nav-btn" title="Next Section">
+                        <i class="fa fa-chevron-right"></i>
+                    </button>
+                </div>
             </div>
-
-            <!-- NEXT -->
-            <button id="nextSection" class="nav-arrow right">
-                <i class="fa fa-chevron-right"></i>
-            </button>
-
         </div>
-
-
 
 
         <!-- STUDENTS CARD -->
         <div class="students-card">
             <div class="students-card-header">
                 <div>
-                    <!-- SINGLE SOURCE OF TITLE -->
                     <h2 class="mb-0" id="sectionMainTitle">Students</h2>
-
-                    <!-- Strength only for students view -->
                     <h4 id="strengthWrapper">
-                        <small class="text-muted">
-                            Total Strength :
-                            <span id="totalStrengthValue">0</span>
+                        <small style="color:var(--t3);font-family:var(--font-b);">
+                            Total Strength:
+                            <strong id="totalStrengthValue" style="color:var(--gold);">0</strong>
                         </small>
                     </h4>
                 </div>
 
                 <div class="students-actions">
-
-                    <!-- SEARCH (students only) -->
                     <div class="search-box search-box-lg position-relative" id="studentSearchWrapper">
                         <input type="text" id="studentSearchInput" class="form-control"
                             placeholder="Search by name or ID">
                         <i class="fa fa-search search-icon"></i>
                     </div>
 
-                    <button class="icon-btn" id="openSectionSettings">
+                    <!-- Back to sections list — shown only in timetable view -->
+                    <a href="<?= base_url('classes/view/') . urlencode(preg_replace('/^Class\s+/i', '', $class_name)) ?>"
+                       class="ss-back-to-class-btn" id="backToClassBtn" style="display:none;"
+                       title="Back to <?= htmlspecialchars($class_name) ?> sections">
+                        <i class="fa fa-th-large"></i> Sections
+                    </a>
+
+                    <button class="icon-btn" id="openSectionSettings" title="Section Settings">
                         <i class="fa fa-cog"></i>
                     </button>
 
-                    <!-- TOGGLE BUTTON -->
-                    <button class="btn btn-warning btn-lg" id="toggleTimetableBtn" data-view="students">
-                        Time table
-                        <i class="fa fa-table"></i>
+                    <button class="btn ss-toggle-btn" id="toggleTimetableBtn" data-view="students">
+                        <i class="fa fa-table"></i> Timetable
                     </button>
-
                 </div>
             </div>
 
-            <!-- DYNAMIC CONTENT -->
             <div id="sectionContent">
                 <!-- Students OR Timetable loads here -->
             </div>
@@ -225,9 +223,24 @@
 </div>
 
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- jQuery must load before inline script (footer.php loads it too late) -->
+<script src="<?= base_url() ?>tools/bower_components/jquery/dist/jquery.min.js"></script>
 
 <script>
+    /* ── CSRF ──────────────────────────────────────────────────────────────
+     * Token sent TWO ways on every POST:
+     *   1. Body field  [CSRF_NAME]  — satisfies CI's built-in csrf_protection filter
+     *   2. Header      X-CSRF-Token — readable by MY_Controller.verify_csrf()
+     * ─────────────────────────────────────────────────────────────────── */
+    var CSRF_NAME = '<?php echo $this->security->get_csrf_token_name(); ?>';
+    var CSRF_HASH = '<?php echo $this->security->get_csrf_hash(); ?>';
+
+    $.ajaxSetup({
+        beforeSend: function (xhr) {
+            xhr.setRequestHeader('X-CSRF-Token', CSRF_HASH);
+        }
+    });
+
     /* ============================================================
    GLOBAL STATE (SINGLE SOURCE OF TRUTH)
 ============================================================ */
@@ -268,11 +281,10 @@
        SECTION STRENGTH
     ============================================================ */
     function fetchSectionStrength() {
+        var _d = { class_name: CLASS_NAME, section_name: SECTION_NAME };
+        _d[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/get_section_settings', {
-                class_name: CLASS_NAME,
-                section_name: SECTION_NAME
-            },
+            BASE_URL + 'classes/get_section_settings', _d,
             res => {
                 $('#totalStrengthValue').text(
                     res && res.max_strength !== undefined ? res.max_strength : 0
@@ -291,11 +303,10 @@
         // Clear first (prevents stale values)
         $('#maxStrengthInput').val('').prop('disabled', true);
 
+        var _d2 = { class_name: CLASS_NAME, section_name: SECTION_NAME };
+        _d2[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/get_section_settings', {
-                class_name: CLASS_NAME,
-                section_name: SECTION_NAME
-            },
+            BASE_URL + 'classes/get_section_settings', _d2,
             function(res) {
 
                 if (res && res.max_strength !== undefined) {
@@ -327,10 +338,10 @@
        SECTION NAVIGATION
     ============================================================ */
     function loadSectionsForNav() {
+        var _d = { class_name: CLASS_NAME };
+        _d[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/fetch_class_sections', {
-                class_name: CLASS_NAME
-            },
+            BASE_URL + 'classes/fetch_class_sections', _d,
             sections => {
                 if (!Array.isArray(sections)) return;
                 ALL_SECTIONS = sections.map(s => s.name);
@@ -365,11 +376,10 @@
        STUDENTS VIEW
     ============================================================ */
     function fetchStudents() {
+        var _d = { class_name: CLASS_NAME, section_name: SECTION_NAME };
+        _d[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/fetch_section_students', {
-                class_name: CLASS_NAME,
-                section_name: SECTION_NAME
-            },
+            BASE_URL + 'classes/fetch_section_students', _d,
             renderStudentsTable,
             'json'
         );
@@ -537,9 +547,10 @@
 
 
     function loadClassesForTransfer() {
-
+        var _d = {};
+        _d[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/loadClassesForTransfer', {},
+            BASE_URL + 'classes/loadClassesForTransfer', _d,
             function(res) {
 
                 if (!res || typeof res !== 'object') return;
@@ -640,6 +651,7 @@
             to_class: $('#targetClass').val(),
             to_section: $('#targetSection').val()
         };
+        payload[CSRF_NAME] = CSRF_HASH;
 
         // 🔒 Prevent double submit
         $btn.prop('disabled', true).text('Transferring...');
@@ -679,16 +691,20 @@
 
         if (CURRENT_VIEW === 'students') {
             CURRENT_VIEW = 'timetable';
-            $('#sectionMainTitle').text('Time table');
+            $('#sectionMainTitle').text('Timetable');
             $('#strengthWrapper, #studentSearchWrapper').hide();
-            $(this).html('Student List <i class="fa fa-users"></i>');
+            $('#openSectionSettings').hide();
+            $('#backToClassBtn').show();
+            $(this).html('<i class="fa fa-users"></i> Student List');
             loadTimetable();
         } else {
             CURRENT_VIEW = 'students';
             $('#sectionMainTitle').text('Students');
             $('#strengthWrapper, #studentSearchWrapper').show();
             $('#studentSearchInput').val('');
-            $(this).html('Time table <i class="fa fa-table"></i>');
+            $('#openSectionSettings').show();
+            $('#backToClassBtn').hide();
+            $(this).html('<i class="fa fa-table"></i> Timetable');
             fetchStudents();
         }
     });
@@ -698,12 +714,10 @@
     ============================================================ */
     function loadTimetable() {
         TIMETABLE_READY = false;
-
+        var _d = { class_name: CLASS_NAME, section_name: SECTION_NAME };
+        _d[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/load_timetable_partial', {
-                class_name: CLASS_NAME,
-                section_name: SECTION_NAME
-            },
+            BASE_URL + 'classes/load_timetable_partial', _d,
             html => {
                 $('#sectionContent').html(html);
                 fetchTimetableSettingsAndBuild();
@@ -830,11 +844,10 @@
        LOAD & APPLY SAVED TIMETABLE
     ============================================================ */
     function loadSavedTimetable() {
+        var _d = { class_name: CLASS_NAME, section_name: SECTION_NAME };
+        _d[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/load_timetable', {
-                class_name: CLASS_NAME,
-                section_name: SECTION_NAME
-            },
+            BASE_URL + 'classes/load_timetable', _d,
             saved => saved && TIMETABLE_READY && applySavedTimetable(saved),
             'json'
         );
@@ -897,12 +910,14 @@
         const $btn = $(this);
         $btn.prop('disabled', true).text('Saving...');
 
+        var _ttData = {
+            class_name: CLASS_NAME,
+            section_name: SECTION_NAME,
+            timetable: JSON.stringify(timetable)
+        };
+        _ttData[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/save_timetable', {
-                class_name: CLASS_NAME,
-                section_name: SECTION_NAME,
-                timetable: JSON.stringify(timetable)
-            },
+            BASE_URL + 'classes/save_timetable', _ttData,
             function(res) {
 
                 if (res.status === 'success') {
@@ -1041,10 +1056,10 @@
     ============================================================ */
 
     function loadSubjectsForTimetable() {
+        var _d = { class_name: CLASS_NAME };
+        _d[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/fetch_subjects_for_timetable', {
-                class_name: CLASS_NAME
-            },
+            BASE_URL + 'classes/fetch_subjects_for_timetable', _d,
             renderSubjectModal,
             'json'
         );
@@ -1280,12 +1295,14 @@
         const maxStrength = $('#maxStrengthInput').val();
         if (!maxStrength || maxStrength <= 0) return alert('Invalid value');
 
+        var _d = {
+            class_name: CLASS_NAME,
+            section_name: SECTION_NAME,
+            max_strength: maxStrength
+        };
+        _d[CSRF_NAME] = CSRF_HASH;
         $.post(
-            "<?= base_url('classes/save_section_settings') ?>", {
-                class_name: CLASS_NAME,
-                section_name: SECTION_NAME,
-                max_strength: maxStrength
-            },
+            "<?= base_url('classes/save_section_settings') ?>", _d,
             res => {
                 if (res.status === 'success') {
                     $('#sectionSettingsModal').modal('hide');
@@ -1435,13 +1452,15 @@
             }
         });
 
+        var _settData = {
+            start_time: $('#ttStartTime').val(),
+            end_time: $('#ttEndTime').val(),
+            no_of_periods: $('#ttNoOfPeriod').val(),
+            recesses: recesses
+        };
+        _settData[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/save_timetable_settings', {
-                start_time: $('#ttStartTime').val(),
-                end_time: $('#ttEndTime').val(),
-                no_of_periods: $('#ttNoOfPeriod').val(),
-                recesses: recesses
-            },
+            BASE_URL + 'classes/save_timetable_settings', _settData,
             function(res) {
                 if (res.status === 'success') {
                     $('#timetableSettingsModal').modal('hide');
@@ -1612,609 +1631,132 @@
 
 
 <style>
-    /* ============================
-   SECTION STRENGTH MODAL (ERP)
-============================ */
+    /* ── Page ─────────────────────────────────────── */
+    .section-students-page { background: var(--bg); padding: 24px; }
 
-    .section-settings-modal {
-        border-radius: 20px;
-        border: none;
-        padding: 10px;
-        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.2);
-    }
+    /* ── Gold header ─────────────────────────────── */
+    .ss-header { background: linear-gradient(135deg, var(--gold) 0%, #e9a200 100%); border-radius: 14px; padding: 20px 24px; margin-bottom: 24px; }
+    .ss-header-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+    .ss-header-left  { display: flex; align-items: center; gap: 12px; }
+    .ss-header-icon  { width: 40px; height: 40px; background: rgba(255,255,255,.18); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ss-title   { font: 700 20px/1.2 var(--font-b); color: #fff; margin: 0; }
+    .ss-subtitle{ font: 400 12px/1.4 var(--font-b); color: rgba(255,255,255,.78); margin: 3px 0 0; }
 
-    /* Header layout */
-    .header-wrap {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-    }
+    .ss-back-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 9px; background: rgba(255,255,255,.20); color: #fff; transition: background var(--ease); flex-shrink: 0; text-decoration: none; }
+    .ss-back-btn:hover { background: rgba(255,255,255,.35); color: #fff; }
 
-    /* Icon */
-    .icon-wrap {
-        width: 46px;
-        height: 46px;
-        border-radius: 14px;
-        background: linear-gradient(135deg, #f4b000, #f5af00);
-        color: #fff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 20px;
-    }
+    .ss-header-right { display: flex; align-items: center; gap: 8px; }
+    .ss-nav-btn { width: 34px; height: 34px; border-radius: 50%; border: none; background: rgba(255,255,255,.20); color: #fff; font-size: 14px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background var(--ease); }
+    .ss-nav-btn:hover:not(:disabled) { background: rgba(255,255,255,.38); }
+    .ss-nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .ss-section-pill { background: rgba(255,255,255,.22); color: #fff; font: 700 14px/1 var(--font-b); padding: 8px 18px; border-radius: 24px; white-space: nowrap; }
 
-    /* Title */
-    .section-settings-modal .modal-title {
-        font-size: 19px;
-        font-weight: 600;
-        margin: 0;
-    }
+    /* ── Students card ───────────────────────────── */
+    .students-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; padding: 20px; box-shadow: var(--sh); }
+    .students-card-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+    .students-card-header h2 { font: 700 18px/1.2 var(--font-b); color: var(--t1); margin: 0; }
+    .students-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
-    /* Subtitle */
-    .modal-subtitle {
-        font-size: 13px;
-        color: #777;
-        margin: 2px 0 0;
-    }
+    .ss-toggle-btn { background: linear-gradient(135deg, var(--gold) 0%, #D49800 100%); color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font: 600 13px/1 var(--font-b); transition: opacity var(--ease); }
+    .ss-toggle-btn:hover { opacity: .88; color: #fff; }
+    .ss-back-to-class-btn { display: inline-flex; align-items: center; gap: 6px; background: var(--bg3); border: 1px solid var(--border); color: var(--t2); border-radius: 8px; padding: 7px 14px; font: 600 13px/1 var(--font-b); text-decoration: none; transition: all var(--ease); white-space: nowrap; }
+    .ss-back-to-class-btn:hover { background: var(--gold-dim); color: var(--gold); border-color: var(--gold); text-decoration: none; }
 
-    /* Close */
-    .close-btn {
-        font-size: 22px;
-        opacity: 0.5;
-    }
-
-    .close-btn:hover {
-        opacity: 1;
-    }
-
-    /* Body */
-    .section-settings-modal .modal-body {
-        padding: 20px 18px 10px;
-    }
-
-    /* Label */
-    .input-label {
-        font-size: 13px;
-        font-weight: 600;
-        margin-bottom: 6px;
-        display: block;
-    }
-
-    /* Input */
-    .strength-input {
-        height: 46px;
-        border-radius: 14px;
-        font-size: 18px;
-        font-weight: 600;
-        text-align: center;
-        border: 1px solid #ddd;
-    }
-
-    .strength-input::placeholder {
-        color: #bbb;
-    }
-
-    /* Footer */
-    .section-settings-modal .modal-footer {
-        border-top: none;
-        padding: 10px 18px 18px;
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-    }
-
-
-
-    /* =====================================================
-   PAGE WRAPPER
-===================================================== */
-    .section-students-page {
-        background: #f5f6f8;
-        padding: 24px;
-    }
-
-    /* =====================================================
-   TOP HEADER
-===================================================== */
-    .top-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 18px;
-    }
-
-    .page-title {
-        font-weight: 600;
-        margin: 0;
-    }
-
-    .selected-class-btn {
-        border-radius: 20px;
-        padding: 6px 14px;
-    }
-
-    /* =====================================================
-   SECTION NAVIGATION
-===================================================== */
-    .section-nav {
-        position: relative;
-        height: 56px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 24px;
-    }
-
-    .section-name {
-        font-size: 22px;
-        font-weight: 600;
-        color: #333;
-        pointer-events: none;
-    }
-
-    /* Arrow buttons */
-    .nav-arrow {
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
-
-        width: 48px;
-        height: 48px;
-        border-radius: 50%;
-        border: none;
-
-        background: #f0f0f0;
-        color: #333;
-        font-size: 18px;
-
-        display: flex;
-        align-items: center;
-        justify-content: center;
-
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .nav-arrow.left {
-        left: 0;
-    }
-
-    .nav-arrow.right {
-        right: 0;
-    }
-
-    .nav-arrow:hover:not(:disabled) {
-        background: #f5af00;
-        color: #fff;
-    }
-
-    .nav-arrow:disabled {
-        opacity: 0.35;
-        cursor: not-allowed;
-    }
-
-    /* =====================================================
-   STUDENTS CARD
-===================================================== */
-    .students-card {
-        background: #ffffff;
-        border-radius: 16px;
-        padding: 18px;
-        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.06);
-    }
-
-    .students-card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 16px;
-    }
-
-    /* =====================================================
-   ACTION BUTTONS & SEARCH
-===================================================== */
-    .students-actions {
-        display: flex;
-        align-items: center;
-        gap: 15px;
-    }
-
-    /* SEARCH WRAPPER */
-    .search-box-lg {
-        width: 260px;
-        position: relative;
-    }
-
-    /* INPUT */
+    /* ── Search ──────────────────────────────────── */
+    .search-box-lg { width: 260px; position: relative; }
     .search-box-lg input {
-        height: 42px;
-        font-size: 14px;
-        padding-left: 14px;
-        padding-right: 42px;
-        /* space for icon */
-        border-radius: 22px;
+        height: 42px; font-size: 14px; padding-left: 14px; padding-right: 42px;
+        border-radius: 22px; background: var(--bg); border: 1px solid var(--border); color: var(--t1);
     }
+    .search-box-lg input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(245,175,0,.15); }
+    .search-box-lg .search-icon { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 16px; color: var(--t3); pointer-events: none; }
 
-    /* SEARCH ICON */
-    .search-box-lg .search-icon {
-        position: absolute;
-        right: 14px;
-        top: 50%;
-        transform: translateY(-50%);
-        font-size: 16px;
-        color: #999;
-        pointer-events: none;
-        /* important */
+    .icon-btn { border: none; background: var(--gold); color: #fff; width: 42px; height: 42px; border-radius: 8px; font-size: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: opacity var(--ease); }
+    .icon-btn:hover { opacity: .85; }
+
+    /* ── Students table ──────────────────────────── */
+    .students-table thead { background: var(--gold-dim); }
+    .students-table th { font-size: 13px; font-weight: 700; color: var(--t3); font-family: var(--font-b); }
+    .students-table th:first-child, .students-table td:first-child { width: 36px; text-align: center; }
+    .students-table td { color: var(--t2); vertical-align: middle; }
+    .student-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+
+    /* ── Pass/Fail ───────────────────────────────── */
+    .result-box { width: 38px; height: 37px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; border-radius: 5px; text-transform: capitalize; }
+    .result-box.pass { background-color: #3cb371; }
+    .result-box.fail { background-color: #e04b4b; }
+
+    /* ── Recess rows ─────────────────────────────── */
+    .recess-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .recess-from, .recess-to {
+        width: 110px; height: 30px; border-radius: 999px;
+        border: 1px solid var(--border); background: var(--bg3);
+        color: var(--t1); font-size: 12px; padding: 3px 10px;
     }
-
-
-    .icon-btn {
-        border: none;
-        background: #f5af00;
-        color: #fff;
-        width: 42px;
-        height: 42px;
-        border-radius: 8px;
-        font-size: 18px;
-
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    /* =====================================================
-   STUDENTS TABLE
-===================================================== */
-    .students-table thead {
-        background: #fff6e5;
-    }
-
-    .students-table th {
-        font-size: 13px;
-        font-weight: 700;
-        color: #777;
-    }
-
-    .students-table th:first-child,
-    .students-table td:first-child {
-        width: 36px;
-        text-align: center;
-    }
-
-    .student-avatar {
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        object-fit: cover;
-    }
-
-    /* =====================================================
-   PASS / FAIL INDICATOR
-===================================================== */
-    .result-box {
-        width: 38px;
-        height: 37px;
-
-        display: flex;
-        align-items: center;
-        justify-content: center;
-
-        font-size: 11px;
-        font-weight: 600;
-        color: #ffffff;
-
-        border-radius: 5px;
-        text-transform: capitalize;
-    }
-
-    .result-box.pass {
-        background-color: #3cb371;
-    }
-
-    .result-box.fail {
-        background-color: #e04b4b;
-    }
-
-    /* Whole recess row on one line, centered vertically */
-    .recess-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 6px;
-    }
-
-    /* Smaller pill for time (narrower than Start/End) */
-    .recess-from,
-    .recess-to {
-        width: 110px;
-        /* smaller tab */
-        height: 30px;
-        /* slightly shorter */
-        border-radius: 999px;
-        border: 1px solid #e0e0e0;
-        background-color: #f5f5f5;
-        font-size: 12px;
-        /* a bit smaller text */
-        padding: 3px 10px;
-    }
-
-    /* keep browser clock icon but subtle */
-    .recess-from::-webkit-calendar-picker-indicator,
-    .recess-to::-webkit-calendar-picker-indicator {
-        opacity: 0.6;
-    }
-
-    /* "Recess" text in the middle, like image‑2 */
-    .recess-label {
-        font-size: 13px;
-        color: #555;
-    }
-
-    /* Small circular X button right after the second time pill */
+    .recess-from::-webkit-calendar-picker-indicator, .recess-to::-webkit-calendar-picker-indicator { opacity: 0.6; }
+    .recess-label { font-size: 13px; color: var(--t3); }
     .removeRecessBtn {
-        width: 22px;
-        height: 22px;
-        padding: 0;
-        border-radius: 50%;
-        border: 1px solid #e0e0e0;
-        background-color: #f5f5f5;
-        font-size: 12px;
-        line-height: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        width: 22px; height: 22px; padding: 0; border-radius: 50%;
+        border: 1px solid var(--border); background: var(--bg3);
+        color: var(--t2); font-size: 12px; line-height: 1;
+        display: flex; align-items: center; justify-content: center; cursor: pointer;
     }
 
+    /* ── Timetable ───────────────────────────────── */
+    .timetable-wrapper { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+    .timetable-scroll { width: 100%; overflow-x: hidden; }
+    .timetable-grid { display: flex; flex-direction: column; gap: 6px; }
+    .tt-row { display: grid; grid-auto-flow: column; grid-template-columns: 110px repeat(auto-fit, minmax(75px, 1fr)); }
+    .tt-cell { height: 38px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; white-space: nowrap; }
+    .tt-head { position: sticky; top: 0; background: var(--bg2); z-index: 20; }
+    .day { position: sticky; left: 0; z-index: 25; background: var(--bg3); color: var(--t2); font-weight: 600; }
+    .time-head { background: var(--bg3); color: var(--t3); font-size: 11px; }
+    .day-time-head { position: sticky; left: 0; z-index: 30; height: 38px; display: grid; grid-template-columns: 1fr 1fr; padding: 0; border-radius: 6px; overflow: hidden; font-weight: 600; width: 110px; justify-self: start; }
+    .break-head { background: var(--gold) !important; color: #fff !important; font-weight: 700 !important; }
+    .break-cell { background: var(--gold-dim) !important; color: var(--gold) !important; font-weight: 700; font-size: 10px; }
+    .break-vertical { background: var(--gold-dim); color: var(--gold); font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; writing-mode: vertical-rl; transform: rotate(180deg); border-radius: 8px; }
+    .subject { background: var(--bg3); color: var(--t2); }
+    .timetable-wrapper.edit-mode .subject { cursor: pointer; outline: 2px dashed rgba(245,175,0,.6); }
 
-
-    .timetable-wrapper {
-        background: #ffffff;
-        border-radius: 16px;
-        padding: 24px;
-    }
-
-    .timetable-scroll {
-        width: 100%;
-        overflow-x: hidden;
-    }
-
-    .timetable-grid {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-    }
-
-    /* Rows */
-    /* .tt-row {
-        display: grid;
-        grid-template-columns: 110px repeat(auto-fit, minmax(75px, 1fr));
-        gap: 4px;
-    } */
-
-    .tt-row {
-        display: grid;
-        grid-auto-flow: column;
-        grid-template-columns: 110px repeat(auto-fit, minmax(75px, 1fr));
-    }
-
-
-    /* Cells */
-    .tt-cell {
-        height: 38px;
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 11px;
-        font-weight: 500;
-        white-space: nowrap;
-    }
-
-    /* Header */
-    .tt-head {
-        position: sticky;
-        top: 0;
-        background: #fff;
-        z-index: 20;
-    }
-
-    /* Day column */
-    .day {
-        position: sticky;
-        left: 0;
-        z-index: 25;
-        background: #7f9fa9;
-        color: #fff;
-        font-weight: 600;
-    }
-
-    /* Time header */
-    .time-head {
-        background: #f5f7f9;
-        color: #666;
-        font-size: 11px;
-    }
-
-    .day-time-head {
-        position: sticky;
-        left: 0;
-        z-index: 30;
-        height: 38px;
-        display: grid;
-        /* Changed from flex */
-        grid-template-columns: 1fr 1fr;
-        /* Equal split */
-        padding: 0;
-        border-radius: 6px;
-        overflow: hidden;
-        font-weight: 600;
-        width: 110px;
-        /* Exact day column width */
-        justify-self: start;
-        /* Aligns perfectly */
-    }
-
-    /* LUNCH BREAK - DISTINCT ORANGE */
-    .break-head {
-        background: #f4c430 !important;
-        color: #3b3b3b !important;
-        font-weight: 700 !important;
-    }
-
-    /* ===== VERTICAL MERGED BREAK COLUMN ===== */
-    .break-vertical {
-        background: #fff3cd;
-        color: #856404;
-        font-weight: 700;
-        font-size: 12px;
-
-        display: flex;
-        align-items: center;
-        justify-content: center;
-
-        writing-mode: vertical-rl;
-        transform: rotate(180deg);
-
-        border-radius: 8px;
-    }
-
-    /* Header style */
-    .break-head {
-        background: #f4c430 !important;
-        color: #3b3b3b !important;
-        font-weight: 700;
-    }
-
-
-    .break-cell {
-        background: #fff3cd !important;
-        color: #856404 !important;
-        font-weight: 700;
-        font-size: 10px;
-    }
-
-    /* Subjects */
-    .subject {
-        background: #7f8f96;
-        color: #fff;
-    }
-
-    /* Edit mode */
-    .timetable-wrapper.edit-mode .subject {
-        cursor: pointer;
-        outline: 2px dashed rgba(255, 193, 7, 0.6);
-    }
-
-    /* ================= SUBJECT MODAL ================= */
-
-    /* ================= SUBJECT MODAL ================= */
-
-    .subject-dialog {
-        max-width: 960px;
-    }
-
-    .subject-modal {
-        border-radius: 24px;
-        border: none;
-        background: #fff;
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-    }
-
-    /* Header */
-    .subject-modal-header {
-        border-bottom: 1px solid #e9ecef;
-    }
-
-    .subject-modal-header .modal-title {
-        font-size: 20px;
-        font-weight: 600;
-    }
-
-    /* Search */
-    .subject-search-input {
-        border-radius: 20px;
-        height: 34px;
-        font-size: 12px;
-    }
-
-    /* Subject grid */
-    .subject-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-    }
-
-    /* ================= SUBJECT PILL ================= */
-
+    /* ── Subject select modal ────────────────────── */
+    .subject-dialog { max-width: 960px; }
+    .subject-modal { border-radius: 16px; border: 1px solid var(--border); background: var(--bg2); box-shadow: var(--sh); }
+    .subject-modal-header { border-bottom: 1px solid var(--border); }
+    .subject-modal-header .modal-title { font-size: 18px; font-weight: 700; color: var(--t1); font-family: var(--font-b); }
+    .subject-search-input { border-radius: 20px; height: 34px; font-size: 12px; background: var(--bg); border: 1px solid var(--border); color: var(--t1); }
+    .subject-grid { display: flex; flex-wrap: wrap; gap: 10px; }
     .subject-item {
-        padding: 8px 14px;
-        border-radius: 20px;
-        font-size: 13px;
-        cursor: pointer;
-
-        background: transparent;
-        border: 1px solid #6c757d;
-        color: #212529;
-
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        padding: 8px 14px; border-radius: 20px; font-size: 13px; cursor: pointer;
+        background: var(--bg); border: 1px solid var(--border); color: var(--t2);
+        font-family: var(--font-b); transition: transform var(--ease);
     }
+    .subject-item:hover { transform: scale(1.05); border-color: var(--gold); color: var(--gold); }
+    .subject-item.selected { background: var(--gold); border-color: var(--gold); color: #fff; font-weight: 600; }
+    @media (max-width: 576px) { .subject-modal-body { padding: 16px; } }
 
-    /* Hover → ONLY scale */
-    .subject-item:hover {
-        transform: scale(1.08);
-    }
+    /* ── Transfer modal ──────────────────────────── */
+    .transfer-flow { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .transfer-box { flex: 1; padding: 14px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
+    .from-box { border-left: 4px solid var(--t3); }
+    .to-box { border-left: 4px solid #dc3545; }
+    .transfer-value { font-size: 15px; color: var(--t1); }
+    .transfer-arrow { font-size: 32px; color: #dc3545; margin-top: 18px; }
+    .transfer-modal .modal-body { padding: 20px; }
 
-    /* Selected subject */
-    .subject-item.selected {
-        background: #f4b000;
-        border-color: #f4b000;
-        color: #ffffff;
-        font-weight: 600;
-    }
-
-    /* Responsive */
-    @media (max-width: 576px) {
-        .subject-modal-body {
-            padding: 16px;
-        }
-    }
-
-
-    .transfer-flow {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-    }
-
-    .transfer-box {
-        flex: 1;
-        padding: 14px;
-        border-radius: 8px;
-        background: #f8f9fa;
-    }
-
-    .from-box {
-        border-left: 4px solid #6c757d;
-    }
-
-    .to-box {
-        border-left: 4px solid #dc3545;
-    }
-
-    .transfer-value {
-        font-size: 15px;
-    }
-
-    .transfer-arrow {
-        font-size: 32px;
-        color: #dc3545;
-        margin-top: 18px;
-    }
-
-    .transfer-modal .modal-body {
-        padding: 20px;
-    }
+    /* ── Section settings modal ──────────────────── */
+    .section-settings-modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 20px; box-shadow: var(--sh); }
+    .header-wrap { display: flex; align-items: center; gap: 14px; }
+    .icon-wrap { width: 46px; height: 46px; border-radius: 14px; background: linear-gradient(135deg, var(--gold), #D49800); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+    .section-settings-modal .modal-title { font-size: 18px; font-weight: 700; margin: 0; color: var(--t1); font-family: var(--font-b); }
+    .modal-subtitle { font-size: 13px; color: var(--t3); margin: 2px 0 0; font-family: var(--font-b); }
+    .close-btn { font-size: 22px; opacity: 0.5; color: var(--t1); }
+    .close-btn:hover { opacity: 1; }
+    .section-settings-modal .modal-body { padding: 20px 18px 10px; }
+    .input-label { font-size: 13px; font-weight: 600; margin-bottom: 6px; display: block; color: var(--t2); font-family: var(--font-b); }
+    .strength-input { height: 46px; border-radius: 14px; font-size: 18px; font-weight: 600; text-align: center; border: 1px solid var(--border); background: var(--bg); color: var(--t1); }
+    .strength-input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(245,175,0,.18); }
+    .strength-input::placeholder { color: var(--t3); }
+    .section-settings-modal .modal-footer { border-top: 1px solid var(--border); padding: 10px 18px 18px; display: flex; justify-content: flex-end; gap: 10px; }
 </style>
 
 <?php $this->load->view('partials/timetable_settings_modal'); ?>

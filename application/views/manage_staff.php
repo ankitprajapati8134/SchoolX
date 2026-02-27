@@ -86,6 +86,8 @@
             </div>
             <div class="modal-body">
                 <form action="<?php echo base_url() . 'index.php/staff/import_staff' ?>" method="post" enctype="multipart/form-data">
+                    <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
                     <div class="form-group">
                         <label for="excelFile">Upload Excel File <span class="text-danger">*</span></label>
                         <input type="file" class="form-control" id="excelFile" name="excelFile" accept=".xls,.xlsx" required>

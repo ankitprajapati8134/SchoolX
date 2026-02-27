@@ -145,6 +145,8 @@ $totalPages = $totalClasses > 0 ? (int)ceil($totalClasses / $classesPerPage) : 1
                 <div class="panel-body" style="padding-top:16px;">
                     <!-- Form: keep IDs same so your existing JS works -->
                     <form id="subject_form" method="post" novalidate>
+                        <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
                         <div class="row">
                             <!-- LEFT -->
                             <div class="col-md-7 left-column">

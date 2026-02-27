@@ -30,6 +30,8 @@
 
                 <div class="panel-body">
                     <form id="subject_form" method="post" novalidate>
+                        <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
                         <div class="row">
                             <!-- LEFT -->
                             <div class="col-md-7 left-column">

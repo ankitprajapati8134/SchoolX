@@ -85,6 +85,8 @@
             <div class="modal-body">
                 <form action="<?php echo base_url() . 'schools/manage_school' ?>" id="add_school"
                     method="post" enctype="multipart/form-data">
+                    <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
                     <!-- School Basic Information -->
                     <div class="form-group">
                         <label>School ID</label>

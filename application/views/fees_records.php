@@ -238,13 +238,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function gotoClass(row) {
-        // Use the pre-split data attributes set directly on the <tr>
-        var cls = row.dataset.class || '';
-        var section = row.dataset.section || '';
-        var url = '<?= site_url("fees/class_fees") ?>?class=' + encodeURIComponent(cls);
-        if (section) url += '&section=' + encodeURIComponent(section);
-        window.location.href = url;
-    }
+    var cls = (row.dataset.class || '').replace(/^Class\s+/i, '');
+    var section = (row.dataset.section || '').replace(/^Section\s+/i, '');
+    var url = '<?= site_url("fees/class_fees") ?>?class=' + encodeURIComponent(cls);
+    if (section) url += '&section=' + encodeURIComponent(section);
+    window.location.href = url;
+}
 
     /* Live search */
     if (search) {

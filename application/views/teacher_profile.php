@@ -34,6 +34,8 @@
                             <div class="row mb-3">
                                 <div class="col-md-12">
                                     <form method="post" id="searchForm" action="#" class="d-flex flex-column">
+                                        <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
                                         <input type="text" class="form-control mb-3" id="search_name" name="search_name"
                                             placeholder="Search Teacher">
                                         <button class="btn btn-primary" id="name" type="submit">

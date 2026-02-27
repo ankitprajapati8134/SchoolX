@@ -36,6 +36,8 @@
                   method="post"
                   id="add_staff_form"
                   enctype="multipart/form-data">
+                  <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
 
                 <!-- ══ BASIC INFORMATION ══ -->
                 <div class="nsa-section" id="sec-basic">

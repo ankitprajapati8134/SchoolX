@@ -7,6 +7,8 @@
 
         <!-- Row for Receipt and Account Details -->
         <form method="post" action="<?php echo site_url('fees/fees_counter'); ?>">
+            <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
             <fieldset>
                 <div class="row mb-3">
                     <div class="col-md-12">
@@ -403,6 +405,8 @@
                         <div class="input-group">
                             <!-- Ensure the form action is correct -->
                             <form id="searchForm" method="post" action="#">
+                                <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
                                 <input type="text" class="form-control" id="search_name" name="search_name"
                                     placeholder="Search Student">
                                 <div class="input-group-append">

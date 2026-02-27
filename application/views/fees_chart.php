@@ -528,7 +528,7 @@ function saveUpdatedFees() {
         'October','November','December','January','February','March'
     ];
 
-    /* Build monthly fees object */
+    /* Build fees object */
     var updatedFees = {};
     document.querySelectorAll('#monthlyTbody tr').forEach(function (row) {
         var inputs = row.querySelectorAll('.num-input');
@@ -549,28 +549,44 @@ function saveUpdatedFees() {
     });
     updatedFees['Yearly Fees'] = yearlyFees;
 
-    /* Payload matches controller save_updated_fees() exactly */
-    var payload = {
-        class:   cls,  // "Class 10th"
-        section: sec,  // "Section A"
-        fees:    updatedFees
-    };
-
     var btn = document.getElementById('saveButton');
-    btn.disabled = true;
+    btn.disabled  = true;
     btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving…';
+
+    /* ── Read CSRF from meta tags (set by include/header.php) ── */
+    var CSRF_NAME = document.querySelector('meta[name="csrf-name"]').getAttribute('content');
+    var CSRF_HASH = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+    /*
+     * Send as FormData — NOT JSON.
+     * This means CI's built-in CSRF filter can read the token
+     * from $_POST normally. No exclusions. No bypasses.
+     * fees is JSON-stringified into a single field so the
+     * controller can decode it cleanly.
+     */
+    var fd = new FormData();
+    fd.append(CSRF_NAME,  CSRF_HASH);              // ← CI built-in filter reads this
+    fd.append('class',    cls);
+    fd.append('section',  sec);
+    fd.append('fees',     JSON.stringify(updatedFees)); // fees as JSON string field
 
     fetch('<?= site_url('fees/save_updated_fees') ?>', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload)
+        body:    fd,
+        headers: {
+            'X-CSRF-Token':     CSRF_HASH,         // ← MY_Controller double-checks this
+            'X-Requested-With': 'XMLHttpRequest'
+        }
     })
-    .then(function (r) { return r.json(); })
+    .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+    })
     .then(function (res) {
         if (res.status === 'success') {
             showToast('Fees saved successfully!', 'success');
             btn.innerHTML = '<i class="fa fa-save"></i> Save All Fees';
-            btn.disabled  = true; // re-disable until next edit
+            btn.disabled  = true;
         } else {
             showToast(res.message || 'Save failed. Please try again.', 'error');
             btn.innerHTML = '<i class="fa fa-save"></i> Save All Fees';
@@ -584,6 +600,7 @@ function saveUpdatedFees() {
         console.error('saveUpdatedFees error:', err);
     });
 }
+
 </script>
 
 

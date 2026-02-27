@@ -34,7 +34,8 @@
                 </div>
                 <div class="sm-card-body">
                     <form id="subject_form" method="post" novalidate>
-
+<input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
                         <div class="sm-grid-2 sm-mb">
                             <div class="sm-field">
                                 <label class="sm-label">Class <span class="sm-req">*</span></label>

@@ -23,7 +23,8 @@
                     <form action="<?= base_url('student/import_students') ?>" 
                           method="post" 
                           enctype="multipart/form-data">
-
+<input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
                         <div class="form-group">
                             <label>Select Excel File (.xlsx / .csv)</label>
                             <input type="file" 

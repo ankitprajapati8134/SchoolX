@@ -8,6 +8,8 @@
                     <div class="col-sm-10">
                         <form action="<?php echo base_url() . 'index.php/schools/edit_school/'.$schooll['School Id'] ?>" id="edit_school"
                             method="post" enctype="multipart/form-data">
+                            <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
                             <div class="form-group input-group mb-3">
                                 <label>Enter School Id</label>
                                 <input type="text" name="School Id" required="required" id="school_id"

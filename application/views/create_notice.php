@@ -24,6 +24,8 @@
                         <form id="cnForm" method="post"
                             action="<?= site_url('NoticeAnnouncement/create_notice') ?>"
                             enctype="multipart/form-data">
+                            <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
 
                             <div class="cn-field">
                                 <label class="cn-label">Title <span class="req">*</span></label>

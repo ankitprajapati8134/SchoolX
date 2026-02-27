@@ -5,6 +5,8 @@
             <div class="add-exam">
 
                 <form action="<?php echo base_url() . 'exam/manage_exam' ?>" method="post" id="add-exam-form">
+                    <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
                     <!-- Exam Information -->
                     <div class="form-section">
                         <h3>Exam Information</h3>

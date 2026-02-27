@@ -18,7 +18,8 @@
                 <div class="box-body">
 
                     <form id="add_fees_title" method="post">
-
+<input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+           value="<?= $this->security->get_csrf_hash() ?>">
                         <div class="row">
                             <div class="col-md-5">
                                 <div class="form-group">

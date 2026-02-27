@@ -1,5 +1,9 @@
 .DS_Store
+nul
 
+# -----------------------------
+# CodeIgniter cache & logs
+# -----------------------------
 application/cache/*
 !application/cache/index.html
 
@@ -8,26 +12,53 @@ application/logs/*
 
 !application/*/.htaccess
 
-composer.lock
-tests/mocks/database/ci_test.sqlite
+# -----------------------------
+# IMPORTANT CONFIG (DO NOT UPLOAD)
+# -----------------------------
+application/config/database.php
+application/config/config.php
 
+# If you have Firebase service account JSON → put its exact name below
+# Example:
+application/config/firebase_credentials.json
+application/config/graderadmin-firebase-adminsdk-a1sml-ae06295d92.json
+application/config/graders-1c047-firebase-adminsdk-z1a10-ca28a54060.json
+# Environment file
+.env
+
+# -----------------------------
+# Composer / Vendor
+# -----------------------------
+/vendor/
+composer.lock
+
+# -----------------------------
+# Testing
+# -----------------------------
+tests/mocks/database/ci_test.sqlite
+/tests/
+/tests/tests/
+/tests/results/
+
+# -----------------------------
+# User guide build files
+# -----------------------------
 user_guide_src/build/*
 user_guide_src/cilexer/build/*
 user_guide_src/cilexer/dist/*
 user_guide_src/cilexer/pycilexer.egg-info/*
-/vendor/
 
+# -----------------------------
 # IDE Files
-#-------------------------
+# -----------------------------
 /nbproject/
 .idea/*
 
-## Sublime Text cache files
+# -----------------------------
+# Sublime / Editor files
+# -----------------------------
 *.tmlanguage.cache
 *.tmPreferences.cache
 *.stTheme.cache
 *.sublime-workspace
 *.sublime-project
-/tests/tests/
-/tests/results/
-.env

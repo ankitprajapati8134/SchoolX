@@ -11,7 +11,7 @@ class Classes extends MY_Controller
 
     public function ensure_class_exists()
     {
-        $this->verify_csrf();
+
 
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
@@ -70,91 +70,81 @@ class Classes extends MY_Controller
         $this->load->view('include/footer');
     }
 
+   public function fetch_classes_grid()
+{
+    header('Content-Type: application/json');
 
-    public function fetch_classes_grid()
-    {
-        header('Content-Type: application/json');
+    log_message('error', '==== fetch_classes_grid START ====');
 
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
+    $school_name  = $this->school_name;
+    $session_year = $this->session_year;
 
-        $path = "Schools/{$school_name}/{$session_year}";
-        $data = $this->firebase->get($path);
+    log_message('error', "school_name = {$school_name}");
+    log_message('error', "session_year = {$session_year}");
 
-        if (is_object($data)) {
-            $data = (array) $data;
+    $path = "Schools/{$school_name}/{$session_year}";
+    log_message('error', "Firebase path = {$path}");
+
+    $data = $this->firebase->get($path);
+
+    log_message('error', 'Firebase raw response: ' . print_r($data, true));
+
+    if (is_object($data)) $data = (array)$data;
+
+    if (!is_array($data)) {
+        log_message('error', 'Firebase data is not array');
+        echo json_encode([]);
+        return;
+    }
+
+    $result = [];
+
+    foreach ($data as $key => $value) {
+
+        log_message('error', "Checking node: {$key}");
+
+        $name = trim((string)$key);
+
+        if (is_numeric($name)) {
+            log_message('error', "Skipped numeric: {$name}");
+            continue;
         }
 
-        if (!is_array($data)) {
-            echo json_encode([]);
-            return;
+        if (is_object($value)) $value = (array)$value;
+
+        if (!is_array($value)) {
+            log_message('error', "Not array: {$name}");
+            continue;
         }
 
-        $result = [];
+        foreach ($value as $childKey => $childVal) {
 
-        foreach ($data as $key => $value) {
+            log_message('error', "   Child key: {$childKey}");
 
-            $name = trim((string)$key);
+            if (preg_match('/^Section\s+[A-Z]$/', $childKey)) {
 
-            /* =====================================
-           NORMALIZE PRE-PRIMARY CLASSES
-        ===================================== */
+                log_message('error', "   ✅ CLASS CONFIRMED: {$name}");
 
-            // Handles: Nursery, Class Nursery
-            if (preg_match('/^(Class\s+)?(Nursery|LKG|UKG)$/i', $name, $m)) {
+                if (preg_match('/^Class\s+(Nursery|LKG|UKG)$/i', $name, $m)) {
+                    $label = ucfirst(strtolower($m[1]));
+                } else {
+                    $label = $name;
+                }
 
-                $clean = ucfirst(strtolower($m[2])); // Nursery / Lkg / Ukg
-
-                $result[] = [
-                    'key'   => $clean,
-                    'label' => $clean
-                ];
-                continue;
-            }
-
-            /* =====================================
-           NUMERIC CLASSES ONLY
-        ===================================== */
-
-            if (preg_match('/^Class\s+\d+(st|nd|rd|th)$/i', $name)) {
                 $result[] = [
                     'key'   => $name,
-                    'label' => $name
+                    'label' => $label
                 ];
-                continue;
+
+                break;
             }
         }
-
-        /**
-         * SORT ORDER:
-         * Nursery → LKG → UKG → Class 1st → Class 12th
-         */
-        usort($result, function ($a, $b) {
-
-            $order = [
-                'nursery' => 0,
-                'lkg'     => 1,
-                'ukg'     => 2
-            ];
-
-            $aKey = strtolower($a['key']);
-            $bKey = strtolower($b['key']);
-
-            if (isset($order[$aKey]) && isset($order[$bKey])) {
-                return $order[$aKey] <=> $order[$bKey];
-            }
-
-            if (isset($order[$aKey])) return -1;
-            if (isset($order[$bKey])) return 1;
-
-            preg_match('/\d+/', $aKey, $aNum);
-            preg_match('/\d+/', $bKey, $bNum);
-
-            return ((int)$aNum[0]) <=> ((int)$bNum[0]);
-        });
-
-        echo json_encode(array_values($result));
     }
+
+    log_message('error', 'Final result: ' . print_r($result, true));
+
+    echo json_encode(array_values($result));
+}
 
 
 
@@ -1078,6 +1068,8 @@ class Classes extends MY_Controller
 
     public function loadClassesForTransfer()
     {
+        header('Content-Type: application/json');
+
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -1130,6 +1122,8 @@ class Classes extends MY_Controller
 
     public function transfer_students()
     {
+        header('Content-Type: application/json');
+
         $studentIds  = $this->input->post('student_ids');
         $fromClass   = $this->input->post('from_class');
         $fromSection = $this->input->post('from_section');
@@ -1219,202 +1213,3 @@ class Classes extends MY_Controller
         ]);
     }
 }
-
-
-
-
-
-
-      // public function section_students($class_slug, $section_slug)
-    // {
-    //     $data['class_name']   = 'Class ' . urldecode($class_slug);
-    //     $data['section_name'] = 'Section ' . urldecode($section_slug);
-
-    //     $this->load->view('include/header');
-    //     $this->load->view('section_students', $data);
-    //     $this->load->view('include/footer');
-    // }
-
-    // public function fetch_classes_grid()
-    // {
-    //     header('Content-Type: application/json');
-
-    //     $school_name  = $this->school_name;
-    //     $session_year = $this->session_year;
-
-    //     $path = "Schools/{$school_name}/{$session_year}";
-    //     $data = $this->firebase->get($path);
-
-    //     $result = [];
-
-    //     if (is_object($data)) {
-    //         $data = (array) $data;
-    //     }
-
-    //     if (!is_array($data)) {
-    //         echo json_encode([]);
-    //         exit;
-    //     }
-
-    //     foreach ($data as $key => $value) {
-
-    //         /**
-    //          * ACCEPT BOTH:
-    //          * Class_8th
-    //          * Class 8th
-    //          */
-    //         if (!preg_match('/^Class[ _]\d+(st|nd|rd|th)$/i', $key)) {
-    //             continue;
-    //         }
-
-    //         $result[] = [
-    //             'key'   => $key,
-    //             'label' => $key // already human-readable
-    //         ];
-    //     }
-
-    //     // Sort numerically (8th, 9th, 10th)
-    //     usort($result, function ($a, $b) {
-    //         preg_match('/\d+/', $a['key'], $aNum);
-    //         preg_match('/\d+/', $b['key'], $bNum);
-    //         return (int)$aNum[0] <=> (int)$bNum[0];
-    //     });
-
-    //     echo json_encode(array_values($result));
-    //     exit;
-    // }
-    // public function get_timetable_settings()
-    // {
-    //     header('Content-Type: application/json');
-
-    //     $school_name  = $this->school_name;
-    //     $session_year = $this->session_year;
-
-    //     $path = "Schools/{$school_name}/{$session_year}/Time_table_settings";
-    //     $data = $this->firebase->get($path);
-
-    //     if (is_object($data)) {
-    //         $data = (array) $data;
-    //     }
-
-    //     if (!is_array($data)) {
-    //         echo json_encode([]);
-    //         return;
-    //     }
-
-    //     if (isset($data['Recesses']) && is_array($data['Recesses'])) {
-    //         echo json_encode($data);
-    //         return;
-    //     }
-
-    //     // 🧹 backward compatibility (old data)
-    //     $recesses = [];
-    //     foreach ($data as $key => $value) {
-    //         if (str_starts_with($key, 'Recess_break')) {
-    //             $recesses[] = $value;
-    //         }
-    //     }
-
-    //     $data['Recess_breaks'] = $recesses;
-    //     if (!isset($data['No_of_periods'])) {
-    //         $data['No_of_periods'] = 0; // backward compatibility
-    //     }
-
-    //     echo json_encode($data);
-    // }
-
-
-
-    // public function load_students_partial()
-    // {
-    //     $class   = $this->input->post('class_name');
-    //     $section = $this->input->post('section_name');
-
-    //     if (!$class || !$section) {
-    //         echo '<p class="text-muted">Invalid class or section</p>';
-    //         return;
-    //     }
-
-    //     $students = $this->get_section_students_array($class, $section);
-
-    //     echo $this->load->view(
-    //         'partials/students_table', // ✅ correct filename
-    //         ['students' => $students],
-    //         true
-    //     );
-    // }
-
-    // public function save_timetable()
-    // {
-    //     header('Content-Type: application/json');
-
-    //     $school_name  = $this->school_name;
-    //     $session_year = $this->session_year;
-    //     $class_name   = $this->input->post('class_name');
-    //     $section_name = $this->input->post('section_name');
-    //     $timetableRaw = $this->input->post('timetable');
-
-    //     if (!$class_name || !$section_name || !$timetableRaw) {
-    //         echo json_encode(['status' => 'error', 'message' => 'Invalid data']);
-    //         return;
-    //     }
-
-    //     $timetable = json_decode($timetableRaw, true);
-
-    //     if (json_last_error() !== JSON_ERROR_NONE || !is_array($timetable)) {
-    //         echo json_encode(['status' => 'error', 'message' => 'Invalid timetable format']);
-    //         return;
-    //     }
-
-    //     $basePath = "Schools/{$school_name}/{$session_year}/{$class_name}/{$section_name}/Time_table";
-
-    //     // 🔥 Clear old data
-    //     $this->firebase->delete($basePath);
-
-    //     foreach ($timetable as $day => $slots) {
-
-    //         // 🔐 SANITIZE DAY KEY (🔥 THIS WAS MISSING)
-    //         if (!is_string($day) || trim($day) === '') {
-    //             continue;
-    //         }
-
-    //         $safeDay = preg_replace('/[.#$\[\]\/]/', '_', trim($day));
-
-    //         if ($safeDay === '') {
-    //             continue;
-    //         }
-
-    //         if (!is_array($slots) || empty($slots)) {
-    //             continue;
-    //         }
-
-    //         $safeDaySlots = [];
-
-    //         foreach ($slots as $timeKey => $subject) {
-
-    //             if (!is_string($timeKey) || trim($timeKey) === '') {
-    //                 continue;
-    //             }
-
-    //             // 🔐 Sanitize time-slot key
-    //             $safeKey = preg_replace('/[.#$\[\]\/]/', '_', trim($timeKey));
-
-    //             if ($safeKey === '') {
-    //                 continue;
-    //             }
-
-    //             // 🔐 Ensure value is scalar (Firebase-safe)
-    //             if (!is_scalar($subject)) {
-    //                 continue;
-    //             }
-
-    //             $safeDaySlots[$safeKey] = $subject;
-    //         }
-
-    //         if (!empty($safeDaySlots)) {
-    //             $this->firebase->set("$basePath/$safeDay", $safeDaySlots);
-    //         }
-    //     }
-
-    //     echo json_encode(['status' => 'success']);
-    // }

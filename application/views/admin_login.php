@@ -1,4 +1,3 @@
-
 <div class="content-wrapper">
     <div class="page">
         <div class="card">
@@ -9,7 +8,7 @@
                 <div class="brand-mark">
                     <div class="brand-icon">🏫</div>
                     <div>
-                        <div class="brand-name">GraderAdmin</div>
+                        <div class="brand-name">SchoolXAdmin</div>
                         <div class="brand-sub">School Management System</div>
                     </div>
                 </div>
@@ -70,9 +69,20 @@
                     </div>
                 <?php endif; ?>
 
+                <!-- Flash success (e.g. logout) -->
+                <?php if ($this->session->flashdata('success')): ?>
+                    <div class="alert alert-success">
+                        <i class="fas fa-circle-check"></i>
+                        <span><?= htmlspecialchars($this->session->flashdata('success')) ?></span>
+                    </div>
+                <?php endif; ?>
+
                 <!-- Form -->
                 <form method="post" action="<?= base_url('admin_login/check_credentials') ?>" class="login-form"
                     id="loginForm">
+                    <!-- ADD THIS LINE RIGHT HERE -->
+                    <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" value="<?= $this->security->get_csrf_hash() ?>">
+
 
                     <div class="fgroup">
                         <div class="flabel"><i class="fas fa-id-badge"></i> Admin ID</div>
@@ -140,7 +150,6 @@
 </div>
 
 <script>
-    
     const html = document.documentElement;
     const themeBtn = document.getElementById('themeBtn');
     const themeLabel = document.getElementById('themeLabel');
@@ -252,8 +261,6 @@
 </script>
 
 <style>
-    
-
     :root {
         --brand: #F5AF00;
         --brand-dark: #D49700;
@@ -758,6 +765,14 @@
         80% {
             transform: translateX(5px);
         }
+    }
+
+    /* Success alert */
+    .alert-success {
+        background: rgba(18, 160, 92, 0.07);
+        border-color: rgba(18, 160, 92, 0.20);
+        border-left-color: var(--green);
+        color: var(--green);
     }
 
     /* Form fields */

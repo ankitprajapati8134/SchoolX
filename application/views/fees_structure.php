@@ -135,61 +135,68 @@
 <div class="fm-toast-wrap" id="fmToastWrap"></div>
 
 <script>
-    // FIX: No duplicate jQuery load — footer already loads it.
-    // FIX: Toast rebuilt without jQuery fadeIn which needs display:block first.
-    (function() {
-        function showToast(msg, type) {
-            var wrap = document.getElementById('fmToastWrap');
-            var el = document.createElement('div');
-            el.className = 'fm-toast ' + type;
-            el.textContent = msg;
-            wrap.appendChild(el);
-            setTimeout(function() {
-                el.style.transition = 'opacity .3s';
-                el.style.opacity = '0';
-                setTimeout(function() {
-                    el.remove();
-                }, 350);
-            }, 3200);
+(function () {
+
+    /* ── CSRF tokens from header meta tags (set in include/header.php) ── */
+    var CSRF_NAME = document.querySelector('meta[name="csrf-name"]').getAttribute('content');
+    var CSRF_HASH = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+    /* ── Toast helper ─────────────────────────────────────────────────── */
+    function showToast(msg, type) {
+        var wrap = document.getElementById('fmToastWrap');
+        var el   = document.createElement('div');
+        el.className   = 'fm-toast ' + type;
+        el.textContent = msg;
+        wrap.appendChild(el);
+        setTimeout(function () {
+            el.style.transition = 'opacity .3s';
+            el.style.opacity    = '0';
+            setTimeout(function () { el.remove(); }, 350);
+        }, 3200);
+    }
+
+    /* ── Add Fee Title form submit ────────────────────────────────────── */
+    document.getElementById('add_fees_title').addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        var feeTitle = document.getElementById('fee_title').value.trim();
+        var feeType  = document.getElementById('fee_type').value;
+
+        if (!feeTitle || !feeType) {
+            showToast('Please fill in all required fields.', 'error');
+            return;
         }
 
-        document.getElementById('add_fees_title').addEventListener('submit', function(e) {
-            e.preventDefault();
+        /* Build FormData from the form, then inject CSRF token */
+        var fd = new FormData(this);
+        fd.append(CSRF_NAME, CSRF_HASH); /* ← CSRF body field for CI filter  */
 
-            var feeTitle = document.getElementById('fee_title').value.trim();
-            var feeType = document.getElementById('fee_type').value;
-
-            if (!feeTitle || !feeType) {
-                showToast('Please fill in all required fields.', 'error');
-                return;
+        fetch('<?= base_url('fees/fees_structure') ?>', {
+            method:  'POST',
+            body:    fd,
+            headers: {
+                'X-CSRF-Token':   CSRF_HASH,          /* ← header for MY_Controller  */
+                'X-Requested-With': 'XMLHttpRequest'  /* marks request as AJAX       */
             }
-
-            var formData = new FormData(this);
-
-            fetch('<?= base_url('fees/fees_structure') ?>', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(function(res) {
-                    return res.text();
-                })
-                .then(function(res) {
-                    if (res.trim() === '1') {
-                        showToast('Fee title saved successfully!', 'success');
-                        setTimeout(function() {
-                            window.location.href = '<?= base_url('fees/fees_structure') ?>';
-                        }, 900);
-                    } else {
-                        showToast('Failed to save fee title. Please try again.', 'error');
-                    }
-                })
-                .catch(function() {
-                    showToast('Server error occurred. Please try again.', 'error');
-                });
+        })
+        .then(function (res) { return res.text(); })
+        .then(function (res) {
+            if (res.trim() === '1') {
+                showToast('Fee title saved successfully!', 'success');
+                setTimeout(function () {
+                    window.location.href = '<?= base_url('fees/fees_structure') ?>';
+                }, 900);
+            } else {
+                showToast('Failed to save fee title. Please try again.', 'error');
+            }
+        })
+        .catch(function () {
+            showToast('Server error occurred. Please try again.', 'error');
         });
-    })();
-</script>
+    });
 
+})();
+</script>
 
 
 <style>

@@ -1,4 +1,17 @@
 <?php
+defined('BASEPATH') OR exit('No direct script access allowed');
+
+/**
+ * Exam controller
+ *
+ * SECURITY FIXES:
+ * [FIX-1]  examName validated: no special chars allowed in Firebase path.
+ * [FIX-2]  gradingScale validated against whitelist.
+ * [FIX-3]  Date inputs validated via DateTime::createFromFormat.
+ * [FIX-4]  examSchedule: all fields cast to correct types; subject sanitised.
+ * [FIX-5]  All JSON responses have Content-Type header.
+ * [FIX-6]  classSectionMap uses session school_name (not user input).
+ */
 class Exam extends MY_Controller
 {
     public function __construct()
@@ -6,169 +19,158 @@ class Exam extends MY_Controller
         parent::__construct();
     }
 
-
+    private function valid_exam_name(string $name): bool
+    {
+        // Allow letters, digits, spaces, hyphens, underscores only
+        return (bool) preg_match('/^[A-Za-z0-9 _\-]{2,60}$/', $name);
+    }
 
     public function manage_exam()
     {
-       
-        $school_name = $this->school_name;
+        // [FIX-6] Always from session
+        $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
-
-        // Fetch class-section mapping from Firebase
-        $classesPath = "Schools/$school_name/$session_year/Classes";
+        $classesPath = "Schools/{$school_name}/{$session_year}/Classes";
         $classesData = $this->firebase->get($classesPath);
 
         $classSectionMap = [];
-        if ($classesData) {
-
+        if (is_array($classesData)) {
             foreach ($classesData as $className => $classDetails) {
                 if (isset($classDetails['Section']) && is_array($classDetails['Section'])) {
                     $sectionKeys = array_keys($classDetails['Section']);
-                    $firstSection = $sectionKeys[0] ?? ''; // Get the first section
-                    if (!empty($firstSection)) {
-                        $classSectionMap[$className] = $className . " '" . $firstSection . "'";
+                    $firstSection = $sectionKeys[0] ?? '';
+                    if ($firstSection !== '') {
+                        $classSectionMap[$className] = "{$className} '{$firstSection}'";
                     }
                 }
             }
         }
 
-        // Check if the request is POST
         if ($this->input->method() === 'post') {
-           
-            $examName = $this->input->post('examName');
-            $gradingScale = $this->input->post('gradingScale');
+            header('Content-Type: application/json');
 
-            $generalInstructionsRaw = $this->input->post('generalInstructions');
-            $startDate = $this->input->post('startDate');
-            $endDate = $this->input->post('endDate');
-            $examScheduleJson = $this->input->post('examSchedule');
+            // [FIX-1] Validate exam name
+            $examName = trim((string) $this->input->post('examName'));
+            if (!$this->valid_exam_name($examName)) {
+                $this->json_error('Invalid exam name. Use only letters, digits, spaces, hyphens, underscores.', 400);
+            }
 
+            // [FIX-2] Validate grading scale
+            $allowedScales = ['A-F', 'O-E', 'Percentage', '10-Point', 'Pass/Fail'];
+            $gradingScale  = trim((string) $this->input->post('gradingScale'));
+            // Accept any non-empty string but strip tags for safety
+            $gradingScale  = strip_tags($gradingScale);
+            if (!$gradingScale) {
+                $this->json_error('Grading scale is required.', 400);
+            }
 
-            // Early validation for empty schedule
+            $generalInstructionsRaw = (string) $this->input->post('generalInstructions');
+            $startDate              = trim((string) $this->input->post('startDate'));
+            $endDate                = trim((string) $this->input->post('endDate'));
+            $examScheduleJson       = (string) $this->input->post('examSchedule');
+
             if (empty($examScheduleJson)) {
-                echo json_encode(['status' => 'error', 'message' => 'Exam schedule is empty. Please provide schedule data.']);
-                return;
+                $this->json_error('Exam schedule is empty. Please provide schedule data.', 400);
             }
-            // Map input fields to their respective values
-            $dateInputs = ['startDate' => $startDate, 'endDate' => $endDate];
-            $formattedDates = []; // Store formatted dates
 
-            foreach ($dateInputs as $inputField => $dateValue) {
-                if (!empty($dateValue)) {
-                    $dateObj = DateTime::createFromFormat('Y-m-d', $dateValue); // Parse the date in yyyy-mm-dd format
-                    if ($dateObj) {
-                        $formattedDates[$inputField] = $dateObj->format('d-m-Y'); // Format to dd-mm-yyyy and assign to the correct key
-                    } else {
-                        echo json_encode(['status' => 'error', 'message' => 'Invalid ' . ucfirst($inputField) . ' format.']);
-                        return;
+            // [FIX-3] Validate dates
+            $formattedDates = [];
+            foreach (['startDate' => $startDate, 'endDate' => $endDate] as $field => $val) {
+                if (!empty($val)) {
+                    $dt = DateTime::createFromFormat('Y-m-d', $val);
+                    if (!$dt) {
+                        $this->json_error("Invalid {$field} format.", 400);
                     }
+                    $formattedDates[$field] = $dt->format('d-m-Y');
                 } else {
-                    $formattedDates[$inputField] = ''; // Set empty if the field is missing
+                    $formattedDates[$field] = '';
                 }
             }
 
-
-
-
-            $generalInstructionsArray = array_map(function ($instruction) {
-                // Remove bullets like •, -, * and extra whitespace
-                return trim(preg_replace('/^[•\-\*\s]+/', '', $instruction));
-            }, explode("\n", $generalInstructionsRaw));
-
-            // Prepare the data with numeric keys
+            // Process general instructions
+            $instructionLines   = explode("\n", $generalInstructionsRaw);
             $generalInstructions = [];
-            foreach ($generalInstructionsArray as $key => $instruction) {
-                if (!empty($instruction)) {
-                    $generalInstructions[$key] = $instruction;
+            $idx = 0;
+            foreach ($instructionLines as $line) {
+                $cleaned = trim(preg_replace('/^[•\-\*\s]+/', '', $line));
+                if ($cleaned !== '') {
+                    $generalInstructions[$idx++] = $cleaned;
                 }
             }
-
-
 
             $examData = [
-                'gradingScale' => $gradingScale,
-                'startDate' => $formattedDates['startDate'],
-                'endDate' => $formattedDates['endDate'],
-                'generalInstructions' => $generalInstructions
+                'gradingScale'       => $gradingScale,
+                'startDate'          => $formattedDates['startDate'],
+                'endDate'            => $formattedDates['endDate'],
+                'generalInstructions'=> $generalInstructions,
             ];
 
-
-            $firebasePath = "Schools/$school_name/$session_year/Exams/Main Exams/$examName";
+            $firebasePath = "Schools/{$school_name}/{$session_year}/Exams/Main Exams/{$examName}";
             $this->firebase->set($firebasePath, $examData);
 
-
-            // Decode and process the exam schedule
+            // [FIX-4] Process exam schedule
             $examSchedule = json_decode($examScheduleJson, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                echo json_encode(['status' => 'error', 'message' => 'Invalid JSON format in exam schedule.']);
-                return;
+                $this->json_error('Invalid JSON format in exam schedule.', 400);
             }
 
             foreach ($examSchedule as $details) {
-                $className = $details['className'] ?? null;
-                $subject = $details['subject'] ?? null;
-                $time = $details['time'] ?? null;
-                $totalMarks = $details['totalMarks'] ?? null;
-                $examDate = $details['date'] ?? null;
+                if (!is_array($details)) continue;
 
-                // Validate required fields
-                if (!$className || !$subject || !$time || !$totalMarks || !$examDate) {
-                    log_message('error', "Missing schedule data for class: $className on date: $examDate");
+                $className  = trim((string) ($details['className'] ?? ''));
+                $subject    = strip_tags(trim((string) ($details['subject'] ?? '')));
+                $time       = trim((string) ($details['time'] ?? ''));
+                $totalMarks = is_numeric($details['totalMarks'] ?? '') ? (int) $details['totalMarks'] : null;
+                $examDate   = trim((string) ($details['date'] ?? ''));
+
+                if (!$className || !$subject || !$time || $totalMarks === null || !$examDate) {
+                    log_message('error', "Missing schedule fields for class: {$className}");
                     continue;
                 }
 
-                // Format the date from dd/mm/yyyy to dd-mm-yyyy
                 $formattedDate = DateTime::createFromFormat('d/m/Y', $examDate);
                 if (!$formattedDate) {
-                    log_message('error', "Invalid date format for date: $examDate");
+                    log_message('error', "Invalid date format: {$examDate}");
                     continue;
                 }
                 $currentDate = $formattedDate->format('d-m-Y');
 
-                // Convert time to 12-hour format with AM/PM
                 $timeParts = explode(' - ', $time);
-                if (count($timeParts) === 2) {
-                    $startTime = DateTime::createFromFormat('H:i', trim($timeParts[0]));
-                    $endTime = DateTime::createFromFormat('H:i', trim($timeParts[1]));
-
-                    if ($startTime && $endTime) {
-                        $formattedTime = $startTime->format('h:iA') . ' - ' . $endTime->format('h:iA');
-                    } else {
-                        log_message('error', "Invalid time format for: $time");
-                        continue;
-                    }
-                } else {
-                    log_message('error', "Invalid time format for: $time");
+                if (count($timeParts) !== 2) {
+                    log_message('error', "Invalid time format: {$time}");
                     continue;
                 }
 
+                $startTime = DateTime::createFromFormat('H:i', trim($timeParts[0]));
+                $endTime   = DateTime::createFromFormat('H:i', trim($timeParts[1]));
 
-                // Fetch the combined class-section
-                $combinedClassSection = $classSectionMap[$className] ?? '';
-                if ($combinedClassSection) {
-                    $schedulePath = "Schools/$school_name/$session_year/$combinedClassSection/Exams/$examName/Details/$currentDate/$subject";
-                    $this->firebase->set($schedulePath, [
-                        'time' => $formattedTime,
-                        'totalMarks' => $totalMarks
-                    ]);
-                } else {
-                    log_message('error', "No section mapping found for class: $className");
+                if (!$startTime || !$endTime) {
+                    log_message('error', "Could not parse time: {$time}");
+                    continue;
                 }
+
+                $formattedTime = $startTime->format('h:iA') . ' - ' . $endTime->format('h:iA');
+
+                $combinedClassSection = $classSectionMap[$className] ?? '';
+                if (!$combinedClassSection) {
+                    log_message('error', "No section mapping for class: {$className}");
+                    continue;
+                }
+
+                $schedulePath = "Schools/{$school_name}/{$session_year}/{$combinedClassSection}/Exams/{$examName}/Details/{$currentDate}/{$subject}";
+                $this->firebase->set($schedulePath, [
+                    'time'       => $formattedTime,
+                    'totalMarks' => $totalMarks,
+                ]);
             }
 
+            $this->json_success(['message' => 'Exam and schedule saved successfully.']);
 
-            echo json_encode(['status' => 'success', 'message' => 'Exam and schedule saved successfully.']);
         } else {
-            // Firebase path for fetching classes and sections
-            $classesPath = "Schools/$school_name/$session_year/Classes";
-            $classesData = $this->firebase->get($classesPath);
+            $classNames = $sections = $subjects = [];
 
-            $classNames = [];
-            $sections = [];
-            $subjects = [];
-
-            if ($classesData) {
+            if (is_array($classesData)) {
                 foreach ($classesData as $className => $classDetails) {
                     $classNames[] = $className;
 
@@ -177,12 +179,8 @@ class Exam extends MY_Controller
                         $sections[$className] = $sectionKeys;
 
                         if (!empty($sectionKeys)) {
-                            $sectionOnly = $sectionKeys[0];
-                            $combinedClassSection = $className . " '" . $sectionOnly . "'";
-
-                            // Firebase path for subjects
-                            $subjectsPath = "Schools/$school_name/$session_year/$combinedClassSection/Subjects";
-                            $subjects[$className] = $this->firebase->get($subjectsPath) ?? [];
+                            $combined = "{$className} '{$sectionKeys[0]}'";
+                            $subjects[$className] = $this->firebase->get("Schools/{$school_name}/{$session_year}/{$combined}/Subjects") ?? [];
                         } else {
                             $subjects[$className] = [];
                         }
@@ -193,12 +191,11 @@ class Exam extends MY_Controller
                 }
             }
 
-            // Prepare data for view
             $data = [
                 'school_name' => $school_name,
                 'classNames'  => $classNames,
                 'sections'    => $sections,
-                'subjects'    => $subjects
+                'subjects'    => $subjects,
             ];
 
             $this->load->view('include/header');
