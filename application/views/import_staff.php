@@ -4,6 +4,8 @@
     </div>
 <?php endif; ?>
 
+
+
 <div class="content-wrapper">
     <section class="content">
         <div class="container-fluid">
@@ -11,13 +13,13 @@
             <div class="card card-warning">
                 <div class="card-header">
                     <h3 class="card-title">
-                        <i class="fa fa-upload"></i> Bulk Student Import
+                        <i class="fa fa-upload"></i> Bulk Staff Import
                     </h3>
                 </div>
 
                 <div class="card-body">
 
-                    <form action="<?= base_url('student/import_students') ?>"
+                    <form action="<?= base_url('staff/import_staff') ?>"
                         method="post"
                         enctype="multipart/form-data">
                         <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>"
@@ -34,26 +36,19 @@
                         <div class="alert alert-info mt-3">
                             <strong>Instructions:</strong>
                             <ul>
-                                <li>File must follow the exact header format given below.</li>
-                                <li><b>Required columns:</b> Name, Class, Section</li>
-                                <li>All other columns are optional — leave blank if not available.</li>
-                                <li>Class format: <b>8</b> or <b>Class 8</b></li>
-                                <li>Section: <b>A / B / C</b></li>
-                                <li>DOB format: <b>30-06-2018</b> or <b>2018-06-30</b></li>
-                                <li>Photo & Documents can be uploaded later via Edit Student.</li>
+                                
+                                <li>Upload only <b>.xlsx</b> file in the given format.</li>
+                                <!-- <li>Class format must be: <b>Class 8</b></li>
+                                <li>Section must be: <b>A / B / C</b></li> -->
+                                <li>Photo upload not required.</li>
                             </ul>
-                        </div>
-
-                        <div class="alert alert-secondary mt-2">
-                            <strong>Excel Headers (in order):</strong><br>
-                            <code>Name | Class | Section | DOB | Admission Date | Gender | Blood Group | Category | Religion | Nationality | Father Name | Father Occupation | Mother Name | Mother Occupation | Guard Contact | Guard Relation | Phone Number | Email | Street | City | State | PostalCode | Pre School | Pre Class | Pre Marks</code>
                         </div>
 
                         <button type="submit" class="btn btn-success">
                             <i class="fa fa-check"></i> Upload & Import
                         </button>
 
-                        <a href="<?= base_url('student/all_student') ?>"
+                        <a href="<?= base_url('staff/all_staff') ?>"
                             class="btn btn-secondary">
                             Cancel
                         </a>

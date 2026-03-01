@@ -15,12 +15,14 @@
             </ol>
         </div>
         <div class="nsa-topbar-right">
+             <a href="<?= base_url('staff/master_staff') ?>" class="nsa-btn nsa-btn-amber">
+                <i class="fa fa-upload"></i> Import Staff
+            </a>
+
             <a href="<?= base_url('staff/new_staff') ?>" class="nsa-btn nsa-btn-primary">
                 <i class="fa fa-plus"></i> Add New Staff
             </a>
-            <a href="<?= base_url('staff/master_staff') ?>" class="nsa-btn nsa-btn-amber">
-                <i class="fa fa-user-plus"></i> Master Staff
-            </a>
+           
         </div>
     </div>
 

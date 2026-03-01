@@ -4,6 +4,7 @@ defined('BASEPATH') or exit('No direct script access allowed');
 require __DIR__ . '/../../vendor/autoload.php';
 
 use Kreait\Firebase\Factory;
+use Google\Cloud\Storage\StorageClient;
 
 /**
  * Firebase library
@@ -21,6 +22,10 @@ class Firebase
 {
     protected $database;
     protected $auth;
+    protected $storageBucket;
+
+    /** @var array Token cache: remotePath → downloadToken (for uploadFile → getDownloadUrl flow) */
+    private $_downloadTokens = [];
 
     public function __construct()
     {
@@ -33,6 +38,10 @@ class Firebase
 
         $this->database = $factory->createDatabase();
         $this->auth     = $factory->createAuth();
+
+        // Firebase Storage — same pattern as Common_model
+        $storageClient       = new StorageClient(['keyFilePath' => $serviceAccountPath]);
+        $this->storageBucket = $storageClient->bucket('graders-1c047.appspot.com');
     }
 
     /**
@@ -176,6 +185,65 @@ class Firebase
             log_message('error', 'Firebase::authenticate() failed: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Upload a local file to Firebase Storage.
+     * Generates a permanent download token and caches it for getDownloadUrl().
+     * Returns true on success, false on failure.
+     */
+    public function uploadFile(string $localPath, string $remotePath): bool
+    {
+        try {
+            $fh = fopen($localPath, 'r');
+            if ($fh === false) {
+                log_message('error', 'Firebase::uploadFile() cannot open local file: ' . $localPath);
+                return false;
+            }
+
+            $token = bin2hex(random_bytes(16));
+
+            $this->storageBucket->upload($fh, [
+                'name'     => $remotePath,
+                'metadata' => ['firebaseStorageDownloadTokens' => $token],
+            ]);
+            // GCS SDK closes the stream internally after upload — do not fclose() here
+
+            // Cache token so getDownloadUrl() can use it immediately without a re-fetch
+            $this->_downloadTokens[$remotePath] = $token;
+
+            return true;
+        } catch (\Exception $e) {
+            log_message('error', 'Firebase::uploadFile() failed for [' . $remotePath . ']: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Return the permanent Firebase Storage download URL for a previously uploaded file.
+     * Uses the cached token from uploadFile(); falls back to reading object metadata.
+     */
+    public function getDownloadUrl(string $remotePath): string
+    {
+        $token = $this->_downloadTokens[$remotePath] ?? '';
+
+        if ($token === '') {
+            // Token not cached — fetch from object metadata
+            try {
+                $info  = $this->storageBucket->object($remotePath)->info();
+                $token = $info['metadata']['firebaseStorageDownloadTokens'] ?? '';
+            } catch (\Exception $e) {
+                log_message('error', 'Firebase::getDownloadUrl() failed for [' . $remotePath . ']: ' . $e->getMessage());
+                return '';
+            }
+        }
+
+        return sprintf(
+            'https://firebasestorage.googleapis.com/v0/b/%s/o/%s?alt=media&token=%s',
+            $this->storageBucket->name(),
+            urlencode($remotePath),
+            $token
+        );
     }
 
     /**

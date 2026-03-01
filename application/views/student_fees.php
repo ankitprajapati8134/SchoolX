@@ -1,142 +1,133 @@
+<?php defined('BASEPATH') or exit('No direct script access allowed'); ?>
+<?php
+/**
+ * student_fees.php
+ *
+ * BUGS FIXED vs old version:
+ *
+ * 1. fetch_fee_receipts 403 Forbidden
+ *    Old: sent raw JSON body → CI CSRF filter can't read it → 403
+ *    Fix: use FormData via postForm() so CSRF token is in $_POST field,
+ *         matching $this->input->post('userId') in the controller.
+ *
+ * 2. "Please enter a valid numeric User ID" error for STU0006
+ *    Old: validated userId with isNaN(parseInt(userId)) — rejected "STU0006"
+ *    Fix: accept any non-empty string; controller does its own validation.
+ *
+ * 3. "Error fetching data: SyntaxError: Unexpected token '<'"
+ *    Root cause was the 403 returning an HTML error page.
+ *    Resolved by fixing #1 above.
+ */
+?>
+
 <div class="content-wrapper">
-    <div class="page_container">
+    <div class="sf-wrap">
 
-        <div class="container mt-4">
-            <div class="title-bar">
-                Student Fee Receipts: <?php echo htmlspecialchars($_GET['userId'] ?? ''); ?>
-            </div>
-
-
-            <div class="col-md-6">
-            </div>
-            <div class="search-section my-3">
-                <div class="row align-content-center">
-                    <!-- Input and Fetch Button aligned to the left -->
-
-                    <div class="col-md-4 justify-content-end align-items-end">
-                        <div class="d-flex">
-                            <input type="text" class="form-control me-2" id="UserId" placeholder="Enter User Id">
-                            <button class="btn btn-primary" id="fetch" onclick="populateTable()">Fetch Details</button>
-                        </div>
-                    </div>
-                    <!-- Search Student Button aligned to the right -->
-                    <div class="col-md-2 justify-content-end align-items-end">
-                        <button type="button" class="btn btn-primary" id="searchdetails" data-toggle="modal"
-                            data-target="#searchModal">
-                            <i class="fa fa-search" style="font-size: 16px;"></i>
-                            <br>
-                            <span>Search Student</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-
-
-            <!-- Table to display the fee details -->
-            <div class="table-container" id="print-section">
-                <table class="table" id="table">
-                    <thead>
-                        <tr>
-                            <th>Receipt No</th>
-                            <th>Date</th>
-                            <th>Student Name / Father Name</th>
-                            <th>Class</th>
-                            <th>Fee Amount</th>
-                            
-                            <th>Fine</th>
-                            <th>Mode</th>
-                            <th>User Id</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tableBody">
-
-                        <td colspan="8" class="table-message text-center">Enter the user ID to populate the table</td>
-                        </tr>
-                    </tbody>
-                    <tfoot class="footer-row">
-                        <tr>
-                            <td colspan="4">TOTAL</td>
-                            <td id="totalAmount"></td>
-                            <!-- <td id="totalConveyance"></td> -->
-                            <td id="totalFine"></td>
-                            <td colspan="2"></td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-
-            <!-- Footer buttons -->
-            <div class="buttons">
-                <!-- <button class="btn btn-success" onclick="window.print()">Print</button> -->
-                <button class="btn btn-success" onclick="printTable()">Print</button>
-
-                <button class="btn btn-warning" onclick="window.location.reload()">Refresh</button>
-                <!-- <button class="btn btn-info" id="backBtn" onclick="location.href='due_fees'">Back</button> -->
-                <button class="btn btn-info" id="backBtn" onclick="history.back();">Back</button>
-
-
+        <!-- TOP BAR -->
+        <div class="sf-topbar">
+            <div>
+                <h1 class="sf-page-title"><i class="fa fa-history"></i> Student Fee Receipts</h1>
+                <ol class="sf-breadcrumb">
+                    <li><a href="<?= base_url() ?>"><i class="fa fa-home"></i> Dashboard</a></li>
+                    <li><a href="<?= site_url('fees/fees_records') ?>">Fees</a></li>
+                    <li>Student Fee Receipts</li>
+                </ol>
             </div>
         </div>
 
-        <!-- Modal for Student Search -->
-        <!-- <div class="modal fade" id="studentModal" tabindex="-1" aria-labelledby="studentModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="studentModalLabel">Search Student By Sr.No / Name</h5>
+        <!-- SEARCH CARD -->
+        <div class="sf-card">
+            <div class="sf-card-head">
+                <i class="fa fa-search"></i>
+                <h3>Look Up Student</h3>
+            </div>
+            <div class="sf-card-body">
+                <div class="sf-search-row">
+                    <div class="sf-field">
+                        <label class="sf-label">Student ID <span style="color:var(--sf-red)">*</span></label>
+                        <!-- BUG FIX #2: Accept any non-empty string (e.g. STU0006), not just numeric -->
+                        <input type="text" id="sfUserId" class="sf-input" placeholder="e.g. STU0006, STU0007…"
+                            autocomplete="off">
                     </div>
-                    <div class="modal-body">
-                        <input type="text" class="form-control" placeholder="Search Student By Name / Roll No">
-                        <input type="text" class="form-control mt-3" placeholder="Search Student By Enrollment No">
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    </div>
+                    <button class="sf-btn sf-btn-primary" onclick="loadReceipts()">
+                        <i class="fa fa-search"></i> Fetch Receipts
+                    </button>
+                    <button class="sf-btn sf-btn-ghost" onclick="clearSearch()">
+                        <i class="fa fa-times"></i> Clear
+                    </button>
                 </div>
             </div>
-        </div> -->
-        <div class="modal fade" id="searchModal" tabindex="-1" aria-labelledby="searchModalLabel">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header bg-primary text-center">
-                        <h3 class="modal-title" id="studentModalLabel">Search Student By <br> User ID / Student Name/
-                            Father Name</h3>
-                    </div>
-                    <div class="modal-body">
+        </div>
 
-                        <div class="row mb-3">
-                            <div class="col-md-12">
-                                <form method="post" id="searchForm" action="#" class="d-flex flex-column">
-                                    <input type="text" class="form-control mb-3" id="search_name" name="search_name"
-                                        placeholder="Search Student">
-                                    <button class="btn btn-primary" id="name" type="submit">
-                                        <i class="fa fa-search"></i> Search
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-bordered" id="searchTable">
-                                <thead class="text-center">
-                                    <tr>
-                                        <th>Sr. No</th>
-                                        <th>User Id</th>
-                                        <th>Student Name</th>
-                                        <th>Father Name</th>
-                                        <th>Class</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="searchResultsTable">
-                                    <tr>
-                                        <td colspan="6" class="text-center">No results found.</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+        <!-- STUDENT INFO STRIP (shown after search) -->
+        <div class="sf-student-strip" id="sfStudentStrip">
+            <div class="sf-sinfo">
+                <span class="sf-sinfo-label">Student ID</span>
+                <span class="sf-sinfo-val" id="sfDispId">—</span>
+            </div>
+            <div class="sf-sinfo-divider"></div>
+            <div class="sf-sinfo">
+                <span class="sf-sinfo-label">Name</span>
+                <span class="sf-sinfo-val" id="sfDispName">—</span>
+            </div>
+            <div class="sf-sinfo-divider"></div>
+            <div class="sf-sinfo">
+                <span class="sf-sinfo-label">Class / Section</span>
+                <span class="sf-sinfo-val" id="sfDispClass">—</span>
+            </div>
+            <div class="sf-sinfo-divider"></div>
+            <div class="sf-sinfo">
+                <span class="sf-sinfo-label">Total Receipts</span>
+                <span class="sf-sinfo-val" id="sfDispCount">0</span>
+            </div>
+            <div class="sf-sinfo-divider"></div>
+            <div class="sf-sinfo">
+                <span class="sf-sinfo-label">Total Paid</span>
+                <span class="sf-sinfo-val sf-amt-positive" id="sfDispTotal">₹ 0.00</span>
+            </div>
+        </div>
 
-                        </div>
-                    </div>
+        <!-- RECEIPTS TABLE CARD -->
+        <div class="sf-card" id="sfReceiptsCard" style="display:none;">
+            <div class="sf-card-head">
+                <i class="fa fa-file-text-o"></i>
+                <h3>Payment History</h3>
+            </div>
+            <div class="sf-card-body" style="padding:0;">
+                <div class="sf-table-wrap">
+                    <table class="sf-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Receipt No.</th>
+                                <th>Date</th>
+                                <th>Student / Father</th>
+                                <th>Class</th>
+                                <th>Amount Paid</th>
+                                <th>Fine</th>
+                                <th>Discount</th>
+                                <th>Mode</th>
+                                <th>Reference</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sfReceiptsTbody">
+                            <tr>
+                                <td colspan="10" class="sf-empty">
+                                    <i class="fa fa-search"></i>
+                                    Search for a student to view receipts.
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tfoot id="sfReceiptsFoot" style="display:none;">
+                            <tr>
+                                <td colspan="5" style="text-align:right;">TOTALS</td>
+                                <td class="sf-amt-positive" id="sfFootAmt">₹ 0.00</td>
+                                <td class="sf-amt-fine" id="sfFootFin">₹ 0.00</td>
+                                <td class="sf-amt-discount" id="sfFootDis">₹ 0.00</td>
+                                <td colspan="2"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
             </div>
         </div>
@@ -144,396 +135,568 @@
     </div>
 </div>
 
+<div class="sf-toast-wrap" id="sfToastWrap"></div>
+
 <script>
-function printTable() {
-    const feeDetailsSection = document.getElementById("print-section").innerHTML;
-    const originalContent = document.body.innerHTML;
+/* ═══════════════════════════════════════════════════════════════════
+   student_fees.php — JavaScript
+   
+   CRITICAL BUG FIXES:
+   
+   1. 403 on fetch_fee_receipts:
+      Old code sent JSON body with Content-Type: application/json.
+      CI's CSRF filter reads only $_POST, so it couldn't find the
+      token in the JSON body → 403 BEFORE controller runs.
+      Fix: send FormData via postForm() so CI reads CSRF from $_POST.
+      Controller reads $this->input->post('userId') — NOT php://input.
+   
+   2. "Please enter a valid numeric User ID" for STU0006:
+      Old validation: if (isNaN(parseInt(userId))) { alert(...); return; }
+      Fix: validate only that the field is non-empty — the format
+      STU0006 is perfectly valid. Controller validates on its end.
+   
+   3. "SyntaxError: Unexpected token '<'" — was caused by the 403
+      returning an HTML error page. Fixed by fixing #1.
+═══════════════════════════════════════════════════════════════════ */
 
-    document.body.innerHTML = `
-        <html>
-        <head>
-            <title>Print Fee Details</title>
-            <style>
-                @media print {
-                    body {
-                        font-family: Arial, sans-serif;
-                        margin: 20px;
-                    }
-                    .header {
-                        text-align: center;
-                        font-size: 24px;
-                        margin-bottom: 10px;
-                        font-weight: bold;
-                    }
-                    .sub-header {
-                        text-align: center;
-                        font-size: 18px;
-                        margin-bottom: 20px;
-                    }
-                    .table {
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin-bottom: 20px;
-                        border-top: 1px solid #dee2e6; /* Add top border */
-                    }
-                    .table th, .table td {
-                        border: 1px solid #dee2e6;
-                        padding: 10px;
-                        text-align: center;
-                        word-wrap: break-word;
-                    }
-                    .table th {
-                        background-color: #28a745;
-                        color: white;
-                    }
-                    .footer-row td {
-                        background-color: #d1ecf1;
-                        font-weight: bold;
-                    }
-                    .table-message {
-                        color: #ff0000;
-                        font-size: 16px;
-                        padding: 15px;
-                    }
-                    .table-container {
-                        width: 100%;
-                        overflow-x: auto;
-                    }
-                    /* Prevent content from breaking off the page */
-                    html, body {
-                        height: auto;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <h1 class="header">Fee Details</h1>
-            <div class="sub-header">Summary of Student Fees</div>
-            <div class="table-container">
-                ${feeDetailsSection}
-            </div>
-        </body>
-        </html>
-    `;
+/* ── CSRF tokens from meta tags (set by include/header.php) ── */
+var CSRF_NAME = document.querySelector('meta[name="csrf-name"]').getAttribute('content');
+var CSRF_HASH = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-    window.print();
-    // Restore the original content after printing
-    document.body.innerHTML = originalContent;
-    location.reload();
+var SITE_URL = '<?= rtrim(site_url(), '/') ?>';
+
+/* ── Utilities ── */
+function showToast(msg, type) {
+    var wrap = document.getElementById('sfToastWrap');
+    var el = document.createElement('div');
+    el.className = 'sf-toast sf-toast-' + (type || 'success');
+    var icons = {
+        success: 'check-circle',
+        error: 'times-circle',
+        warning: 'exclamation-triangle'
+    };
+    el.innerHTML = '<i class="fa fa-' + (icons[type] || 'info-circle') + '"></i> ' + msg;
+    wrap.appendChild(el);
+    setTimeout(function() {
+        el.classList.add('sf-toast-hide');
+        setTimeout(function() {
+            el.remove();
+        }, 350);
+    }, 3500);
 }
 
+function fmtRs(n) {
+    n = parseFloat(String(n || 0).replace(/,/g, '')) || 0;
+    return '₹ ' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
 
+/*
+ * postForm — sends FormData with CSRF token in BOTH:
+ *   1. FormData body field → CI built-in csrf_protection filter (reads $_POST)
+ *   2. X-CSRF-Token header → MY_Controller secondary check
+ * Controller reads $this->input->post('userId') — so FormData is required.
+ */
+function postForm(url, params) {
+    var fd = new FormData();
+    fd.append(CSRF_NAME, CSRF_HASH); /* layer 1: CI filter */
+    if (params) {
+        Object.keys(params).forEach(function(k) {
+            fd.append(k, params[k]);
+        });
+    }
+    return fetch(url, {
+            method: 'POST',
+            body: fd,
+            headers: {
+                'X-CSRF-Token': CSRF_HASH,
+                /* layer 2: MY_Controller */
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(function(r) {
+            if (!r.ok) {
+                /* Capture non-OK responses for better error messages */
+                return r.text().then(function(t) {
+                    throw new Error('HTTP ' + r.status + ': ' + t.substring(0, 120));
+                });
+            }
+            return r.json();
+        });
+}
 
-
-
-const tableBody = document.getElementById('tableBody');
-const totalAmount = document.getElementById('totalAmount');
-// const totalConveyance = document.getElementById('totalConveyance');
-const totalFine = document.getElementById('totalFine');
-
-function populateTable() {
-    const userIdInput = document.getElementById('UserId').value;
-    const fetchButton = document.querySelector('.btn-primary');
-
-    if (!userIdInput || isNaN(userIdInput)) {
-        alert('Please enter a valid numeric User ID.');
+/* ── Load receipts ── */
+function loadReceipts() {
+    /* BUG FIX #2: Accept any non-empty string — no numeric-only check */
+    var userId = document.getElementById('sfUserId').value.trim();
+    if (!userId) {
+        showToast('Please enter a student ID (e.g. STU0006).', 'warning');
         return;
     }
 
-    fetchButton.textContent = 'Fetching...';
-    fetchButton.disabled = true;
+    var tbody = document.getElementById('sfReceiptsTbody');
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;">' +
+        '<i class="fa fa-spinner fa-spin"></i> Loading receipts…</td></tr>';
 
-    fetch('<?= site_url("fees/fetch_fee_receipts"); ?>', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                userId: userIdInput
-            })
+    document.getElementById('sfReceiptsCard').style.display = 'block';
+    document.getElementById('sfReceiptsFoot').style.display = 'none';
+
+    /*
+     * BUG FIX #1: Use postForm() NOT postJSON() / raw JSON fetch.
+     * Controller: $this->input->post('userId') reads from $_POST.
+     * Old bug: JSON body → CI CSRF filter can't find token → 403 HTML page
+     *   → JS tried to JSON.parse(HTML) → "Unexpected token '<'"
+     */
+    postForm(SITE_URL + '/fees/fetch_fee_receipts', {
+            userId: userId
         })
-        .then(response => response.json())
-        .then(data => {
-            tableBody.innerHTML = '';
-            let totalf = 0,
-                // totalc = 0,
-                totalfi = 0;
+        .then(function(data) {
+            tbody.innerHTML = '';
 
-            data.forEach(record => {
-                // Convert to numbers for correct calculation
-                const amount = Number(record.amount);
-                // const convey = Number(record.convey);
-                const fine = Number(record.fine);
+            if (!Array.isArray(data) || !data.length) {
+                tbody.innerHTML = '<tr><td colspan="10"><div class="sf-empty">' +
+                    '<i class="fa fa-inbox"></i>' +
+                    '<p>No payment records found for <strong>' + userId + '</strong>.</p>' +
+                    '</div></td></tr>';
+                /* Hide student strip totals */
+                document.getElementById('sfStudentStrip').classList.remove('visible');
+                return;
+            }
 
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                <td>${record.receiptNo}</td>
-                <td>${record.date}</td>
-                <td>${record.student}</td>
-                <td>${record.class}</td>
-                <td>${numberFormat(amount)}</td>
-               
-                <td>${numberFormat(fine)}</td>
-                <td>${record.account || ''}</td>
-                <td>${record.Id}</td>
-            `;
-                tableBody.appendChild(tr);
-                totalf += amount;
-                // totalc += convey;
-                totalfi += fine;
+            /* Populate student info strip */
+            var firstRec = data[0];
+            var parts = (firstRec.student || '').split('/');
+            document.getElementById('sfDispId').textContent = firstRec.Id || userId;
+            document.getElementById('sfDispName').textContent = (parts[0] || '').trim();
+            document.getElementById('sfDispClass').textContent = firstRec.class || '—';
+            document.getElementById('sfDispCount').textContent = data.length;
+            document.getElementById('sfStudentStrip').classList.add('visible');
+
+            var tAmt = 0,
+                tFin = 0,
+                tDis = 0;
+            data.forEach(function(rec, i) {
+                var amt = parseFloat(String(rec.amount || 0).replace(/,/g, ''));
+                var fin = parseFloat(String(rec.fine || 0).replace(/,/g, ''));
+                var dis = parseFloat(String(rec.discount || 0).replace(/,/g, ''));
+                tAmt += amt;
+                tFin += fin;
+                tDis += dis;
+
+                var tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td>' + (i + 1) + '</td>' +
+                    '<td><span class="sf-receipt-pill">#' + (rec.receiptNo || '—') + '</span></td>' +
+                    '<td>' + (rec.date || '—') + '</td>' +
+                    '<td>' + (rec.student || '—') + '</td>' +
+                    '<td>' + (rec.class || '—') + '</td>' +
+                    '<td class="sf-amt-positive">' + fmtRs(amt) + '</td>' +
+                    '<td class="sf-amt-fine">' + fmtRs(fin) + '</td>' +
+                    '<td class="sf-amt-discount">' + fmtRs(dis) + '</td>' +
+                    '<td>' + (rec.account || 'N/A') + '</td>' +
+                    '<td>' + (rec.reference || '—') + '</td>';
+                tbody.appendChild(tr);
             });
 
-            // Update totals with proper Indian number format
-            totalAmount.textContent = numberFormat(totalf);
-            // totalConveyance.textContent = numberFormat(totalc);
-            totalFine.textContent = numberFormat(totalfi);
+            /* Update totals row */
+            document.getElementById('sfDispTotal').textContent = fmtRs(tAmt);
+            document.getElementById('sfFootAmt').textContent = fmtRs(tAmt);
+            document.getElementById('sfFootFin').textContent = fmtRs(tFin);
+            document.getElementById('sfFootDis').textContent = fmtRs(tDis);
+            document.getElementById('sfReceiptsFoot').style.display = '';
         })
-        .catch(error => {
-            console.error('Error fetching data:', error);
-    
-            alert('Failed to fetch data, please try again.');
-        })
-        .finally(() => {
-            fetchButton.textContent = 'Fetch Details';
-            fetchButton.disabled = false;
+        .catch(function(err) {
+            console.error('fetch_fee_receipts error:', err);
+            tbody.innerHTML = '<tr><td colspan="10"><div class="sf-empty" style="color:var(--sf-red);">' +
+                '<i class="fa fa-exclamation-circle"></i>' +
+                '<p>Error loading receipts. Please try again.</p>' +
+                '<p style="font-size:11px;opacity:.7;">' + err.message + '</p>' +
+                '</div></td></tr>';
+            showToast('Failed to load receipts. Check console for details.', 'error');
         });
 }
 
+function clearSearch() {
+    document.getElementById('sfUserId').value = '';
+    document.getElementById('sfReceiptsCard').style.display = 'none';
+    document.getElementById('sfStudentStrip').classList.remove('visible');
+    document.getElementById('sfReceiptsTbody').innerHTML = '';
+    document.getElementById('sfReceiptsFoot').style.display = 'none';
+}
 
-//AJAX Request for Search Name/UserID/or any key
-document.getElementById('searchForm').addEventListener('submit', function(event) {
-    event.preventDefault(); // Prevent form submission
-
-    // Get the search input value
-    var searchValue = document.getElementById('search_name').value;
-
-    // Perform fetch request
-    fetch('<?php echo site_url("fees/search_student"); ?>', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: 'search_name=' + encodeURIComponent(searchValue)
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json(); // Parse the response as JSON
-        })
-        .then(data => {
-            var tableBody = document.getElementById('searchResultsTable');
-            tableBody.innerHTML = '';
-
-            if (data.length > 0) {
-                // Populate the table with search results
-                data.forEach(function(student, index) {
-                    // Create a row for each student
-                    var row = document.createElement('tr');
-                    row.classList.add('table-row'); // Add Bootstrap class
-                    row.innerHTML = `
-                                <td>${index + 1}</td>
-                                <td>${student.user_id}</td>
-                                <td>${student.name}</td>
-                                <td>${student.father_name}</td>
-                                <td >${student.class}</td>
-                                <td class="text-center">
-                                    <button class="btn btn-white p-0 select-btn" style="background-color: #006400; color: white; border: 1px solid #ccc;">
-                                        Fill Out ➡
-                                    </button>
-                                </td>
-                                
-                            `;
-
-                    // Add click event listener to the button in the row
-                    row.querySelector('.select-btn').addEventListener('click', function() {
-                        // Highlight the selected row
-                        document.querySelectorAll('.table-row').forEach(tr => tr.classList
-                            .remove('table-active'));
-                        row.classList.add('table-active');
-
-
-                        document.getElementById('UserId').value = student.user_id;
-                        // Close the modal by removing Bootstrap classes and hiding the backdrop
-                        document.getElementById('searchModal').classList.remove('show');
-                        document.getElementById('searchModal').style.display = 'none';
-                        document.body.classList.remove('modal-open');
-                        document.querySelector('.modal-backdrop').remove();
-
-                    });
-
-                    tableBody.appendChild(row);
-                });
-            } else {
-                // No results found
-                tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No results found.</td></tr>';
-            }
-        })
-        .catch(error => {
-            console.error('There was a problem with the fetch operation:', error);
-        });
-});
-
-function checkUrlParams() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const idParam = urlParams.get('userId');
-
-    if (idParam) {
-        // Log the class and section values
-        console.log('id:', idParam);
-        document.getElementById('UserId').value = idParam;
-        setTimeout(() => {
-            document.getElementById('fetch').click();
-        }, 500);
-    } else {
-        console.log('No id found in the URL.');
+/* ── Auto-load if userId passed in URL ── */
+(function checkUrlParams() {
+    var params = new URLSearchParams(window.location.search);
+    var uid = params.get('userId') || '';
+    if (uid) {
+        document.getElementById('sfUserId').value = uid;
+        /* Small delay to ensure CSRF meta tags are parsed */
+        setTimeout(function() {
+            loadReceipts();
+        }, 120);
     }
-}
-window.onload = checkUrlParams;
+})();
+
+/* ── Enter key ── */
+document.getElementById('sfUserId').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') loadReceipts();
+});
 </script>
 
 <style>
-body {
-    font-family: Arial, sans-serif;
-    background-color: #f8f9fa;
-    margin: 0;
+/* ── Student Fees — matches ERP theme ── */
+:root {
+    --sf-navy: #1a2332;
+    --sf-teal: #0d9488;
+    --sf-teal-lt: #ccfbf1;
+    --sf-amber: #d97706;
+    --sf-red: #dc2626;
+    --sf-green: #16a34a;
+    --sf-muted: #6b7280;
+    --sf-border: #e5e7eb;
+    --sf-bg: #f4f6f9;
+    --sf-white: #ffffff;
+    --sf-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+    --sf-radius: 10px;
 }
 
-.container {
-    width: 98%;
-    padding-right: 20px;
-    border: 1px solid #ccc;
-    padding-bottom: 20px;
+.sf-wrap {
+    padding: 20px 24px;
+    background: var(--sf-bg);
+    min-height: 100vh;
 }
 
-/* Title Bar Styling */
-.title-bar {
-    background-color: #007bff;
-    color: white;
-    font-weight: bold;
-    text-align: center;
-    font-size: 24px;
-    padding: 10px;
-    border-radius: 5px;
-    margin-top: 20px;
+.sf-topbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 22px;
+    flex-wrap: wrap;
+    gap: 12px;
 }
 
-
-
-/* Search Section */
-.search-section {
-    margin-top: 20px;
-    padding: 10px;
-    background-color: #f8f9fa;
-    border-radius: 5px;
-    border: 1px solid #ccc;
-}
-
-.d-flex {
+.sf-page-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--sf-navy);
+    margin: 0 0 4px;
     display: flex;
     align-items: center;
+    gap: 8px;
 }
 
-
-/* Optional: You can adjust the spacing between input and button */
-input.form-control {
-    margin-right: 10px;
+.sf-page-title i {
+    color: var(--sf-teal);
 }
 
-/* Table Container */
-.table-container {
-    margin-top: 20px;
-    max-height: 360px;
-    /* Adjust height to fit your needs */
-    overflow-y: auto;
-    border: 1px solid #ccc;
-    position: relative;
-}
-
-/* Table Styling */
-.table {
-    border-collapse: collapse;
-    width: 100%;
-
-}
-
-/* Table Header */
-.table thead th {
-    background-color: #006400;
-    color: white;
-    padding: 8px;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    /* Ensure header is above the content */
-
-    text-align: left;
-}
-
-/* Table Body Rows */
-.table tbody tr {
-
-    cursor: pointer;
-}
-
-.table tbody td {
-    padding: 8px;
-
-}
-
-.table tbody tr:hover {
-    background-color: #b0b0b0 !important;
-}
-
-/* Table Footer */
-.table tfoot td {
-    background-color: #585652;
-    color: white;
-    font-weight: bold;
-    padding: 8px;
-    position: sticky;
-    bottom: 0;
-    z-index: 1;
-    /* Ensure footer is above the content */
-
-    text-align: left;
-}
-
-/* Highlight Selected Row */
-.selected-row {
-    background-color: #d1e7dd !important;
-    transition: background-color 0.3s ease;
-}
-
-/* Footer Buttons */
-.buttons {
-    margin-top: 20px;
+.sf-breadcrumb {
+    list-style: none;
+    padding: 0;
+    margin: 0;
     display: flex;
-    justify-content: flex-end;
-    gap: 15px;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--sf-muted);
 }
 
-#searchTable {
-    margin-top: 20px;
-    /* Adjust as needed */
+.sf-breadcrumb li:not(:last-child)::after {
+    content: '/';
+    margin-left: 6px;
 }
 
-/* Print Styles */
-@media print {
-    body * {
-        visibility: hidden;
+.sf-breadcrumb a {
+    color: var(--sf-teal);
+    text-decoration: none;
+}
+
+/* ── Search card ── */
+.sf-card {
+    background: var(--sf-white);
+    border-radius: var(--sf-radius);
+    box-shadow: var(--sf-shadow);
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.sf-card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1.5px solid var(--sf-border);
+}
+
+.sf-card-head h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--sf-navy);
+}
+
+.sf-card-head i {
+    color: var(--sf-teal);
+}
+
+.sf-card-body {
+    padding: 20px;
+}
+
+.sf-search-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.sf-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex: 1;
+    min-width: 180px;
+}
+
+.sf-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--sf-navy);
+}
+
+.sf-input {
+    padding: 9px 12px;
+    border: 1.5px solid var(--sf-border);
+    border-radius: 7px;
+    font-size: 13px;
+    outline: none;
+    transition: border .18s;
+}
+
+.sf-input:focus {
+    border-color: var(--sf-teal);
+}
+
+.sf-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 18px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all .18s;
+    white-space: nowrap;
+}
+
+.sf-btn-primary {
+    background: var(--sf-teal);
+    color: #fff;
+}
+
+.sf-btn-primary:hover {
+    background: #0f766e;
+}
+
+.sf-btn-ghost {
+    background: #fff;
+    color: var(--sf-navy);
+    border: 1.5px solid var(--sf-border);
+}
+
+.sf-btn-ghost:hover {
+    border-color: var(--sf-teal);
+    color: var(--sf-teal);
+}
+
+/* ── Student info strip ── */
+.sf-student-strip {
+    display: none;
+    background: var(--sf-navy);
+    border-radius: var(--sf-radius);
+    padding: 14px 20px;
+    margin-bottom: 20px;
+    color: #fff;
+    display: none;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.sf-student-strip.visible {
+    display: flex;
+}
+
+.sf-sinfo {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sf-sinfo-label {
+    font-size: 10px;
+    color: rgba(255, 255, 255, .6);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+
+.sf-sinfo-val {
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.sf-sinfo-divider {
+    width: 1px;
+    height: 36px;
+    background: rgba(255, 255, 255, .15);
+}
+
+/* ── Table ── */
+.sf-table-wrap {
+    overflow-x: auto;
+}
+
+.sf-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.sf-table thead tr {
+    background: var(--sf-navy);
+    color: #fff;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: .5px;
+}
+
+.sf-table thead th {
+    padding: 12px 14px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.sf-table tbody tr {
+    border-bottom: 1px solid var(--sf-border);
+    transition: background .12s;
+}
+
+.sf-table tbody tr:hover {
+    background: #f8fafc;
+}
+
+.sf-table td {
+    padding: 11px 14px;
+    vertical-align: middle;
+    color: var(--sf-navy);
+}
+
+.sf-table tfoot td {
+    padding: 11px 14px;
+    background: #f1f5f9;
+    font-weight: 700;
+}
+
+.sf-receipt-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: var(--sf-teal-lt);
+    color: var(--sf-teal);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.sf-amt-positive {
+    color: var(--sf-green);
+    font-weight: 700;
+}
+
+.sf-amt-discount {
+    color: var(--sf-amber);
+}
+
+.sf-amt-fine {
+    color: var(--sf-red);
+}
+
+/* ── Empty / loading ── */
+.sf-empty {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--sf-muted);
+}
+
+.sf-empty i {
+    font-size: 40px;
+    margin-bottom: 12px;
+    opacity: .4;
+    display: block;
+}
+
+/* ── Toast ── */
+.sf-toast-wrap {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sf-toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .15);
+    animation: sfToastIn .25s ease;
+    min-width: 240px;
+}
+
+@keyframes sfToastIn {
+    from {
+        transform: translateX(60px);
+        opacity: 0;
     }
 
-    .table-container,
-    .table-container * {
-        visibility: visible;
+    to {
+        transform: translateX(0);
+        opacity: 1;
     }
+}
 
-    .table-container {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
+.sf-toast-success {
+    background: #f0fdf4;
+    color: var(--sf-green);
+    border-left: 4px solid var(--sf-green);
+}
+
+.sf-toast-error {
+    background: #fef2f2;
+    color: var(--sf-red);
+    border-left: 4px solid var(--sf-red);
+}
+
+.sf-toast-warning {
+    background: #fffbeb;
+    color: var(--sf-amber);
+    border-left: 4px solid var(--sf-amber);
+}
+
+.sf-toast-hide {
+    animation: sfToastOut .3s ease forwards;
+}
+
+@keyframes sfToastOut {
+    to {
+        transform: translateX(60px);
+        opacity: 0;
     }
 }
 </style>

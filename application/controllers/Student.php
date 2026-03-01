@@ -43,7 +43,7 @@ class Student extends MY_Controller
         });
 
 
-       
+
         $classNames    = [];
         $classSections = [];
 
@@ -89,7 +89,7 @@ class Student extends MY_Controller
         $data['classNames']    = $classNames;
         $data['classSections'] = $classSections;
 
-    
+
         $this->load->view('include/header');
         $this->load->view('all_student', $data);
         $this->load->view('include/footer');
@@ -214,19 +214,13 @@ class Student extends MY_Controller
             $school_name  = $this->school_name;
             $session_year = $this->session_year;
 
-            log_message('error', 'School ID: ' . $school_id);
-
             if (!isset($_FILES['excelFile']) || $_FILES['excelFile']['error'] !== UPLOAD_ERR_OK) {
-                log_message('error', 'File not uploaded properly.');
                 redirect('student/all_student');
                 return;
             }
 
             $file = $_FILES['excelFile'];
-            log_message('error', 'Uploaded File Name: ' . $file['name']);
-
             $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-            log_message('error', 'File Extension: ' . $extension);
 
             $reader = ($extension === 'csv')
                 ? IOFactory::createReader('Csv')
@@ -235,68 +229,54 @@ class Student extends MY_Controller
             $spreadsheet = $reader->load($file['tmp_name']);
             $sheetData   = $spreadsheet->getActiveSheet()->toArray();
 
-            log_message('error', 'Total Rows Found: ' . count($sheetData));
-
             if (count($sheetData) <= 1) {
-                log_message('error', 'Excel contains no data.');
                 redirect('student/all_student');
                 return;
             }
 
-
-            // First row is header
             $headers = array_map('trim', $sheetData[0]);
             unset($sheetData[0]);
             $sheetData = array_values($sheetData);
-
-            log_message('error', 'Headers: ' . print_r($headers, true));
 
             $success = 0;
             $error   = 0;
 
             $studentIdCount = $this->CM->get_data("Users/Parents/{$school_id}/Count");
-            if (!$studentIdCount) {
-                $studentIdCount = 1;
-            }
+            if (!$studentIdCount) $studentIdCount = 1;
 
-            log_message('error', 'Starting Count: ' . $studentIdCount);
+            $subjectCache = [];
 
-            foreach ($sheetData as $index => $row) {
+            foreach ($sheetData as $row) {
 
-                log_message('error', 'Processing Row: ' . $index);
-
-                if (!array_filter($row)) {
-                    log_message('error', 'Empty row skipped.');
-                    continue;
-                }
+                if (!array_filter($row)) continue;
 
                 if (count($headers) != count($row)) {
-                    log_message('error', 'Header count mismatch.');
                     $error++;
                     continue;
                 }
 
                 $rowData = array_combine($headers, $row);
 
-                log_message('error', 'Row Data: ' . print_r($rowData, true));
-
+                // ✅ Required fields only: Name, Class, Section
                 $studentName = trim($rowData['Name'] ?? '');
                 $classRaw    = trim($rowData['Class'] ?? '');
                 $section     = trim($rowData['Section'] ?? '');
 
                 if (!$studentName || !$classRaw || !$section) {
-                    log_message('error', 'Required fields missing.');
                     $error++;
                     continue;
                 }
 
-                $studentId = 'STU000' . $studentIdCount;
-                log_message('error', 'Generated Student ID: ' . $studentId);
+                // ✅ Extract class number from any format
+                preg_match('/\d+/', $classRaw, $match);
+                if (!isset($match[0])) {
+                    $error++;
+                    continue;
+                }
 
-                // Extract number from "Class 8"
-                $classNumber = (int) filter_var($classRaw, FILTER_SANITIZE_NUMBER_INT);
+                $classNumber = (int)$match[0];
 
-                // Convert number to ordinal (8 → 8th)
+                // ✅ Convert to ordinal
                 $suffix = 'th';
                 if (!in_array(($classNumber % 100), [11, 12, 13])) {
                     switch ($classNumber % 10) {
@@ -313,37 +293,37 @@ class Student extends MY_Controller
                 }
 
                 $className = $classNumber . $suffix;
+                $combinedClass = "Class {$className}/Section {$section}";
 
-                // Keep Firebase structure path same
+                $studentId = 'STU' . str_pad($studentIdCount, 4, '0', STR_PAD_LEFT);
 
-                $combinedClass = "{$classRaw}/Section {$section}";
-                $formattedDOB = date('d-m-Y', strtotime($rowData['DOB']));
+                // ✅ Format DOB
+                $formattedDOB = '';
+                if (!empty($rowData['DOB'])) {
+                    $formattedDOB = date('d-m-Y', strtotime($rowData['DOB']));
+                }
+
+                // ✅ Format Admission Date
+                $formattedAdmDate = '';
+                if (!empty($rowData['Admission Date'])) {
+                    $formattedAdmDate = date('d-m-Y', strtotime($rowData['Admission Date']));
+                }
+
                 $password = $this->generatePassword($studentName, $formattedDOB);
 
-
-
+                // ✅ Full student data matching Firebase structure
                 $studentData = [
-
-                    "Name"           => $studentName,
-                    "User Id"        => $studentId,
-                    "DOB"            => trim($rowData['DOB'] ?? ''),
-                    "Admission Date" => trim($rowData['Admission Date'] ?? ''),
-
-                    "Class"   => $className,
-                    "Section" => $section,
-
-                    "Phone Number" => trim($rowData['Phone Number'] ?? ''),
-                    "Email"        => trim($rowData['Email'] ?? ''),
-                    "Password" => $password,
-
-                    // "Password"     => substr($studentName, 0, 3) . '123@',
-
-
-                    "Category"    => trim($rowData['Category'] ?? ''),
-                    "Gender"      => trim($rowData['Gender'] ?? ''),
-                    "Blood Group" => trim($rowData['Blood Group'] ?? ''),
-                    "Religion"    => trim($rowData['Religion'] ?? ''),
-                    "Nationality" => trim($rowData['Nationality'] ?? ''),
+                    "Name"              => $studentName,
+                    "User Id"           => $studentId,
+                    "DOB"               => $formattedDOB,
+                    "Admission Date"    => $formattedAdmDate,
+                    "Class"             => $className,
+                    "Section"           => $section,
+                    "Gender"            => trim($rowData['Gender'] ?? ''),
+                    "Blood Group"       => trim($rowData['Blood Group'] ?? ''),
+                    "Category"          => trim($rowData['Category'] ?? ''),
+                    "Religion"          => trim($rowData['Religion'] ?? ''),
+                    "Nationality"       => trim($rowData['Nationality'] ?? ''),
 
                     "Father Name"       => trim($rowData['Father Name'] ?? ''),
                     "Father Occupation" => trim($rowData['Father Occupation'] ?? ''),
@@ -352,69 +332,152 @@ class Student extends MY_Controller
                     "Guard Contact"     => trim($rowData['Guard Contact'] ?? ''),
                     "Guard Relation"    => trim($rowData['Guard Relation'] ?? ''),
 
-                    "Pre Class"  => trim($rowData['Pre Class'] ?? ''),
-                    "Pre School" => trim($rowData['Pre School'] ?? ''),
-                    "Pre Marks"  => trim($rowData['Pre Marks'] ?? ''),
+                    "Phone Number"      => trim($rowData['Phone Number'] ?? ''),
+                    "Email"             => trim($rowData['Email'] ?? ''),
+                    "Password"          => $password,
 
+                    // ✅ Address as nested object
                     "Address" => [
                         "Street"     => trim($rowData['Street'] ?? ''),
                         "City"       => trim($rowData['City'] ?? ''),
                         "State"      => trim($rowData['State'] ?? ''),
-                        "PostalCode" => trim($rowData['Postal Code'] ?? '')
+                        "PostalCode" => trim($rowData['PostalCode'] ?? ''),
                     ],
 
-                    "Profile Pic" => "",
+                    // ✅ Previous school details
+                    "Pre School"        => trim($rowData['Pre School'] ?? ''),
+                    "Pre Class"         => trim($rowData['Pre Class'] ?? ''),
+                    "Pre Marks"         => trim($rowData['Pre Marks'] ?? ''),
 
+                    // ✅ Profile Pic empty until edited
+                    "Profile Pic"       => "",
+
+                    // ✅ Doc with empty nested structure (ready for Edit Student)
                     "Doc" => [
-                        "Birth Certificate" => "",
-                        "Aadhar Card" => "",
-                        "Previous School Leaving Certificate" => "",
-                        "PhotoUrl" => ""
-                    ]
+                        "Aadhar Card" => [
+                            "thumbnail" => "",
+                            "url"       => "",
+                        ],
+                        "Birth Certificate" => [
+                            "thumbnail" => "",
+                            "url"       => "",
+                        ],
+                        "Photo" => [
+                            "thumbnail" => "",
+                            "url"       => "",
+                        ],
+                        "Transfer Certificate" => [
+                            "thumbnail" => "",
+                            "url"       => "",
+                        ],
+                    ],
                 ];
 
-
+                // ✅ Insert student
                 $studentPath = "Users/Parents/{$school_id}/{$studentId}";
-                $result = $this->firebase->set($studentPath, $studentData);
+                $this->firebase->set($studentPath, $studentData);
 
-                log_message('error', 'Firebase Insert Result: ' . json_encode($result));
+                // ✅ Add to class roster
+                $this->CM->addKey_pair_data(
+                    "Schools/{$school_name}/{$session_year}/{$combinedClass}/Students/",
+                    [$studentId => ['Name' => $studentName]]
+                );
+                // ✅ Add to class roster List (simple key:value)
+                $this->CM->addKey_pair_data(
+                    "Schools/{$school_name}/{$session_year}/{$combinedClass}/Students/List/",
+                    [$studentId => $studentName]
+                );
+
+                 // Add inside the foreach loop in import_students(), after the student insert
+                $phone = trim($rowData['Phone Number'] ?? '');
+                if ($phone !== '') {
+                    $this->CM->addKey_pair_data('Exits/', [$phone => $school_id]);
+                    $this->CM->addKey_pair_data('User_ids_pno/', [$phone => $studentId]);
+                }
+
+                
+                // ✅ FETCH SUBJECTS
+                if (!isset($subjectCache[$classNumber])) {
+
+                    $subjectCache[$classNumber] = [
+                        'core'        => [],
+                        'allSubjects' => [],
+                    ];
+
+                    $rawList = $this->firebase->get(
+                        "Schools/{$school_name}/Subject_list/{$classNumber}"
+                    );
+
+                    log_message('error', 'Raw subject list: ' . json_encode($rawList));
+
+                    if (is_array($rawList)) {
+
+                        foreach ($rawList as $code => $item) {
+
+                            if (!is_array($item)) continue;
+
+                            $subName = trim($item['subject_name'] ?? '');
+                            if ($subName === '') continue;
+
+                            $type = strtolower(trim($item['category'] ?? ''));
+
+                            // ⭐ ALL subjects go to All Subjects path
+                            $subjectCache[$classNumber]['allSubjects'][(string)$code] = $subName;
+
+                            // ⭐ Only CORE subjects go to student
+                            if ($type === 'core') {
+                                $subjectCache[$classNumber]['core'][(string)$code] = [
+                                    'name' => $subName,
+                                    'type' => 'core'
+                                ];
+                            }
+                        }
+                    }
+
+                    log_message('error', 'Core subject cache: ' . json_encode($subjectCache[$classNumber]['core']));
+                    log_message('error', 'All subjects cache: ' . json_encode($subjectCache[$classNumber]['allSubjects']));
+
+                    // ✅ Insert ALL subjects to class path (only once per class)
+                    if (!empty($subjectCache[$classNumber]['allSubjects'])) {
+                        $this->firebase->set(
+                            "Schools/{$school_name}/{$session_year}/Class {$className}/All Subjects",
+                            $subjectCache[$classNumber]['allSubjects']
+                        );
+                    }
+                }
+
+                // ✅ Assign core subjects to student
+                if (!empty($subjectCache[$classNumber]['core'])) {
+                    $this->firebase->set(
+                        "Users/Parents/{$school_id}/{$studentId}/Subjects",
+                        $subjectCache[$classNumber]['core']
+                    );
+                }
 
                 $studentIdCount++;
                 $success++;
             }
 
-            log_message('error', 'Total Success: ' . $success);
-            log_message('error', 'Total Failed: ' . $error);
-
+            // ✅ Update count
             $this->CM->addKey_pair_data(
                 "Users/Parents/{$school_id}/",
                 ['Count' => $studentIdCount]
             );
-
-            log_message('error', 'Count Updated.');
 
             $this->session->set_flashdata(
                 'import_result',
                 "Imported Successfully: {$success} | Failed: {$error}"
             );
 
-            log_message('error', '=== IMPORT FUNCTION COMPLETED ===');
-
             redirect('student/all_student');
         } catch (Exception $e) {
-
             log_message('error', 'IMPORT ERROR: ' . $e->getMessage());
-
-            $this->session->set_flashdata(
-                'import_result',
-                "Import Failed! Check logs."
-            );
-
+            $this->session->set_flashdata('import_result', "Import Failed! Check logs.");
             redirect('student/all_student');
         }
     }
 
-    
+
     public function studentAdmission()
     {
         $school_id    = $this->school_id;
@@ -516,47 +579,6 @@ class Student extends MY_Controller
 
             $documentUrls  = [];
             $thumbnailUrls = [];
-
-            // foreach ($documents as $inputKey => $label) {
-
-            //     if (!empty($_FILES[$inputKey]['tmp_name'])) {
-
-            //         $file = $_FILES[$inputKey];
-            //         $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-
-            //         $allowedExt = ['pdf', 'jpg', 'jpeg', 'png', 'webp'];
-
-            //         if (!in_array($ext, $allowedExt)) {
-            //             echo json_encode([
-            //                 'status'  => 'error',
-            //                 'message' => "{$label} must be PDF or Image"
-            //             ]);
-            //             return;
-            //         }
-
-            //         $uploadResult = $this->uploadStudentFile(
-            //             $file,
-            //             $schoolName,
-            //             $session_year,
-            //             $combinedClassPath,
-            //             $studentId,
-            //             str_replace(' ', '_', $label)
-            //         );
-
-            //         if (!$uploadResult) {
-            //             echo json_encode([
-            //                 'status'  => 'error',
-            //                 'message' => "Failed to upload {$label}"
-            //             ]);
-            //             return;
-            //         }
-
-            //         // $documentUrls[$label] = $uploadResult;
-            //         $documentUrls[$label]  = $uploadResult['document']  ?? '';
-            //     }
-            // }
-
-
 
             foreach ($documents as $inputKey => $label) {
 
@@ -721,6 +743,74 @@ class Student extends MY_Controller
                 $studentId => ['Name' => $studentName]
             ]);
 
+            // ✅ Add to class roster List (simple key:value)
+            $this->CM->addKey_pair_data(
+                "Schools/{$school_name}/{$session_year}/{$combinedClassPath}/Students/List/",
+                [$studentId => $studentName]
+            );
+
+            /* ===============================
+            FETCH & ASSIGN SUBJECTS
+            =============================== */
+            // Extract class number from className (e.g., "8th" → 8)
+            preg_match('/\d+/', $className, $classMatch);
+            $classNumber = isset($classMatch[0]) ? (int)$classMatch[0] : 0;
+
+            if ($classNumber > 0) {
+
+                $rawList = $this->firebase->get(
+                    "Schools/{$schoolName}/Subject_list/{$classNumber}"
+                );
+
+                log_message('error', 'Raw subject list (admission): ' . json_encode($rawList));
+
+                $coreSubjects = [];
+                $allSubjects  = [];
+
+                if (is_array($rawList)) {
+
+                    foreach ($rawList as $code => $item) {
+
+                        if (!is_array($item)) continue;
+
+                        $subName = trim($item['subject_name'] ?? '');
+                        if ($subName === '') continue;
+
+                        $type = strtolower(trim($item['category'] ?? ''));
+
+                        // ⭐ ALL subjects → All Subjects path
+                        $allSubjects[(string)$code] = $subName;
+
+                        // ⭐ Only CORE → student's Subjects node
+                        if ($type === 'core') {
+                            $coreSubjects[(string)$code] = [
+                                'name' => $subName,
+                                'type' => 'core'
+                            ];
+                        }
+                    }
+                }
+
+                log_message('error', 'Core subjects (admission): ' . json_encode($coreSubjects));
+                log_message('error', 'All subjects (admission): ' . json_encode($allSubjects));
+
+                // ✅ Insert ALL subjects to class path
+                if (!empty($allSubjects)) {
+                    $this->firebase->set(
+                        "Schools/{$schoolName}/{$session_year}/{$classNameRaw}/All Subjects",
+                        $allSubjects
+                    );
+                }
+
+                // ✅ Assign core subjects to student
+                if (!empty($coreSubjects)) {
+                    $this->firebase->set(
+                        "Users/Parents/{$school_id}/{$studentId}/Subjects",
+                        $coreSubjects
+                    );
+                }
+            }
+
             /* ===============================
            ADDITIONAL SUBJECTS ✅
             =============================== */
@@ -732,10 +822,6 @@ class Student extends MY_Controller
 
                 $subjectsPath = "Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/Additional Subjects";
                 $this->firebase->set($subjectsPath, $additionalSubjects);
-                // $this->CM->addKey_pair_data(
-                //     "Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/Additional Subjects",
-                //     $additionalSubjects
-                // ); //(Not Working correctly)
             }
 
             /* ===============================
@@ -759,10 +845,6 @@ class Student extends MY_Controller
             $monthFeePath = "Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/Month Fee";
             $this->firebase->set($monthFeePath, $monthFee);
 
-            // $this->CM->addKey_pair_data(
-            //     "Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/Month Fee",
-            //     $monthFee
-            // ); //(Not working Working correctly)
 
             /* ===============================
             SAVE EXEMPTED FEES
@@ -800,9 +882,9 @@ class Student extends MY_Controller
             $this->CM->addKey_pair_data('User_ids_pno/', [$phoneNumber => $studentId]); //(Working correctly)
             $this->CM->addKey_pair_data("Users/Parents/{$school_id}/", ['Count' => $studentIdCount + 1]); //(Working correctly)
 
-            $this->CM->addKey_pair_data("Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/List/", [
-                $studentId => $studentName //(Working correctly)
-            ]);
+            // $this->CM->addKey_pair_data("Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/List/", [
+            //     $studentId => $studentName //(Working correctly)
+            // ]);
 
 
 
@@ -1654,7 +1736,10 @@ class Student extends MY_Controller
         /* ===============================
            FETCH FEES
         =============================== */
-        $feesJson = $this->getFees($classPath, $section);
+        // Pass $class (e.g. "8th") NOT $classPath ("Class 8th"):
+        // getFees() builds "Accounts/Fees/Classes Fees/{class} '{section}'"
+        // and the Firebase key is "8th 'A'", not "Class 8th 'A'".
+        $feesJson = $this->getFees($class, $section);
         $feesData = json_decode($feesJson, true);
 
         /* ===============================
@@ -1811,10 +1896,18 @@ class Student extends MY_Controller
            → attendance stored under "January 2026" is never found.
         ───────────────────────────────────────────────────────── */
         $monthToNumber = [
-            'January'   => 1,  'February'  => 2,  'March'     => 3,
-            'April'     => 4,  'May'        => 5,  'June'      => 6,
-            'July'      => 7,  'August'     => 8,  'September' => 9,
-            'October'   => 10, 'November'   => 11, 'December'  => 12,
+            'January'   => 1,
+            'February'  => 2,
+            'March'     => 3,
+            'April'     => 4,
+            'May'        => 5,
+            'June'      => 6,
+            'July'      => 7,
+            'August'     => 8,
+            'September' => 9,
+            'October'   => 10,
+            'November'   => 11,
+            'December'  => 12,
         ];
 
         $monthNumber = $monthToNumber[trim($month)] ?? 0;
@@ -1894,75 +1987,6 @@ class Student extends MY_Controller
         ]);
     }
 
-    // public function fetchAttendance()
-    // {
-    //     $school_id = $this->school_id;
-    //     $school_name = $this->school_name;
-    //     $session_year = $this->session_year;
-
-    //     $class = $this->input->post('class');      // e.g. "Class 4th"
-    //     $section = $this->input->post('section');  // e.g. "A"
-    //     $month = $this->input->post('month');
-    //     $year = date('Y');
-
-    //     if (empty($class) || empty($section) || empty($month)) {
-    //         echo json_encode(["error" => "Class, Section and Month are required"]);
-    //         return;
-    //     }
-
-    //     $this->load->library('firebase');
-    //     $firebase = new Firebase();
-
-    //     // ✅ IMPORTANT: Section is stored as "Section A"
-    //     $sectionNode = "Section " . $section;
-
-    //     // ✅ Correct path based on your structure
-    //     $basePath = "/Schools/$school_name/$session_year/$class/$sectionNode/Students";
-
-    //     // Students List path
-    //     $studentsListPath = "$basePath/List";
-    //     $studentsList = $firebase->get($studentsListPath);
-
-    //     if (!$studentsList) {
-    //         echo json_encode(["error" => "No students found for this class and section."]);
-    //         return;
-    //     }
-
-    //     $daysInMonth = cal_days_in_month(CAL_GREGORIAN, date("n", strtotime($month)), $year);
-    //     $sundays = $this->getSundays($year, date("n", strtotime($month)));
-
-    //     $studentsData = [];
-
-    //     foreach ($studentsList as $studentId => $studentName) {
-
-    //         // Attendance path
-    //         $attendancePath = "$basePath/$studentId/Attendance/$month $year";
-    //         $attendanceString = $firebase->get($attendancePath);
-
-    //         if (!$attendanceString) {
-    //             $attendanceString = str_repeat('V', $daysInMonth);
-    //         }
-
-    //         $attendanceArray = str_split($attendanceString);
-    //         $attendanceArray = array_pad($attendanceArray, $daysInMonth, 'V');
-
-    //         $studentsData[] = [
-    //             "userId" => $studentId,
-    //             "name" => $studentName,
-    //             "attendance" => $attendanceArray
-    //         ];
-    //     }
-
-    //     echo json_encode([
-    //         "students" => $studentsData,
-    //         "daysInMonth" => $daysInMonth,
-    //         "sundays" => $sundays,
-    //         "month" => $month,
-    //         "year" => $year
-    //     ]);
-    // }
-
-
     private function getSundays($year, $month)
     {
         $sundays = [];
@@ -1977,625 +2001,4 @@ class Student extends MY_Controller
 
         return $sundays;
     }
-
-
-    // public function studentAdmission()
-    // {
-    //     $school_id    = $this->school_id;
-    //     $school_name  = $this->school_name;
-    //     $session_year = $this->session_year;
-
-    //     $data['school_name'] = $school_name;
-    //     $schoolName = $school_name;
-
-    //     /* ===============================
-    //    STUDENT ID GENERATION
-    //     =============================== */
-    //     $studentIdCount = $this->CM->get_data("Users/Parents/{$school_id}/Count");
-
-    //     if ($studentIdCount === null) {
-    //         $studentIdCount = 1;
-    //     }
-
-    //     $userId = 'STU000' . $studentIdCount;
-    //     $data['user_Id'] = $userId;
-
-    //     /* ===============================
-    //    FETCH CLASSES & SECTIONS
-    //     =============================== */
-    //     $basePath = "Schools/{$school_name}/{$session_year}";
-    //     $sessionData = $this->firebase->get($basePath);
-
-    //     $ClassesData = [];
-    //     if (is_array($sessionData)) {
-    //         foreach ($sessionData as $classKey => $classVal) {
-    //             if (strpos($classKey, 'Class ') === 0 && is_array($classVal)) {
-    //                 foreach ($classVal as $sectionKey => $v) {
-    //                     if (strpos($sectionKey, 'Section ') === 0) {
-    //                         $ClassesData[] = [
-    //                             'class_name' => $classKey,
-    //                             'section'    => str_replace('Section ', '', $sectionKey)
-    //                         ];
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     $data['Classes'] = $ClassesData;
-
-    //     /* ===============================
-    //    FEES STRUCTURE
-    //     =============================== */
-    //     $feesStructurePath = "Schools/{$schoolName}/{$session_year}/Accounts/Fees/Fees Structure";
-    //     $data['exemptedFees'] = $this->firebase->get($feesStructurePath);
-
-
-    //     /* ===============================
-    //    HANDLE POST
-    //     =============================== */
-    //     if ($this->input->method() === 'post') {
-
-    //         $postData = $this->input->post();
-    //         $normalizedPostData = [];
-
-    //         foreach ($postData as $key => $value) {
-    //             $normalizedPostData[urldecode($key)] = $value;
-    //         }
-
-    //         /* ===============================
-    //        REQUIRED FIELDS
-    //     =============================== */
-    //         $studentId   = $normalizedPostData['user_id'] ?? '';
-    //         $studentName = $normalizedPostData['Name'] ?? '';
-    //         $phoneNumber = $normalizedPostData['phone_number'] ?? '';
-
-    //         $classNameRaw = $normalizedPostData['class'] ?? '';
-    //         $className    = trim(str_replace('Class ', '', $classNameRaw));
-    //         $section     = $normalizedPostData['section'] ?? '';
-
-    //         if (!$studentId || !$studentName || !$className || !$section) {
-    //             echo json_encode([
-    //                 'status'  => 'error',
-    //                 'message' => 'Student ID, Name, Class and Section are required'
-    //             ]);
-    //             return;
-    //         }
-
-    //         // $combinedClassPath  = "{$className}/Section {$section}";
-    //         $combinedClassPath = "{$classNameRaw}/Section {$section}";
-
-    //         // log_message('error', 'Combined Path: ' . $combinedClassPath);
-
-
-
-    //         /* ===============================
-    //         DOCUMENT UPLOAD
-    //         ================================= */
-
-    //         $documents = [
-    //             'birthCertificate'    => 'Birth Certificate',
-    //             'aadharCard'          => 'Aadhar Card',
-    //             'transferCertificate' => 'Transfer Certificate'
-    //         ];
-
-    //         $documentUrls = [];
-
-    //         foreach ($documents as $inputKey => $label) {
-
-    //             if (!empty($_FILES[$inputKey]['tmp_name'])) {
-
-    //                 $file = $_FILES[$inputKey];
-    //                 $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-
-    //                 $allowedExt = ['pdf', 'jpg', 'jpeg', 'png', 'webp'];
-
-    //                 if (!in_array($ext, $allowedExt)) {
-    //                     echo json_encode([
-    //                         'status'  => 'error',
-    //                         'message' => "{$label} must be PDF or Image"
-    //                     ]);
-    //                     return;
-    //                 }
-
-    //                 $uploadResult = $this->uploadStudentFile(
-    //                     $file,
-    //                     $schoolName,
-    //                     $session_year,
-    //                     $combinedClassPath,
-    //                     $studentId,
-    //                     str_replace(' ', '_', $label)
-    //                 );
-
-    //                 if (!$uploadResult) {
-    //                     echo json_encode([
-    //                         'status'  => 'error',
-    //                         'message' => "Failed to upload {$label}"
-    //                     ]);
-    //                     return;
-    //                 }
-
-    //                 $documentUrls[$label] = $uploadResult;
-    //             }
-    //         }
-
-
-
-    //         /* ===============================
-    //         STUDENT PHOTO
-    //         ================================= */
-
-    //         if (empty($_FILES['student_photo']['tmp_name'])) {
-    //             echo json_encode([
-    //                 'status'  => 'error',
-    //                 'message' => 'Student photo required'
-    //             ]);
-    //             return;
-    //         }
-
-    //         $photo = $_FILES['student_photo'];
-    //         $ext   = strtolower(pathinfo($photo['name'], PATHINFO_EXTENSION));
-
-    //         if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
-    //             echo json_encode([
-    //                 'status'  => 'error',
-    //                 'message' => 'Only JPG, JPEG, PNG or WEBP allowed'
-    //             ]);
-    //             return;
-    //         }
-
-    //         $photoUpload = $this->uploadStudentFile(
-    //             $photo,
-    //             $schoolName,
-    //             $session_year,
-    //             $combinedClassPath,
-    //             $studentId,
-    //             "Photo"
-    //         );
-
-    //         if (!$photoUpload) {
-    //             echo json_encode([
-    //                 'status'  => 'error',
-    //                 'message' => 'Photo upload failed'
-    //             ]);
-    //             return;
-    //         }
-
-    //         // $photoUrl = $photoUpload['document'];
-
-
-    //         /* ===============================
-    //        FORMAT DATES
-    //         =============================== */
-    //         $formattedDOB = '';
-    //         if (!empty($normalizedPostData['dob'])) {
-    //             $formattedDOB = date('d-m-Y', strtotime($normalizedPostData['dob']));
-    //         }
-
-    //         $formattedAdmission = '';
-    //         if (!empty($normalizedPostData['admission_date'])) {
-    //             $formattedAdmission = date('d-m-Y', strtotime($normalizedPostData['admission_date']));
-    //         }
-
-    //         /* ===============================
-    //        STUDENT DATA
-    //         =============================== */
-    //         $studentData = [
-
-    //             "Name"           => $studentName,
-    //             "User Id"        => $studentId,
-    //             "DOB"            => $formattedDOB,
-    //             "Admission Date" => $formattedAdmission,
-
-    //             "Class"          => $className,
-    //             "Section"        => $section,
-
-    //             "Phone Number"   => $phoneNumber,
-    //             "Email"          => $normalizedPostData['email'] ?? '',
-    //             "Password"       => substr($studentName, 0, 3) . '123@',
-
-    //             "Category"       => $normalizedPostData['category'] ?? '',
-    //             "Gender"         => $normalizedPostData['gender'] ?? '',
-    //             "Blood Group"    => $normalizedPostData['blood_group'] ?? '',
-    //             "Religion"       => $normalizedPostData['religion'] ?? '',
-    //             "Nationality"    => $normalizedPostData['nationality'] ?? '',
-
-    //             "Father Name"        => $normalizedPostData['father_name'] ?? '',
-    //             "Father Occupation"  => $normalizedPostData['father_occupation'] ?? '',
-    //             "Mother Name"        => $normalizedPostData['mother_name'] ?? '',
-    //             "Mother Occupation"  => $normalizedPostData['mother_occupation'] ?? '',
-    //             "Guard Contact"      => $normalizedPostData['guard_contact'] ?? '',
-    //             "Guard Relation"     => $normalizedPostData['guard_relation'] ?? '',
-
-    //             "Pre Class"  => $normalizedPostData['pre_class'] ?? '',
-    //             "Pre School" => $normalizedPostData['pre_school'] ?? '',
-    //             "Pre Marks"  => $normalizedPostData['pre_marks'] ?? '',
-
-    //             "Address" => [
-    //                 "Street"     => $normalizedPostData['street'] ?? '',
-    //                 "City"       => $normalizedPostData['city'] ?? '',
-    //                 "State"      => $normalizedPostData['state'] ?? '',
-    //                 "PostalCode" => $normalizedPostData['postal_code'] ?? ''
-    //             ],
-
-    //             "Profile Pic" => $photoUpload['document'],
-
-
-    //             "Doc" => [
-    //                 "Birth Certificate" => $documentUrls['Birth Certificate'] ?? "",
-    //                 "Aadhar Card" => $documentUrls['Aadhar Card'] ?? "",
-    //                 "Transfer Certificate" => $documentUrls['Transfer Certificate'] ?? "",
-    //                 "Photo" => $photoUpload ?? ""
-    //             ]
-
-    //         ];
-
-
-    //         /* ===============================
-    //        SAVE STUDENT
-    //         =============================== */
-    //         $studentPath = "Users/Parents/{$school_id}/{$studentId}";
-    //         $result = $this->firebase->set($studentPath, $studentData);
-
-    //         if (!$result) {
-    //             echo json_encode(['status' => 'error', 'message' => 'Failed to save student']);
-    //             return;
-    //         }
-
-
-    //         $this->CM->addKey_pair_data("Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/", [
-    //             $studentId => ['Name' => $studentName]
-    //         ]);
-
-    //         /* ===============================
-    //        ADDITIONAL SUBJECTS ✅
-    //         =============================== */
-    //         $additionalSubjects = [];
-    //         if (!empty($normalizedPostData['additional_subjects'])) {
-    //             foreach ($normalizedPostData['additional_subjects'] as $sub) {
-    //                 $additionalSubjects[$sub] = "";
-    //             }
-    //             $this->CM->addKey_pair_data(
-    //                 "Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/Additional Subjects",
-    //                 $additionalSubjects
-    //             ); //(Not Working correctly)
-    //         }
-
-    //         /* ===============================
-    //        MONTH FEE
-    //         =============================== */
-    //         $monthFee = [
-    //             'January' => 0,
-    //             'February' => 0,
-    //             'March' => 0,
-    //             'April' => 0,
-    //             'May' => 0,
-    //             'June' => 0,
-    //             'July' => 0,
-    //             'August' => 0,
-    //             'September' => 0,
-    //             'October' => 0,
-    //             'November' => 0,
-    //             'December' => 0,
-    //             'Yearly Fees' => 0
-    //         ];
-
-    //         $this->CM->addKey_pair_data(
-    //             "Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/Month Fee",
-    //             $monthFee
-    //         ); //(Not working Working correctly)
-
-    //         /* ===============================
-    //         SAVE EXEMPTED FEES
-    //         ================================= */
-    //         if (
-    //             isset($normalizedPostData['exempted_fees_multiple'])
-    //             && is_array($normalizedPostData['exempted_fees_multiple'])) {
-
-
-    //             $exemptedFeesData = [];
-
-    //           foreach ($normalizedPostData['exempted_fees_multiple'] as $feeName)
-
-    //                 $safeFeeName = str_replace(['.', '#', '$', '[', ']'], '_', $feeName);
-    //                 $exemptedFeesData[$safeFeeName] = true;  // better than empty string
-    //             }
-
-    //             $exemptedFeesPathBase =
-    //                 "Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/exempted_fees";
-
-    //             $this->firebase->set($exemptedFeesPathBase, $exemptedFeesData);
-    //         }
-
-
-
-
-    //         /* ===============================
-    //         FINAL MAPPINGS
-    //         =============================== */
-    //         $this->CM->addKey_pair_data('Exits/', [$phoneNumber => $school_id]); //(Working correctly)
-
-    //         $this->CM->addKey_pair_data('User_ids_pno/', [$phoneNumber => $studentId]); //(Working correctly)
-    //         $this->CM->addKey_pair_data("Users/Parents/{$school_id}/", ['Count' => $studentIdCount + 1]); //(Working correctly)
-
-    //         $this->CM->addKey_pair_data("Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/List/", [
-    //             $studentId => $studentName //(Working correctly)
-    //         ]);
-
-
-
-    //         echo json_encode(['status' => 'success', 'message' => 'Student admission successful']);
-    //         return;
-    //     }
-
-    //     $this->load->view('include/header');
-    //     $this->load->view('studentAdmission', $data);
-    //     $this->load->view('include/footer');
-    // }
-
-
-
-    
-    // public function fetch_subjects()
-    // {
-    //     // $school_id = $this->school_id;
-    //     $school_name = $this->school_name;
-    //     $session_year = $this->session_year;
-
-
-    //     $postData = json_decode(file_get_contents('php://input'), true);
-
-    //     if (isset($postData['classSection'])) {
-    //         $classSection = $postData['classSection'];
-    //         $subjectsPath = 'Schools/' . $school_name . '/' . $session_year . '/' . $classSection . '/AdditionalSubjects';
-
-    //         // Fetch subjects from Firebase
-    //         $subjects = $this->CM->get_data($subjectsPath);
-
-    //         // Return the subjects as a JSON response
-    //         echo json_encode(array_keys($subjects));
-    //     } else {
-    //         echo json_encode([]);
-    //     }
-    // }
-
-
-    // public function fetchAttendance()
-    // {
-    //     $school_id = $this->school_id;
-    //     $school_name = $this->school_name;
-    //     $session_year = $this->session_year;
-
-
-    //     $class = $this->input->post('class');
-    //     $section = $this->input->post('section');
-    //     $month = $this->input->post('month');
-    //     $year = date('Y'); // Get the current year from the server
-
-
-    //     if (empty($class) || empty($month)) {
-    //         echo json_encode(["error" => "Class and Month are required"]);
-    //         return;
-    //     }
-
-    //     $this->load->library('firebase');
-    //     $firebase = new Firebase();
-
-    //     $classPath = "/Schools/$school_name/$session_year/$class/$section/Students";
-    //     $students = $firebase->get($classPath);
-
-    //     if (!$students) {
-    //         echo json_encode(["error" => "No students found for this class."]);
-    //         return;
-    //     }
-
-    //     $daysInMonth = cal_days_in_month(CAL_GREGORIAN, date("n", strtotime($month)), $year);
-    //     $sundays = $this->getSundays($year, date("n", strtotime($month)));
-
-    //     $studentsData = [];
-
-    //     foreach ($students as $studentId => $studentData) {
-    //         // Fetch student name from /Users/Parents/1111/{studentId}/Name
-    //         $namePath = "/Users/Parents/$school_id/$studentId/Name";
-    //         $studentName = $firebase->get($namePath);
-
-    //         if (!$studentName) {
-    //             $studentName = "Unknown"; // Default name if not found
-    //         }
-
-    //         // Fetch attendance record
-    //         $attendancePath = "$classPath/$studentId/Attendance/$month $year";
-    //         $attendanceString = $firebase->get($attendancePath);
-
-    //         if (!$attendanceString) {
-    //             $attendanceString = str_repeat('V', $daysInMonth); // Default to Vacant
-    //         }
-
-    //         $attendanceArray = str_split($attendanceString);
-    //         $attendanceArray = array_pad($attendanceArray, $daysInMonth, 'V'); // Ensure length
-
-    //         $studentsData[] = [
-    //             "userId" => $studentId,
-    //             "name" => $studentName,
-    //             "attendance" => $attendanceArray
-    //         ];
-    //     }
-
-    //     $response = [
-    //         "students" => $studentsData,
-    //         "daysInMonth" => $daysInMonth,
-    //         "sundays" => $sundays,
-    //         "month" => $month,
-    //         "year" => $year
-    //     ];
-
-    //     echo json_encode($response);
-    // }
-
-
-
-    
-    // public function attendance()
-    // {
-    //     $school_id = $this->school_id;
-    //     $school_name = $this->school_name;
-    //     $session_year = $this->session_year;
-
-
-    //     // Construct the paths
-    //     $classesPath = 'Schools/' . $school_name . '/' . $session_year . '/Classes';
-    //     $teachersPath = 'Schools/' . $school_name . '/' . $session_year . '/Teachers';
-    //     $teacherDetailsPath = 'Users/Teachers/' . $school_id;
-
-    //     // Fetch data from Firebase
-    //     $classesData = $this->CM->get_data($classesPath);
-
-    //     foreach ($classesData as $className => $classInfo) {
-    //         // Check if 'Section' key exists and is an array
-    //         if (isset($classInfo['Section']) && is_array($classInfo['Section'])) {
-    //             // If 'Section' is empty, add a default section 'A'
-    //             if (empty($classInfo['Section'])) {
-    //                 $classInfo['Section']['A'] = '';
-    //             }
-
-    //             // Iterate over each section in the 'Section' array
-    //             foreach ($classInfo['Section'] as $sectionName => $_) {
-    //                 $ClassesData[] = [
-
-    //                     'class_name' => $className,
-    //                     'section' => $sectionName,
-    //                 ];
-    //             }
-    //         }
-    //     }
-    //     $data['Classes'] = $ClassesData;
-    //     $this->load->view('include/header');
-    //     $this->load->view('attendance', $data);
-    //     $this->load->view('include/footer');
-    // }
-
-
-
-    
-    // public function download_document()
-    // {
-    //     $fileUrl = $this->input->get('file'); // Get file URL from request
-
-    //     if (empty($fileUrl)) {
-    //         show_error("Invalid file URL.");
-    //     }
-
-    //     $fileContent = file_get_contents($fileUrl);
-    //     if ($fileContent === false) {
-    //         show_error("Failed to fetch file.");
-    //     }
-
-    //     $fileName = basename(parse_url($fileUrl, PHP_URL_PATH));
-
-    //     // Force file download
-    //     $this->output
-    //         ->set_content_type('application/octet-stream')
-    //         ->set_header('Content-Disposition: attachment; filename="' . $fileName . '"')
-    //         ->set_output($fileContent);
-    // }
-
-    // public function student_profile($userId)
-    // {
-    //     $school_id = $this->school_id;
-    //     $school_name = $this->school_name;
-    //     $session_year = $this->session_year;
-
-
-    //     $firebasePath = "Users/Parents/$school_id/$userId";
-    //     $studentData = $this->firebase->get($firebasePath);
-
-    //     $class = '';
-    //     $section = '';
-
-    //     if (!empty($studentData['Class'])) {
-    //         if (preg_match("/(\d{1,2}th)\s?'([A-Z])'/", $studentData['Class'], $matches)) {
-    //             $class = $matches[1];
-    //             $section = $matches[2];
-    //         }
-    //     }
-
-    //     $classPath = "Class " . $class;
-    //     $basePath = "/Schools/$school_name/$session_year/$classPath '$section'";
-
-    //     // 1. Fetch Subjects
-    //     $subjectsPath = "$basePath/Subjects";
-    //     $subjects = $this->firebase->get($subjectsPath);
-    //     $subjectsList = array_keys($subjects ?? []); // Convert Firebase response to array keys
-
-    //     // 2. Fetch Additional Subjects
-    //     $additionalSubjectsPath = "$basePath/AdditionalSubjects";
-    //     $additionalSubjects = $this->firebase->get($additionalSubjectsPath);
-    //     $additionalSubjectsList = array_keys($additionalSubjects ?? []);
-
-    //     // 3. Remove Additional Subjects from Subjects to get Common Subjects
-    //     $commonSubjects = array_diff($subjectsList, $additionalSubjectsList);
-
-    //     // 4. Fetch Student-Specific Optional Subjects
-    //     $optionalSubjectsPath = "$basePath/Students/$userId/Optional Subject";
-    //     $optionalSubjects = $this->firebase->get($optionalSubjectsPath);
-    //     $optionalSubjectsList = array_keys($optionalSubjects ?? []);
-
-    //     // 5. Merge Common Subjects and Optional Subjects
-    //     $finalSubjectsList = array_merge($commonSubjects, $optionalSubjectsList);
-
-    //     // $exempted_feesPath = "$basePath/Students/$userId/exempted_fees";
-    //     // $exempted_fees = $this->firebase->get($exempted_feesPath);
-    //     // $exempted_feesList = array_keys($exempted_fees ?? []);
-
-    //     // $totaldiscountPath = "$basePath/Students/$userId/Discount/totalDiscount";
-    //     // $totaldiscount = $this->firebase->get($totaldiscountPath);
-    //     // $currentdiscountPath = "$basePath/Students/$userId/Discount/OnDemandDiscount";
-    //     // $currentdiscount = $this->firebase->get($currentdiscountPath);
-
-    //     // // Fetch Fees
-    //     // $feesJson = $this->getFees($classPath, $section);
-    //     // $feesData = json_decode($feesJson, true);
-
-    //     $discountPath = "$basePath/Students/$userId/Discount/totalDiscount";
-    //     $discount = $this->firebase->get($discountPath);
-
-    //     // Fetch Fees
-    //     $feesJson = $this->getFees($classPath, $section);
-    //     $feesData = json_decode($feesJson, true);
-
-
-
-    //     // Remove exempted fee titles from the fees array
-    //     // if (isset($feesData['fees']) && is_array($feesData['fees'])) {
-    //     //     foreach ($feesData['fees'] as $month => $feeDetails) {
-    //     //         if ($month === 'Yearly Fees') continue; // Skip yearly fees
-
-    //     //         foreach ($feeDetails as $feeTitle => $amount) {
-    //     //             if (in_array($feeTitle, $exempted_feesList)) {
-    //     //                 unset($feesData['fees'][$month][$feeTitle]); // Remove the exempted fee title
-    //     //             }
-    //     //         }
-    //     //     }
-    //     // }
-
-    //     // Prepare Data for View
-    //     $data = [
-    //         'student' => $studentData,
-    //         'class' => $classPath,
-    //         'section' => $section,
-    //         'fees' => isset($feesData['fees']) ? $feesData['fees'] : null,
-    //         'monthlyTotals' => isset($feesData['monthlyTotals']) ? $feesData['monthlyTotals'] : null,
-    //         'overallTotal' => isset($feesData['overallTotal']) ? $feesData['overallTotal'] : null,
-    //         'subjects' => $finalSubjectsList, // Send subjects to view
-    //         'discount' => $discount,
-
-    //     ];
-    //     log_message('debug', 'Student Profile Data: ' . print_r($data, true));
-
-
-    //     $this->load->view('include/header');
-    //     $this->load->view('student_profile', $data);
-    //     $this->load->view('include/footer');
-    // }
-
-
 }

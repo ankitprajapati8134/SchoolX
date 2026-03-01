@@ -268,6 +268,12 @@
                             xhr.setRequestHeader('X-CSRF-Token', csrfToken);
                             if (typeof settings.data === 'string' && settings.data.length > 0) {
                                 settings.data += '&' + csrfName + '=' + encodeURIComponent(csrfToken);
+                            } else if (settings.data instanceof FormData) {
+                                // FormData (file uploads, multipart forms) — must use .append()
+                                // NOT settings.data[key] = val (that just sets a JS property)
+                                if (!settings.data.has(csrfName)) {
+                                    settings.data.append(csrfName, csrfToken);
+                                }
                             } else if (typeof settings.data === 'object' && settings.data !== null) {
                                 settings.data[csrfName] = csrfToken;
                             } else {
@@ -278,6 +284,34 @@
                 });
             }
         });
+
+        // Also patch native fetch() so POST requests carry the CSRF token both
+        // in the header (for MY_Controller fallback) and in the body string
+        // (for CI's built-in csrf_protection which reads $_POST, not headers).
+        (function () {
+            var _fetch = window.fetch;
+            window.fetch = function (input, init) {
+                init = init || {};
+                if ((init.method || 'GET').toUpperCase() === 'POST') {
+                    // 1. Add to request header
+                    if (init.headers instanceof Headers) {
+                        if (!init.headers.has('X-CSRF-Token')) {
+                            init.headers.set('X-CSRF-Token', csrfToken);
+                        }
+                    } else {
+                        init.headers = init.headers || {};
+                        init.headers['X-CSRF-Token'] = init.headers['X-CSRF-Token'] || csrfToken;
+                    }
+                    // 2. Also inject into POST body string so CI's built-in
+                    //    csrf_protection (which reads $_POST) can verify it.
+                    if (typeof init.body === 'string' &&
+                        init.body.indexOf(csrfName + '=') === -1) {
+                        init.body += '&' + csrfName + '=' + encodeURIComponent(csrfToken);
+                    }
+                }
+                return _fetch.call(this, input, init);
+            };
+        }());
     </script>
 </head>
 

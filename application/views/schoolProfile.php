@@ -1,344 +1,986 @@
-<div class="content-wrapper">
-    <div class="page_container">
-        <!-- Header Section -->
-        <div class="header">
-            School Profile
-        </div>
+<?php defined('BASEPATH') or exit('No direct script access allowed');
+// Safety defaults
+$schoolData = $schoolData ?? [];
+$daysLeft   = $daysLeft   ?? null;
+$sd = is_array($schoolData) ? $schoolData : (array)$schoolData;
+?>
 
 
-        <!-- Profile Container -->
-        <div class="profile-container">
-            <!-- Profile Image and Basic Details -->
-            <div class="profile-image">
-                <img src="<?= $schoolData['Logo'] ?>" alt="School Logo"
-                    onerror="this.src='http://localhost/Grader/school/tools/image/default-school.jpeg';">
-
-                <div class="profile-header"><?= $schoolData['School Name'] ?? 'Default School Name' ?></div>
-                <ul class="profile-description"
-                    style="text-align: left; font-size: 14px; color: #585652; margin: 0; padding: 0; list-style: none; line-height: 1.6;">
-                    Welcome to <strong><?= $schoolData['School Name'] ?? 'Default School Name' ?>.</strong><br>
-                    <strong>Affiliated To:</strong> <?= $schoolData['Affiliated To'] ?? 'N/A' ?>.<br>
-                    <strong>Our School is located near :</strong> <?= $schoolData['Address'] ?? 'N/A' ?><br>
-                    <strong>Commitment:</strong> Committed to excellence in education.
-                </ul>
-
-            </div>
-
-            <!-- Profile Specifications -->
-            <div class="profile-specs">
-                <table class="table table-borderless">
-                    <tbody>
-                        <tr>
-                            <th>School Id :</th>
-                            <td><?= $schoolData['School Id'] ?? 'N/A' ?></td>
-                        </tr>
-                        <tr>
-                            <th>Affiliation Number :</th>
-                            <td><?= $schoolData['Affiliation Number'] ?? 'N/A' ?></td>
-                        </tr>
-                        <tr>
-                            <th>Affiliated To :</th>
-                            <td><?= $schoolData['Affiliated To'] ?? 'N/A' ?></td>
-                        </tr>
-                        <tr>
-                            <th>Address :</th>
-                            <td><?= $schoolData['Address'] ?? 'N/A' ?></td>
-                        </tr>
-                        <tr>
-                            <th>Email :</th>
-                            <td><?= $schoolData['Email'] ?? 'N/A' ?></td>
-                        </tr>
-                        <tr>
-                            <th>Mobile Number :</th>
-                            <td><?= $schoolData['Mobile Number'] ?? 'N/A' ?></td>
-                        </tr>
-                        <tr>
-                            <th>Phone Number :</th>
-                            <td><?= $schoolData['Phone Number'] ?? 'N/A' ?></td>
-                        </tr>
-                        <tr>
-                            <th>Website :</th>
-                            <td>
-                                <a href="<?= $schoolData['Website'] ?? '#' ?>" target="_blank">
-                                    <?= $schoolData['Website'] ?? 'N/A' ?>
-                                </a>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th>Subscription :</th>
-                            <td>
-                                <?= $schoolData['subscription']['status'] ?? 'Inactive' ?>
-                                <span style="color: red; font-weight: bold;">(<?= $daysLeft ?> days left)</span>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Subscription Details Section -->
-        <div class="subscription-wrapper">
-            <h3 class="section-title">Subscription Details</h3>
-            <div class="subscription-content">
-                <table class="subscription-table">
-                    <thead>
-                        <tr>
-                            <th>Plan Name</th>
-                            <th>Start Date</th>
-                            <th>End Date</th>
-                            <th>Status</th>
-                            <th>Features</th>
-                            <th>Payment Details</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><strong><?= $schoolData['subscription']['planName'] ?? 'N/A' ?></strong></td>
-                            <td><strong>
-                                    <?= isset($schoolData['subscription']['duration']['startDate']) ? 
-                            date("d/m/Y", strtotime($schoolData['subscription']['duration']['startDate'])) : 'N/A'; ?>
-                                </strong></td>
-                            <td><strong>
-                                    <?= isset($schoolData['subscription']['duration']['endDate']) ? 
-                            date("d/m/Y", strtotime($schoolData['subscription']['duration']['endDate'])) : 'N/A'; ?>
-                                </strong></td>
-                            <td><strong><?= $schoolData['subscription']['status'] ?? 'Inactive' ?></strong></td>
-                            <td>
-                                <ul>
-                                    <?php foreach ($schoolData['subscription']['features'] ?? [] as $feature): ?>
-                                    <li><?= $feature ?></li>
-                                    <?php endforeach; ?>
-                                </ul>
-                            </td>
-                            <td>
-                                <strong>Last Payment:</strong>
-                                <?= $schoolData['paymentDetails']['lastPaymentAmount'] ?? 'N/A' ?><br>
-                                <strong>Date:</strong>
-                                <?= isset($schoolData['paymentDetails']['lastPaymentDate']) ? 
-                            date("d/m/Y", strtotime($schoolData['paymentDetails']['lastPaymentDate'])) : 'N/A'; ?>
-                                <br>
-                                <strong>Total Amount :</strong>
-                                <?= $schoolData['subscription']['amount']['totalAmount'] ?? 'N/A' ?>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-
-    </div>
-</div>
-
-
-<!-- Search Modal -->
-<!-- <div class="modal fade" id="searchModal" tabindex="-1" aria-labelledby="searchModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="searchModalLabel">Search Student</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <div class="modal-body">
-                <form>
-                    <div class="form-group">
-                        <label for="searchName">Student Name</label>
-                        <input type="text" class="form-control" id="searchName" placeholder="Enter student name">
-                    </div>
-                    <div class="form-group">
-                        <label for="searchClass">Class</label>
-                        <input type="text" class="form-control" id="searchClass" placeholder="Enter class">
-                    </div>
-                    <div class="form-group">
-                        <label for="searchSection">Section</label>
-                        <input type="text" class="form-control" id="searchSection" placeholder="Enter section">
-                    </div>
-                </form>
-            </div>
-
-        </div>
-    </div>
-</div> -->
-
-
-<!-- <img src="http://localhost/Grader/school/tools/image/school.jpeg" alt="School Logo"> -->
-<style>
-.page_container {
-    padding-top: 1px;
-    background-color: #f8f9fa;
-}
-
-body {
-        font-family: Arial, sans-serif;
-        background-color: #f8f9fa;
-        margin: 0;
-
+<?php
+// ── Helper: safe get nested ──────────────────────────────────────────────
+function sp_get($arr, ...$keys)
+{
+    $cur = $arr;
+    foreach ($keys as $k) {
+        if (!is_array($cur) || !isset($cur[$k])) return '';
+        $cur = $cur[$k];
     }
-
-.header {
-    background-color: #007bff;
-    color: white;
-    text-align: center;
-    padding: 15px;
-    font-size: 24px;
-    margin: 15px 10px 10px 10px;
-    font-weight: bold;
+    return $cur ?? '';
 }
 
+// ── Subscription calculations ────────────────────────────────────────────
+$startDate    = sp_get($sd, 'subscription', 'duration', 'startDate');
+$endDate      = sp_get($sd, 'subscription', 'duration', 'endDate');
+$planName     = sp_get($sd, 'subscription', 'planName')  ?: 'N/A';
+$subStatus    = sp_get($sd, 'subscription', 'status')    ?: 'N/A';
+$months       = (int)(sp_get($sd, 'subscription', 'duration', 'periodInMonths') ?: 0);
+$totalAmt     = sp_get($sd, 'subscription', 'amount', 'totalAmount') ?: 0;
+$monthlyAmt   = sp_get($sd, 'subscription', 'amount', 'monthly')     ?: 0;
+$features     = sp_get($sd, 'subscription', 'features');
+if (!is_array($features)) $features = [];
 
-/* .search-section {
-        margin-top: 10px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        padding: 13px;
-        background-color: #f8f9fa;
-        border-radius: 5px;
-        border: 1px solid #ccc;
-        margin-bottom: 10px;
-    } */
+$startTs = $startDate ? strtotime($startDate) : null;
+$endTs   = $endDate   ? strtotime($endDate)   : null;
 
-.profile-container {
-    margin: 20px auto;
-    max-width: 900px;
-    background-color: #f8f9fa;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: 20px;
+$pct = 0;
+$barClass = 'sp-bar-green';
+if ($startTs && $endTs && $endTs > $startTs) {
+    $elapsed = time() - $startTs;
+    $total_d = $endTs - $startTs;
+    $pct     = max(0, min(100, round(($elapsed / $total_d) * 100)));
+    if ($pct >= 90)      $barClass = 'sp-bar-red';
+    elseif ($pct >= 70)  $barClass = 'sp-bar-amber';
 }
 
-.profile-image {
+$dl = $daysLeft;
+$subBadgeClass = 'sp-sub-active';
+$subBadgeLabel = 'Active';
+if ($dl !== null) {
+    if ($dl <= 0) {
+        $subBadgeClass = 'sp-sub-expired';
+        $subBadgeLabel = 'Expired';
+    } elseif ($dl <= 30) {
+        $subBadgeClass = 'sp-sub-warning';
+        $subBadgeLabel = 'Expiring Soon';
+    }
+}
+
+// ── School meta ──────────────────────────────────────────────────────────
+$schoolName   = sp_get($sd, 'School Name')       ?: 'Your School';
+$principal    = sp_get($sd, 'School Principal')  ?: '—';
+$address      = sp_get($sd, 'Address')           ?: '—';
+$phone        = sp_get($sd, 'Phone Number')      ?: '—';
+$mobile       = sp_get($sd, 'Mobile Number')     ?: '—';
+$email        = sp_get($sd, 'Email')             ?: '—';
+$website      = sp_get($sd, 'Website')           ?: '';
+$affiliated   = sp_get($sd, 'Affiliated To')     ?: '—';
+$affNo        = sp_get($sd, 'Affiliation Number') ?: '—';
+$logo         = sp_get($sd, 'Logo');
+$logoValid    = $logo && filter_var($logo, FILTER_VALIDATE_URL);
+
+// ── Payment ──────────────────────────────────────────────────────────────
+$lastAmt    = sp_get($sd, 'payment', 'lastPaymentAmount') ?: '0';
+$lastDate   = sp_get($sd, 'payment', 'lastPaymentDate')   ?: '—';
+$payMethod  = sp_get($sd, 'payment', 'paymentMethod')     ?: '—';
+
+// ── Activities ───────────────────────────────────────────────────────────
+$activities = sp_get($sd, 'Activities');
+if (!is_array($activities)) $activities = [];
+?>
+
+<div class="content-wrapper">
+    <div class="sp-wrap">
+
+        <!-- ── TOP BAR ── -->
+        <div class="sp-topbar">
+            <div>
+                <h1 class="sp-page-title"><i class="fa fa-id-card-o"></i> School Profile</h1>
+                <ol class="sp-breadcrumb">
+                    <li><a href="<?= base_url() ?>"><i class="fa fa-home"></i> Dashboard</a></li>
+                    <li>Schools</li>
+                    <li>Profile</li>
+                </ol>
+            </div>
+            <div style="display:flex;gap:10px;">
+                <a href="<?= site_url('schools/schoolgallery') ?>" class="sp-btn sp-btn-ghost">
+                    <i class="fa fa-picture-o"></i> Gallery
+                </a>
+            </div>
+        </div>
+
+        <!-- ── HERO ── -->
+        <div class="sp-hero">
+            <div class="sp-hero-logo">
+                <?php if ($logoValid): ?>
+                <img src="<?= htmlspecialchars($logo) ?>" alt="School Logo">
+                <?php else: ?>
+                <i class="fa fa-university"></i>
+                <?php endif; ?>
+            </div>
+            <div class="sp-hero-info">
+                <h2 class="sp-hero-name"><?= htmlspecialchars($schoolName) ?></h2>
+                <div class="sp-hero-meta">
+                    <span class="sp-hero-tag"><i class="fa fa-user"></i> <?= htmlspecialchars($principal) ?></span>
+                    <span class="sp-hero-tag"><i class="fa fa-certificate"></i>
+                        <?= htmlspecialchars($affiliated) ?></span>
+                    <span class="sp-hero-tag"><i class="fa fa-map-marker"></i> <?= htmlspecialchars($address) ?></span>
+                    <?php if ($email !== '—'): ?>
+                    <span class="sp-hero-tag"><i class="fa fa-envelope-o"></i> <?= htmlspecialchars($email) ?></span>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <div class="sp-hero-right">
+                <span class="sp-sub-badge <?= $subBadgeClass ?>">
+                    <i class="fa fa-circle" style="font-size:8px;"></i>
+                    <?= $subBadgeLabel ?>
+                </span>
+                <?php if ($dl !== null): ?>
+                <span class="sp-days-badge">
+                    <?= $dl > 0 ? $dl . ' days remaining' : 'Subscription expired' ?>
+                </span>
+                <?php endif; ?>
+                <span class="sp-days-badge"
+                    style="color:rgba(255,255,255,.5);"><?= htmlspecialchars($planName) ?></span>
+            </div>
+        </div>
+
+        <!-- ── STAT STRIP ── -->
+        <div class="sp-stat-strip">
+            <div class="sp-stat sp-stat-blue">
+                <div class="sp-stat-icon"><i class="fa fa-calendar"></i></div>
+                <div>
+                    <div class="sp-stat-label">Subscription Plan</div>
+                    <div class="sp-stat-val" style="font-size:14px;"><?= htmlspecialchars($planName) ?></div>
+                </div>
+            </div>
+            <div class="sp-stat sp-stat-green">
+                <div class="sp-stat-icon"><i class="fa fa-inr"></i></div>
+                <div>
+                    <div class="sp-stat-label">Total Amount Paid</div>
+                    <div class="sp-stat-val">₹<?= number_format((float)$totalAmt) ?></div>
+                </div>
+            </div>
+            <div class="sp-stat sp-stat-amber">
+                <div class="sp-stat-icon"><i class="fa fa-clock-o"></i></div>
+                <div>
+                    <div class="sp-stat-label">Duration</div>
+                    <div class="sp-stat-val"><?= $months ?> <span style="font-size:13px;font-weight:500;">months</span>
+                    </div>
+                </div>
+            </div>
+            <div class="sp-stat sp-stat-teal">
+                <div class="sp-stat-icon"><i class="fa fa-calendar-check-o"></i></div>
+                <div>
+                    <div class="sp-stat-label">Days Left</div>
+                    <div class="sp-stat-val"><?= $dl !== null ? $dl : '—' ?></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── MAIN LAYOUT ── -->
+        <div class="sp-layout">
+
+            <!-- ── School Info ── -->
+            <div class="sp-card">
+                <div class="sp-card-head">
+                    <i class="fa fa-info-circle"></i>
+                    <h3>School Information</h3>
+                </div>
+                <div class="sp-card-body">
+                    <div class="sp-info-list">
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-user"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Principal</div>
+                                <div class="sp-info-val"><?= htmlspecialchars($principal) ?></div>
+                            </div>
+                        </div>
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-map-marker"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Address</div>
+                                <div class="sp-info-val"><?= htmlspecialchars($address) ?></div>
+                            </div>
+                        </div>
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-phone"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Phone / Mobile</div>
+                                <div class="sp-info-val"><?= htmlspecialchars($phone) ?> /
+                                    <?= htmlspecialchars($mobile) ?></div>
+                            </div>
+                        </div>
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-envelope-o"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Email</div>
+                                <div class="sp-info-val"><a
+                                        href="mailto:<?= htmlspecialchars($email) ?>"><?= htmlspecialchars($email) ?></a>
+                                </div>
+                            </div>
+                        </div>
+                        <?php if ($website): ?>
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-globe"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Website</div>
+                                <div class="sp-info-val"><a href="<?= htmlspecialchars($website) ?>" target="_blank"
+                                        rel="noopener"><?= htmlspecialchars($website) ?></a></div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-certificate"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Affiliated To</div>
+                                <div class="sp-info-val"><?= htmlspecialchars($affiliated) ?></div>
+                            </div>
+                        </div>
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-hashtag"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Affiliation Number</div>
+                                <div class="sp-info-val"><?= htmlspecialchars($affNo) ?></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Subscription ── -->
+            <div class="sp-card">
+                <div class="sp-card-head">
+                    <i class="fa fa-credit-card"></i>
+                    <h3>Subscription Details</h3>
+                </div>
+                <div class="sp-card-body">
+
+                    <div class="sp-sub-section">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                            <span style="font-size:12px;font-weight:600;color:var(--sp-navy);">Subscription Usage</span>
+                            <span class="sp-sub-days <?= $pct >= 90 ? 'sp-bar-red' : ($pct >= 70 ? '' : '') ?>"
+                                style="font-size:12px;font-weight:700;color:<?= $pct >= 90 ? 'var(--sp-red)' : ($pct >= 70 ? 'var(--sp-amber)' : 'var(--sp-green)') ?>;">
+                                <?= $pct ?>% used
+                            </span>
+                        </div>
+                        <div class="sp-sub-progress">
+                            <div class="sp-sub-bar <?= $barClass ?>" style="width:<?= $pct ?>%;"></div>
+                        </div>
+                        <div class="sp-sub-dates">
+                            <span><i class="fa fa-play-circle"></i>
+                                <?= $startDate ? date('d M Y', strtotime($startDate)) : '—' ?></span>
+                            <span><i class="fa fa-flag-checkered"></i>
+                                <?= $endDate ? date('d M Y', strtotime($endDate)) : '—' ?></span>
+                        </div>
+                    </div>
+
+                    <hr class="sp-divider">
+
+                    <div class="sp-info-list">
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-tag"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Plan</div>
+                                <div class="sp-info-val"><?= htmlspecialchars($planName) ?></div>
+                            </div>
+                        </div>
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-circle" style="font-size:10px;"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Status</div>
+                                <div class="sp-info-val">
+                                    <span class="sp-sub-badge <?= $subBadgeClass ?>"
+                                        style="font-size:12px;padding:3px 10px;">
+                                        <?= $subBadgeLabel ?>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-calendar"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Duration</div>
+                                <div class="sp-info-val"><?= $months ?> months</div>
+                            </div>
+                        </div>
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-inr"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Monthly Amount</div>
+                                <div class="sp-info-val">₹<?= number_format((float)$monthlyAmt, 2) ?></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="sp-divider">
+
+                    <div
+                        style="margin-bottom:10px;font-size:12px;font-weight:700;color:var(--sp-teal);text-transform:uppercase;letter-spacing:.5px;">
+                        Last Payment
+                    </div>
+                    <div class="sp-payment-grid">
+                        <div class="sp-pay-item">
+                            <div class="sp-pay-label">Amount</div>
+                            <div class="sp-pay-val">₹<?= number_format((float)$lastAmt) ?></div>
+                        </div>
+                        <div class="sp-pay-item">
+                            <div class="sp-pay-label">Date</div>
+                            <div class="sp-pay-val" style="font-size:13px;"><?= htmlspecialchars($lastDate) ?></div>
+                        </div>
+                        <div class="sp-pay-item">
+                            <div class="sp-pay-label">Method</div>
+                            <div class="sp-pay-val" style="font-size:13px;"><?= htmlspecialchars($payMethod) ?></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ── Features ── -->
+            <div class="sp-card">
+                <div class="sp-card-head">
+                    <i class="fa fa-th-large"></i>
+                    <h3>Active Modules / Features</h3>
+                </div>
+                <div class="sp-card-body">
+                    <?php if (!empty($features)): ?>
+                    <div class="sp-features-wrap">
+                        <?php
+                            $featureIcons = [
+                                'School Management'  => 'university',
+                                'Class Management'   => 'chalkboard',
+                                'Student Management' => 'user-graduate',
+                                'Staff Management'   => 'users',
+                                'Account Management' => 'book',
+                                'Fees Management'    => 'rupee',
+                                'Exam Management'    => 'pencil-square-o',
+                                'Admin Management'   => 'cog',
+                            ];
+                            foreach ($features as $feat):
+                                $feat = is_string($feat) ? $feat : (string)$feat;
+                                $icon = $featureIcons[$feat] ?? 'check';
+                            ?>
+                        <span class="sp-feature-pill">
+                            <i class="fa fa-<?= $icon ?>"></i>
+                            <?= htmlspecialchars($feat) ?>
+                        </span>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php else: ?>
+                    <p style="font-size:13px;color:var(--sp-muted);margin:0;">No features configured.</p>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- ── Documents ── -->
+            <div class="sp-card">
+                <div class="sp-card-head">
+                    <i class="fa fa-file-text-o"></i>
+                    <h3>School Documents</h3>
+                </div>
+                <div class="sp-card-body">
+                    <div class="sp-info-list">
+                        <?php
+                        $holidaysUrl = sp_get($sd, 'Holidays');
+                        $academicUrl = sp_get($sd, 'Academic calendar');
+                        ?>
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-calendar-o"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Holidays Calendar</div>
+                                <div class="sp-info-val">
+                                    <?php if ($holidaysUrl && filter_var($holidaysUrl, FILTER_VALIDATE_URL)): ?>
+                                    <a href="<?= htmlspecialchars($holidaysUrl) ?>" target="_blank"
+                                        class="sp-btn sp-btn-ghost" style="padding:5px 12px;font-size:12px;">
+                                        <i class="fa fa-download"></i> Download
+                                    </a>
+                                    <?php else: ?>
+                                    <span style="color:var(--sp-muted);">Not uploaded</span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sp-info-row">
+                            <div class="sp-info-icon"><i class="fa fa-book"></i></div>
+                            <div class="sp-info-body">
+                                <div class="sp-info-label">Academic Calendar</div>
+                                <div class="sp-info-val">
+                                    <?php if ($academicUrl && filter_var($academicUrl, FILTER_VALIDATE_URL)): ?>
+                                    <a href="<?= htmlspecialchars($academicUrl) ?>" target="_blank"
+                                        class="sp-btn sp-btn-ghost" style="padding:5px 12px;font-size:12px;">
+                                        <i class="fa fa-download"></i> Download
+                                    </a>
+                                    <?php else: ?>
+                                    <span style="color:var(--sp-muted);">Not uploaded</span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Activities ── -->
+            <?php if (!empty($activities)): ?>
+            <div class="sp-card sp-card-full">
+                <div class="sp-card-head">
+                    <i class="fa fa-image"></i>
+                    <h3>School Activities</h3>
+                </div>
+                <div class="sp-card-body">
+                    <div class="sp-activities-grid">
+                        <?php foreach ($activities as $key => $imgUrl): ?>
+                        <?php if (filter_var($imgUrl, FILTER_VALIDATE_URL)): ?>
+                        <div class="sp-activity-thumb">
+                            <img src="<?= htmlspecialchars($imgUrl) ?>"
+                                alt="Activity <?= htmlspecialchars((string)$key) ?>"
+                                onerror="this.parentElement.style.display='none'">
+                        </div>
+                        <?php endif; ?>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
+        </div><!-- /.sp-layout -->
+
+    </div><!-- /.sp-wrap -->
+</div><!-- /.content-wrapper -->
+
+
+
+
+<style>
+/* ── School Profile — matches ERP theme ── */
+:root {
+    --sp-navy: #1a2332;
+    --sp-teal: #0d9488;
+    --sp-teal-lt: #ccfbf1;
+    --sp-amber: #d97706;
+    --sp-red: #dc2626;
+    --sp-green: #16a34a;
+    --sp-muted: #6b7280;
+    --sp-border: #e5e7eb;
+    --sp-bg: #f4f6f9;
+    --sp-white: #ffffff;
+    --sp-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+    --sp-radius: 10px;
+}
+
+.sp-wrap {
+    padding: 20px 24px;
+    background: var(--sp-bg);
+    min-height: 100vh;
+}
+
+/* ── Top bar ── */
+.sp-topbar {
     display: flex;
-    flex-direction: column;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 22px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.sp-page-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--sp-navy);
+    margin: 0 0 4px;
+    display: flex;
     align-items: center;
-    text-align: center;
-    background-color: #f7f1f1;
-    border-radius: 8px;
-    padding: 20px;
-    overflow: hidden;
+    gap: 8px;
 }
 
-.profile-image img {
-    width: 250px;
-    /* Adjust width */
-    height: 250px;
-    /* Adjust height */
-    object-fit: contain;
-    /* Maintain aspect ratio */
-    border-radius: 15px;
-    /* Adjust corner radius */
-    margin-bottom: 10px;
+.sp-page-title i {
+    color: var(--sp-teal);
 }
 
-
-.profile-header {
-    font-weight: bold;
-    font-size: 24px;
-    margin: 10px 0;
-}
-
-.profile-description {
-    font-size: 14px;
-    color: #585652;
-    text-align: left;
-}
-
-
-.profile-specs {
-    display: flex;
-    font-size: 20px;
-
-    flex-direction: column;
-}
-
-.profile-specs table {
-    width: 100%;
-    margin-bottom: 20px;
-}
-
-.profile-specs th {
-    text-align: left;
-    padding-right: 10px;
-    margin-bottom: 5px auto;
-    color: #495057;
-}
-
-.profile-actions .btn {
-    margin-right: 10px;
-}
-
-
-/* Updated Styling for Subscription Section */
-.subscription-wrapper {
-    margin: 20px auto;
-    max-width: 900px;
-    background-color: #fff;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.section-title {
-    font-size: 2rem;
-    font-weight: bold;
-    margin-bottom: 15px;
-    color: #495057;
-    text-align: center;
-}
-
-.subscription-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 10px;
-}
-
-.subscription-table th,
-.subscription-table td {
-    border: 1px solid #ddd;
-    padding: 12px;
-    text-align: left;
-}
-
-.subscription-table th {
-    background-color: #006400;
-    color: white;
-    font-weight: bold;
-}
-
-.subscription-table td {
-    background-color: #f8f9fa;
-    color: #495057;
-}
-
-.subscription-table ul {
+.sp-breadcrumb {
+    list-style: none;
+    padding: 0;
     margin: 0;
-    padding-left: 20px;
-    list-style-type: disc;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--sp-muted);
 }
 
-.subscription-content {
-    overflow-x: auto;
-    /* Add horizontal scroll for smaller screens */
+.sp-breadcrumb li:not(:last-child)::after {
+    content: '/';
+    margin-left: 6px;
 }
 
-.subscription-wrapper table {
-    font-size: 1.8rem;
-    margin: 0 auto;
-}
-
-.subscription-wrapper td a {
-    color: #007bff;
+.sp-breadcrumb a {
+    color: var(--sp-teal);
     text-decoration: none;
 }
 
-.subscription-wrapper td a:hover {
+.sp-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 18px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    text-decoration: none;
+    transition: all .18s;
+}
+
+.sp-btn-primary {
+    background: var(--sp-teal);
+    color: #fff;
+}
+
+.sp-btn-primary:hover {
+    background: #0f766e;
+}
+
+.sp-btn-ghost {
+    background: #fff;
+    color: var(--sp-navy);
+    border: 1.5px solid var(--sp-border);
+}
+
+.sp-btn-ghost:hover {
+    border-color: var(--sp-teal);
+    color: var(--sp-teal);
+}
+
+.sp-btn-amber {
+    background: var(--sp-amber);
+    color: #fff;
+}
+
+.sp-btn-amber:hover {
+    background: #b45309;
+}
+
+/* ── Hero banner ── */
+.sp-hero {
+    background: linear-gradient(135deg, var(--sp-navy) 0%, #243450 60%, #1f3a5f 100%);
+    border-radius: var(--sp-radius);
+    padding: 28px 32px;
+    margin-bottom: 22px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+    box-shadow: 0 4px 20px rgba(26, 35, 50, .3);
+    position: relative;
+    overflow: hidden;
+}
+
+.sp-hero::after {
+    content: '';
+    position: absolute;
+    right: -40px;
+    top: -40px;
+    width: 220px;
+    height: 220px;
+    background: rgba(13, 148, 136, .12);
+    border-radius: 50%;
+}
+
+.sp-hero-logo {
+    width: 80px;
+    height: 80px;
+    border-radius: 16px;
+    object-fit: cover;
+    border: 3px solid rgba(255, 255, 255, .25);
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, .1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, .5);
+    font-size: 32px;
+    overflow: hidden;
+}
+
+.sp-hero-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.sp-hero-info {
+    flex: 1;
+    min-width: 200px;
+}
+
+.sp-hero-name {
+    font-size: 22px;
+    font-weight: 800;
+    color: #fff;
+    margin: 0 0 6px;
+}
+
+.sp-hero-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.sp-hero-tag {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, .7);
+}
+
+.sp-hero-tag i {
+    color: var(--sp-teal);
+}
+
+.sp-hero-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.sp-sub-badge {
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sp-sub-active {
+    background: rgba(22, 163, 74, .25);
+    color: #4ade80;
+}
+
+.sp-sub-warning {
+    background: rgba(217, 119, 6, .25);
+    color: #fbbf24;
+}
+
+.sp-sub-expired {
+    background: rgba(220, 38, 38, .25);
+    color: #f87171;
+}
+
+.sp-days-badge {
+    font-size: 11px;
+    color: rgba(255, 255, 255, .6);
+}
+
+/* ── Stat strip ── */
+.sp-stat-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 22px;
+}
+
+.sp-stat {
+    background: var(--sp-white);
+    border-radius: var(--sp-radius);
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: var(--sp-shadow);
+    border-left: 4px solid transparent;
+}
+
+.sp-stat-blue {
+    border-left-color: #3b82f6;
+}
+
+.sp-stat-green {
+    border-left-color: var(--sp-green);
+}
+
+.sp-stat-amber {
+    border-left-color: var(--sp-amber);
+}
+
+.sp-stat-teal {
+    border-left-color: var(--sp-teal);
+}
+
+.sp-stat-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.sp-stat-blue .sp-stat-icon {
+    background: #eff6ff;
+    color: #3b82f6;
+}
+
+.sp-stat-green .sp-stat-icon {
+    background: #f0fdf4;
+    color: var(--sp-green);
+}
+
+.sp-stat-amber .sp-stat-icon {
+    background: #fffbeb;
+    color: var(--sp-amber);
+}
+
+.sp-stat-teal .sp-stat-icon {
+    background: #f0fdfa;
+    color: var(--sp-teal);
+}
+
+.sp-stat-label {
+    font-size: 11px;
+    color: var(--sp-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+
+.sp-stat-val {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--sp-navy);
+    line-height: 1.2;
+}
+
+/* ── Layout: 2 col ── */
+.sp-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+    .sp-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Cards ── */
+.sp-card {
+    background: var(--sp-white);
+    border-radius: var(--sp-radius);
+    box-shadow: var(--sp-shadow);
+    overflow: hidden;
+}
+
+.sp-card-full {
+    grid-column: 1 / -1;
+}
+
+.sp-card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 20px;
+    border-bottom: 1.5px solid var(--sp-border);
+    background: #f8fafc;
+}
+
+.sp-card-head h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--sp-navy);
+}
+
+.sp-card-head i {
+    color: var(--sp-teal);
+}
+
+.sp-card-body {
+    padding: 20px;
+}
+
+/* ── Info list ── */
+.sp-info-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.sp-info-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.sp-info-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--sp-teal-lt);
+    color: var(--sp-teal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.sp-info-body {
+    flex: 1;
+}
+
+.sp-info-label {
+    font-size: 11px;
+    color: var(--sp-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    margin-bottom: 2px;
+}
+
+.sp-info-val {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--sp-navy);
+}
+
+.sp-info-val a {
+    color: var(--sp-teal);
+    text-decoration: none;
+}
+
+.sp-info-val a:hover {
     text-decoration: underline;
+}
+
+/* ── Subscription progress ── */
+.sp-sub-section {
+    margin-bottom: 16px;
+}
+
+.sp-sub-progress {
+    background: #e5e7eb;
+    border-radius: 20px;
+    height: 8px;
+    overflow: hidden;
+    margin: 8px 0;
+}
+
+.sp-sub-bar {
+    height: 100%;
+    border-radius: 20px;
+    transition: width .6s ease;
+}
+
+.sp-bar-green {
+    background: var(--sp-green);
+}
+
+.sp-bar-amber {
+    background: var(--sp-amber);
+}
+
+.sp-bar-red {
+    background: var(--sp-red);
+}
+
+.sp-sub-dates {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--sp-muted);
+}
+
+.sp-sub-days {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+/* ── Features pills ── */
+.sp-features-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.sp-feature-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: var(--sp-teal-lt);
+    color: var(--sp-teal);
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid rgba(13, 148, 136, .2);
+}
+
+.sp-feature-pill i {
+    font-size: 11px;
+}
+
+/* ── Activities ── */
+.sp-activities-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+}
+
+.sp-activity-thumb {
+    border-radius: 8px;
+    overflow: hidden;
+    aspect-ratio: 4/3;
+    border: 1.5px solid var(--sp-border);
+}
+
+.sp-activity-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* ── Payment row ── */
+.sp-payment-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+}
+
+@media (max-width: 480px) {
+    .sp-payment-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.sp-pay-item {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 14px 16px;
+    border: 1px solid var(--sp-border);
+}
+
+.sp-pay-label {
+    font-size: 11px;
+    color: var(--sp-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    margin-bottom: 4px;
+}
+
+.sp-pay-val {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--sp-navy);
+}
+
+/* ── Divider ── */
+.sp-divider {
+    border: none;
+    border-top: 1px solid var(--sp-border);
+    margin: 16px 0;
 }
 </style>

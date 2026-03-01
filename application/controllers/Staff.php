@@ -3,7 +3,7 @@
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 
-defined('BASEPATH') OR exit('No direct script access allowed');
+defined('BASEPATH') or exit('No direct script access allowed');
 
 /**
  * Staff controller
@@ -54,10 +54,30 @@ class Staff extends MY_Controller
             $data['staff'] = [];
         }
 
+        // Remove non-staff siblings (e.g. the integer 'Count' node).
+        // PHP 8 throws a fatal TypeError when the view accesses $s['field']
+        // on a non-array value, which stops rendering — so any staff entries
+        // that come after 'Count' alphabetically (like STA0006) are never shown.
+        $data['staff'] = array_filter($data['staff'], 'is_array');
+
+        // Normalise profile-pic key: new_staff() stores 'ProfilePic',
+        // older records may use 'Photo URL'.
+        foreach ($data['staff'] as &$s) {
+            $s['_profilePic'] = $s['ProfilePic'] ?? $s['Photo URL'] ?? '';
+        }
+        unset($s);
+
         $data['school_name'] = $school_name;
 
         $this->load->view('include/header');
         $this->load->view('all_staff', $data);
+        $this->load->view('include/footer');
+    }
+
+    public function master_staff()
+    {
+        $this->load->view('include/header');
+        $this->load->view('import_staff'); // view file
         $this->load->view('include/footer');
     }
 
@@ -66,142 +86,214 @@ class Staff extends MY_Controller
     public function import_staff()
     {
         try {
+
+            $school_id    = $this->school_id;
+            $school_name  = $this->school_name;
+            $session_year = $this->session_year;
+
             if (!isset($_FILES['excelFile']) || $_FILES['excelFile']['error'] !== UPLOAD_ERR_OK) {
-                echo 'No file uploaded or upload error.';
+                redirect('staff/all_staff');
                 return;
             }
 
-            $file = $_FILES['excelFile'];
-
-            // [FIX-9] Dual MIME + extension validation
-            $allowedMimes = [
-                'application/vnd.ms-excel',
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            ];
-            $realMime = mime_content_type($file['tmp_name']);
-
-            if (!in_array($realMime, $allowedMimes, true)) {
-                echo 'Invalid file type. Only XLSX files are accepted.';
-                return;
-            }
-
-            $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-            if (!in_array($extension, ['xls', 'xlsx'], true)) {
-                echo 'Invalid file extension.';
-                return;
-            }
-
-            $reader      = IOFactory::createReader('Xlsx');
-            $spreadsheet = $reader->load($file['tmp_name']);
+            $reader = IOFactory::createReader('Xlsx');
+            $spreadsheet = $reader->load($_FILES['excelFile']['tmp_name']);
             $sheetData   = $spreadsheet->getActiveSheet()->toArray();
 
-            array_shift($sheetData); // Remove school name row
-            $headers    = array_map('trim', $sheetData[0] ?? []);
+            $headers = array_map('trim', $sheetData[0]);
             unset($sheetData[0]);
             $sheetData = array_values($sheetData);
 
-            $headers = $this->CM->normalizeKeys(array_combine($headers, $headers));
+            $count = $this->CM->get_data("Users/Teachers/Count") ?? 1;
 
-            $requiredFields = ['User Id', 'Name', 'School Name', 'Gender', 'Phone Number', 'Email', 'Password', 'Address'];
-            $missing = array_diff($requiredFields, array_keys($headers));
-            if (!empty($missing)) {
-                echo 'Required fields missing from header: ' . implode(', ', $missing);
-                return;
-            }
+            $success = 0;
+            $error   = 0;
 
-            $successCount = $errorCount = 0;
+            foreach ($sheetData as $row) {
 
-            foreach ($sheetData as $i => $row) {
-                if (!array_filter($row)) {
+                if (!array_filter($row)) continue;
+
+                // prevent array_combine crash
+                if (count($headers) !== count($row)) {
+                    $error++;
                     continue;
                 }
 
-                $rowData = array_map(function ($v) { return is_string($v) ? trim($v) : $v; },
-                    array_combine(array_keys($headers), $row));
+                $rowData = array_combine($headers, $row);
 
-                $formattedData = [
-                    'User Id'     => $rowData['User Id']     ?? '',
-                    'Name'        => $rowData['Name']        ?? '',
-                    'Email'       => $rowData['Email']       ?? '',
-                    'Phone Number'=> $rowData['Phone Number'] ?? '',
-                    'Gender'      => $rowData['Gender']      ?? '',
-                    'School Name' => $rowData['School Name'] ?? '',
-                    'Address'     => $rowData['Address']     ?? '',
-                    'Password'    => $rowData['Password']    ?? '',
+                $staffId = 'STA' . str_pad($count, 4, '0', STR_PAD_LEFT);
+
+                $name  = trim($rowData['Name']);
+                $phone = trim($rowData['Phone Number']);
+                $dob   = trim($rowData['DOB']);
+
+                if (!preg_match('/^[6-9]\d{9}$/', $phone)) {
+                    $error++;
+                    continue;
+                }
+                // ✅ PASSWORD GENERATION
+                $name = trim($name);
+                $dob  = trim($dob);
+
+                $cleanName = preg_replace('/\s+/', '', $name);
+                $first3    = ucfirst(substr($cleanName, 0, 3));
+
+                $timestamp = strtotime($dob);
+                if ($timestamp === false) {
+                    $error++;
+                    continue;
+                }
+
+                $year   = date('Y', $timestamp);
+                $last3  = substr($year, -3);
+
+                $plainPassword  = $first3 . $last3 . '@';
+                $hashedPassword = password_hash($plainPassword, PASSWORD_DEFAULT);
+
+                // ✅ SALARY CALCULATION
+                $basic = (float)$rowData['Basic Salary'];
+                $allow = (float)$rowData['Allowances'];
+                $net   = $basic + $allow;
+
+                $data = [
+
+                    "User ID" => $staffId,
+                    "Name" => $name,
+                    "Email" => trim($rowData['Email']),
+                    "Phone Number" => $phone,
+                    "Gender" => trim($rowData['Gender']),
+                    "Department" => trim($rowData['Department']),
+                    "Position" => trim($rowData['Position']),
+                    "Employment Type" => trim($rowData['Employment Type']),
+                    "DOB" => $dob,
+                    "Date Of Joining" => trim($rowData['Date Of Joining']),
+                    "Father Name" => trim($rowData['Father Name']),
+                    "Religion" => trim($rowData['Religion']),
+                    "Category" => trim($rowData['Category']),
+                    "Password" => $hashedPassword,
+                    "lastUpdated" => date('Y-m-d'),
+
+                    "qualificationDetails" => [
+                        "highestQualification" => trim($rowData['Qualification']),
+                        "experience" => trim($rowData['Experience']),
+                        "university" => trim($rowData['University']),
+                        "yearOfPassing" => trim($rowData['Year Of Passing']),
+                    ],
+
+                    "salaryDetails" => [
+                        "basicSalary" => $basic,
+                        "Allowances" => $allow,
+                        "Net Salary" => $net
+                    ],
+
+                    "bankDetails" => [
+                        "accountHolderName" => trim($rowData['Account Holder Name']),
+                        "accountNumber" => trim($rowData['Account Number']),
+                        "bankName" => trim($rowData['Bank Name']),
+                        "ifscCode" => trim($rowData['IFSC Code']),
+                    ],
+
+                    "emergencyContact" => [
+                        "name" => trim($rowData['Emergency Contact Name']),
+                        "phoneNumber" => trim($rowData['Emergency Contact Number']),
+                    ],
+
+                    "Address" => [
+                        "Street" => trim($rowData['Street']),
+                        "City" => trim($rowData['City']),
+                        "State" => trim($rowData['State']),
+                        "PostalCode" => trim($rowData['Postal Code'])
+                    ],
+
+                    // ✅ EMPTY DOC STRUCTURE
+                    "Doc" => [
+                        "Aadhar Card" => [
+                            "thumbnail" => "",
+                            "url" => ""
+                        ],
+                        "Photo" => [
+                            "thumbnail" => "",
+                            "url" => ""
+                        ]
+                    ]
                 ];
 
-                $missingInRow = array_filter($requiredFields, fn($f) => empty(trim($formattedData[$f])));
+                $this->firebase->set("Users/Teachers/{$school_id}/{$staffId}", $data);
 
-                if (!empty($missingInRow)) {
-                    log_message('error', "Import: missing fields in row {$i}: " . implode(', ', $missingInRow));
-                    $errorCount++;
-                    continue;
-                }
+                $this->CM->addKey_pair_data("Schools/{$school_name}/{$session_year}/Teachers/{$staffId}", [
+                    'Name' => $name
+                ]);
 
-                $this->add_staff($formattedData);
-                $successCount++;
+                $this->CM->addKey_pair_data('Exits/', [$phone => $school_id]);
+                $this->CM->addKey_pair_data('User_ids_pno/', [$phone => $staffId]);
+
+                $count++;
+                $success++;
             }
 
-            echo "Import completed. Successful: {$successCount}. Errors: {$errorCount}.";
-            redirect(base_url() . 'staff/all_staff');
+            $this->CM->addKey_pair_data("Users/Teachers/", ['Count' => $count]);
 
+            $this->session->set_flashdata('import_result', "Staff Imported: {$success} | Failed: {$error}");
+            redirect('staff/all_staff');
         } catch (Exception $e) {
-            log_message('error', 'import_staff: ' . $e->getMessage());
-            echo 'An error occurred during import.';
+
+            log_message('error', 'IMPORT STAFF ERROR: ' . $e->getMessage());
+            $this->session->set_flashdata('import_result', 'Import failed');
+            redirect('staff/all_staff');
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // // ─────────────────────────────────────────────────────────────────────────
 
-    public function add_staff($data)
-    {
-        $school_id    = $this->school_id;
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
+    // public function add_staff($data)
+    // {
+    //     $school_id    = $this->school_id;
+    //     $school_name  = $this->school_name;
+    //     $session_year = $this->session_year;
 
-        $requiredFields = ['User Id', 'Name', 'School Name', 'Gender', 'Phone Number', 'Email', 'Password', 'Address'];
+    //     $requiredFields = ['User Id', 'Name', 'School Name', 'Gender', 'Phone Number', 'Email', 'Password', 'Address'];
 
-        $missingFields = array_filter($requiredFields, fn($f) => !isset($data[$f]) || trim($data[$f]) === '');
-        if (!empty($missingFields)) {
-            log_message('error', 'add_staff: required fields missing: ' . implode(', ', $missingFields));
-            return;
-        }
+    //     $missingFields = array_filter($requiredFields, fn($f) => !isset($data[$f]) || trim($data[$f]) === '');
+    //     if (!empty($missingFields)) {
+    //         log_message('error', 'add_staff: required fields missing: ' . implode(', ', $missingFields));
+    //         return;
+    //     }
 
-        if (empty($data['Password'])) {
-            $name            = ucfirst($data['Name']);
-            $data['Password'] = substr($name, 0, 3) . '123@';
-        }
+    //     if (empty($data['Password'])) {
+    //         $name            = ucfirst($data['Name']);
+    //         $data['Password'] = substr($name, 0, 3) . '123@';
+    //     }
 
-        // [FIX-2] Hash password
-        $data['Password'] = password_hash($data['Password'], PASSWORD_DEFAULT);
+    //     // [FIX-2] Hash password
+    //     $data['Password'] = password_hash($data['Password'], PASSWORD_DEFAULT);
 
-        $phoneNumber = $data['Phone Number'];
+    //     $phoneNumber = $data['Phone Number'];
 
-        // [FIX-3] Validate phone number
-        if (!preg_match('/^[6-9]\d{9}$/', $phoneNumber)) {
-            log_message('error', 'add_staff: invalid phone number: ' . $phoneNumber);
-            return;
-        }
+    //     // [FIX-3] Validate phone number
+    //     if (!preg_match('/^[6-9]\d{9}$/', $phoneNumber)) {
+    //         log_message('error', 'add_staff: invalid phone number: ' . $phoneNumber);
+    //         return;
+    //     }
 
-        $currentCount = $this->CM->get_data("Users/Teachers/Count") ?? 1;
-        $userId = $currentCount;
-        $data['User Id'] = $userId;
+    //     $currentCount = $this->CM->get_data("Users/Teachers/Count") ?? 1;
+    //     $userId = $currentCount;
+    //     $data['User Id'] = $userId;
 
-        $existingUser = $this->CM->select_data("Users/Teachers/{$school_id}/{$userId}");
-        if ($existingUser) {
-            log_message('error', 'add_staff: user already exists: ' . $userId);
-            return;
-        }
+    //     $existingUser = $this->CM->select_data("Users/Teachers/{$school_id}/{$userId}");
+    //     if ($existingUser) {
+    //         log_message('error', 'add_staff: user already exists: ' . $userId);
+    //         return;
+    //     }
 
-        $result = $this->CM->insert_data("Users/Teachers/{$school_id}/", $data);
+    //     $result = $this->CM->insert_data("Users/Teachers/{$school_id}/", $data);
 
-        if ($result) {
-            $this->CM->addKey_pair_data('Exits/', [$phoneNumber => $school_id]);
-            $this->CM->addKey_pair_data('User_ids_pno/', [$phoneNumber => $userId]);
-            $this->CM->addKey_pair_data("Schools/{$school_name}/{$session_year}/Teachers/{$userId}", ['Name' => $data['Name']]);
-            $this->CM->addKey_pair_data('Users/Teachers/', ['Count' => $currentCount + 1]);
-        }
-    }
+    //     if ($result) {
+    //         $this->CM->addKey_pair_data('Exits/', [$phoneNumber => $school_id]);
+    //         $this->CM->addKey_pair_data('User_ids_pno/', [$phoneNumber => $userId]);
+    //         $this->CM->addKey_pair_data("Schools/{$school_name}/{$session_year}/Teachers/{$userId}", ['Name' => $data['Name']]);
+    //         $this->CM->addKey_pair_data('Users/Teachers/', ['Count' => $currentCount + 1]);
+    //     }
+    // }
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -261,7 +353,7 @@ class Staff extends MY_Controller
             if (!empty($_FILES['Photo']['tmp_name'])) {
                 $photo          = $_FILES['Photo'];
                 $photoExtension = strtolower(pathinfo($photo['name'], PATHINFO_EXTENSION));
-                $allowedPhotoExt= ['jpg', 'jpeg'];
+                $allowedPhotoExt = ['jpg', 'jpeg'];
                 $realMime       = mime_content_type($photo['tmp_name']);
 
                 if (!in_array($photoExtension, $allowedPhotoExt, true) || !in_array($realMime, ['image/jpeg', 'image/jpg'], true)) {
@@ -281,7 +373,7 @@ class Staff extends MY_Controller
             if (!empty($_FILES['Aadhar']['tmp_name'])) {
                 $aadhar          = $_FILES['Aadhar'];
                 $aadharExtension = strtolower(pathinfo($aadhar['name'], PATHINFO_EXTENSION));
-                $allowedAadharExt= ['jpg', 'jpeg', 'png', 'pdf'];
+                $allowedAadharExt = ['jpg', 'jpeg', 'png', 'pdf'];
                 $fileMimeType    = mime_content_type($aadhar['tmp_name']);
                 $allowedMimes    = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
 
@@ -358,8 +450,8 @@ class Staff extends MY_Controller
                 'Address'         => $addressData,
                 'bankDetails'     => $bankDetailsData,
                 'Department'      => $normalizedPostData['department']     ?? '',
-                'emergencyContact'=> $emergencyContactData,
-                'Employment Type' => $normalizedPostData['employment_type']?? '',
+                'emergencyContact' => $emergencyContactData,
+                'Employment Type' => $normalizedPostData['employment_type'] ?? '',
                 'qualificationDetails' => $qualificationDetailsData,
                 'salaryDetails'   => $salaryDetailsData,
                 'Blood Group'     => $normalizedPostData['blood_group']    ?? '',
@@ -444,19 +536,19 @@ class Staff extends MY_Controller
 
                     $allowedMimes = [
                         'photo'      => ['image/jpeg', 'image/jpg'],
-                        'aadhar_card'=> ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'],
+                        'aadhar_card' => ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'],
                     ];
 
                     if (!in_array($realMime, $allowedMimes[$field], true)) {
                         $this->json_error("Invalid file type for {$field}.", 400);
                     }
 
-                    $fileName    = $user_id . '_' . $field . '.' . $extension;
-                    $firebasePath= "staff/{$user_id}/{$fileName}";
-                    $uploadResult= $this->CM->upload_to_firebase_storage($firebasePath, $filePath);
+                    $fileName     = $user_id . '_' . $field . '.' . $extension;
+                    $firebasePath = "staff/{$user_id}/{$fileName}";
+                    $uploadResult = $this->CM->upload_to_firebase_storage($filePath, $firebasePath);
 
-                    if (($uploadResult['status'] ?? '') === 'success') {
-                        $uploadPaths[$field] = $uploadResult['url'];
+                    if (!empty($uploadResult['mediaLink'])) {
+                        $uploadPaths[$field] = $uploadResult['mediaLink'];
                     }
                 }
             }
@@ -467,18 +559,26 @@ class Staff extends MY_Controller
             // Structured fields
             $structuredFields = [
                 'Address' => [
-                    'city' => 'City', 'street' => 'Street', 'state' => 'State', 'postalcode' => 'PostalCode',
+                    'city' => 'City',
+                    'street' => 'Street',
+                    'state' => 'State',
+                    'postalcode' => 'PostalCode',
                 ],
                 'emergencyContact' => [
-                    'emergency_contact_name' => 'name', 'emergency_contact_phone' => 'phoneNumber',
+                    'emergency_contact_name' => 'name',
+                    'emergency_contact_phone' => 'phoneNumber',
                 ],
                 'qualificationDetails' => [
-                    'teacher_experience' => 'experience', 'qualification' => 'highestQualification',
-                    'university' => 'university', 'year_of_passing' => 'yearOfPassing',
+                    'teacher_experience' => 'experience',
+                    'qualification' => 'highestQualification',
+                    'university' => 'university',
+                    'year_of_passing' => 'yearOfPassing',
                 ],
                 'bankDetails' => [
-                    'account_holder' => 'accountHolderName', 'account_number' => 'accountNumber',
-                    'bank_name' => 'bankName', 'bank_ifsc' => 'ifscCode',
+                    'account_holder' => 'accountHolderName',
+                    'account_number' => 'accountNumber',
+                    'bank_name' => 'bankName',
+                    'bank_ifsc' => 'ifscCode',
                 ],
             ];
 
@@ -536,7 +636,6 @@ class Staff extends MY_Controller
             } else {
                 $this->json_error('Update failed.', 500);
             }
-
         } else {
             $data['staff_data'] = $this->CM->select_data("Users/Teachers/{$school_id}/{$user_id}");
 
@@ -597,7 +696,7 @@ class Staff extends MY_Controller
                 if (!is_array($teacher)) continue;
 
                 $name       = $teacher['Name']        ?? '';
-                $userIdField= $teacher['User ID']     ?? '';
+                $userIdField = $teacher['User ID']     ?? '';
                 $fatherName = $teacher['Father Name'] ?? '';
 
                 if (
@@ -608,7 +707,7 @@ class Staff extends MY_Controller
                     $results[] = [
                         'user_id'    => $userIdField,
                         'name'       => htmlspecialchars($name,       ENT_QUOTES, 'UTF-8'),
-                        'father_name'=> htmlspecialchars($fatherName, ENT_QUOTES, 'UTF-8'),
+                        'father_name' => htmlspecialchars($fatherName, ENT_QUOTES, 'UTF-8'),
                     ];
                 }
             }

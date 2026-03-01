@@ -13,6 +13,222 @@ class Student extends CI_Controller
     }
 
 
+    public function master_student()
+    {
+        $this->load->view('include/header');
+        $this->load->view('import_students'); // view file
+        $this->load->view('include/footer');
+    }
+     public function import_students()
+    {
+        try {
+
+            log_message('error', '=== IMPORT FUNCTION STARTED ===');
+
+            $school_id    = $this->school_id;
+            $school_name  = $this->school_name;
+            $session_year = $this->session_year;
+
+            log_message('error', 'School ID: ' . $school_id);
+
+            if (!isset($_FILES['excelFile']) || $_FILES['excelFile']['error'] !== UPLOAD_ERR_OK) {
+                log_message('error', 'File not uploaded properly.');
+                redirect('student/all_student');
+                return;
+            }
+
+            $file = $_FILES['excelFile'];
+            log_message('error', 'Uploaded File Name: ' . $file['name']);
+
+            $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            log_message('error', 'File Extension: ' . $extension);
+
+            $reader = ($extension === 'csv')
+                ? IOFactory::createReader('Csv')
+                : IOFactory::createReader('Xlsx');
+
+            $spreadsheet = $reader->load($file['tmp_name']);
+            $sheetData   = $spreadsheet->getActiveSheet()->toArray();
+
+            log_message('error', 'Total Rows Found: ' . count($sheetData));
+
+            if (count($sheetData) <= 1) {
+                log_message('error', 'Excel contains no data.');
+                redirect('student/all_student');
+                return;
+            }
+
+
+            // First row is header
+            $headers = array_map('trim', $sheetData[0]);
+            unset($sheetData[0]);
+            $sheetData = array_values($sheetData);
+
+            log_message('error', 'Headers: ' . print_r($headers, true));
+
+            $success = 0;
+            $error   = 0;
+
+            $studentIdCount = $this->CM->get_data("Users/Parents/{$school_id}/Count");
+            if (!$studentIdCount) {
+                $studentIdCount = 1;
+            }
+
+            log_message('error', 'Starting Count: ' . $studentIdCount);
+
+            foreach ($sheetData as $index => $row) {
+
+                log_message('error', 'Processing Row: ' . $index);
+
+                if (!array_filter($row)) {
+                    log_message('error', 'Empty row skipped.');
+                    continue;
+                }
+
+                if (count($headers) != count($row)) {
+                    log_message('error', 'Header count mismatch.');
+                    $error++;
+                    continue;
+                }
+
+                $rowData = array_combine($headers, $row);
+
+                log_message('error', 'Row Data: ' . print_r($rowData, true));
+
+                $studentName = trim($rowData['Name'] ?? '');
+                $classRaw    = trim($rowData['Class'] ?? '');
+                $section     = trim($rowData['Section'] ?? '');
+
+                if (!$studentName || !$classRaw || !$section) {
+                    log_message('error', 'Required fields missing.');
+                    $error++;
+                    continue;
+                }
+
+                $studentId = 'STU000' . $studentIdCount;
+                log_message('error', 'Generated Student ID: ' . $studentId);
+
+                // Extract number from "Class 8"
+                $classNumber = (int) filter_var($classRaw, FILTER_SANITIZE_NUMBER_INT);
+
+                // Convert number to ordinal (8 → 8th)
+                $suffix = 'th';
+                if (!in_array(($classNumber % 100), [11, 12, 13])) {
+                    switch ($classNumber % 10) {
+                        case 1:
+                            $suffix = 'st';
+                            break;
+                        case 2:
+                            $suffix = 'nd';
+                            break;
+                        case 3:
+                            $suffix = 'rd';
+                            break;
+                    }
+                }
+
+                $className = $classNumber . $suffix;
+
+                // Keep Firebase structure path same
+
+                $combinedClass = "{$classRaw}/Section {$section}";
+                $formattedDOB = date('d-m-Y', strtotime($rowData['DOB']));
+                $password = $this->generatePassword($studentName, $formattedDOB);
+
+
+
+                $studentData = [
+
+                    "Name"           => $studentName,
+                    "User Id"        => $studentId,
+                    "DOB"            => trim($rowData['DOB'] ?? ''),
+                    "Admission Date" => trim($rowData['Admission Date'] ?? ''),
+
+                    "Class"   => $className,
+                    "Section" => $section,
+
+                    "Phone Number" => trim($rowData['Phone Number'] ?? ''),
+                    "Email"        => trim($rowData['Email'] ?? ''),
+                    "Password" => $password,
+
+                    // "Password"     => substr($studentName, 0, 3) . '123@',
+
+
+                    "Category"    => trim($rowData['Category'] ?? ''),
+                    "Gender"      => trim($rowData['Gender'] ?? ''),
+                    "Blood Group" => trim($rowData['Blood Group'] ?? ''),
+                    "Religion"    => trim($rowData['Religion'] ?? ''),
+                    "Nationality" => trim($rowData['Nationality'] ?? ''),
+
+                    "Father Name"       => trim($rowData['Father Name'] ?? ''),
+                    "Father Occupation" => trim($rowData['Father Occupation'] ?? ''),
+                    "Mother Name"       => trim($rowData['Mother Name'] ?? ''),
+                    "Mother Occupation" => trim($rowData['Mother Occupation'] ?? ''),
+                    "Guard Contact"     => trim($rowData['Guard Contact'] ?? ''),
+                    "Guard Relation"    => trim($rowData['Guard Relation'] ?? ''),
+
+                    "Pre Class"  => trim($rowData['Pre Class'] ?? ''),
+                    "Pre School" => trim($rowData['Pre School'] ?? ''),
+                    "Pre Marks"  => trim($rowData['Pre Marks'] ?? ''),
+
+                    "Address" => [
+                        "Street"     => trim($rowData['Street'] ?? ''),
+                        "City"       => trim($rowData['City'] ?? ''),
+                        "State"      => trim($rowData['State'] ?? ''),
+                        "PostalCode" => trim($rowData['Postal Code'] ?? '')
+                    ],
+
+                    "Profile Pic" => "",
+
+                    "Doc" => [
+                        "Birth Certificate" => "",
+                        "Aadhar Card" => "",
+                        "Previous School Leaving Certificate" => "",
+                        "PhotoUrl" => ""
+                    ]
+                ];
+
+
+                $studentPath = "Users/Parents/{$school_id}/{$studentId}";
+                $result = $this->firebase->set($studentPath, $studentData);
+
+                log_message('error', 'Firebase Insert Result: ' . json_encode($result));
+
+                $studentIdCount++;
+                $success++;
+            }
+
+            log_message('error', 'Total Success: ' . $success);
+            log_message('error', 'Total Failed: ' . $error);
+
+            $this->CM->addKey_pair_data(
+                "Users/Parents/{$school_id}/",
+                ['Count' => $studentIdCount]
+            );
+
+            log_message('error', 'Count Updated.');
+
+            $this->session->set_flashdata(
+                'import_result',
+                "Imported Successfully: {$success} | Failed: {$error}"
+            );
+
+            log_message('error', '=== IMPORT FUNCTION COMPLETED ===');
+
+            redirect('student/all_student');
+        } catch (Exception $e) {
+
+            log_message('error', 'IMPORT ERROR: ' . $e->getMessage());
+
+            $this->session->set_flashdata(
+                'import_result',
+                "Import Failed! Check logs."
+            );
+
+            redirect('student/all_student');
+        }
+    }
+
     public function student_registration()
     {
         if ($this->input->method() == 'post') {

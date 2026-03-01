@@ -162,7 +162,9 @@ class MY_Controller extends CI_Controller
         }
 
         // ── [FIX-2] CSRF on all non-public POST requests ──────────────────
-        if ($_SERVER['REQUEST_METHOD'] === 'POST' && ! $is_public) {
+        // Skip when CI's built-in csrf_protection is ON — it already verified
+        // and removed the token from $_POST, so a second check would always fail.
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && ! $is_public && ! config_item('csrf_protection')) {
             $token_name = $this->security->get_csrf_token_name();
             $token_hash = $this->security->get_csrf_hash();
 
