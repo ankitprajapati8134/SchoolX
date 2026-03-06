@@ -364,7 +364,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 /* ── Header ──────────────────────────────────── */
 .mc-header {
-  background: linear-gradient(135deg, var(--gold) 0%, #e9a200 100%);
+  background: linear-gradient(135deg, var(--gold) 0%, #0d6b63 100%);
   border-radius: 14px;
   padding: 22px 28px;
   margin-bottom: 24px;
@@ -389,7 +389,7 @@ document.addEventListener('DOMContentLoaded', function () {
 .mc-btn-add {
   display: inline-flex; align-items: center; gap: 7px;
   font: 600 13px/1 var(--font-b);
-  background: #fff; color: #D49800;
+  background: #fff; color: #0f766e;
   border: none; border-radius: 10px;
   padding: 10px 16px; cursor: pointer;
   box-shadow: 0 2px 8px rgba(0,0,0,.08);
@@ -416,7 +416,7 @@ document.addEventListener('DOMContentLoaded', function () {
   color: var(--t1); cursor: pointer;
   transition: background var(--ease);
 }
-.mc-dropdown-item:hover { background: rgba(245,175,0,.10); }
+.mc-dropdown-item:hover { background: rgba(15,118,110,.10); }
 .mc-dropdown-empty {
   padding: 14px 16px; font: 400 13px/1.3 var(--font-b);
   color: var(--t3); text-align: center;
@@ -474,7 +474,7 @@ document.addEventListener('DOMContentLoaded', function () {
   transform: translateY(-3px);
 }
 .mc-card-top {
-  background: linear-gradient(135deg, var(--gold) 0%, #FFCC4D 100%);
+  background: linear-gradient(135deg, var(--gold) 0%, #0d6b63 100%);
   padding: 24px 20px 20px; position: relative; overflow: hidden;
 }
 .mc-card-top::after {

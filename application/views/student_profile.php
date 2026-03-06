@@ -31,8 +31,9 @@ $docDisplay = [];
 if (!empty($student['Doc']) && is_array($student['Doc'])) {
     foreach ($student['Doc'] as $label => $entry) {
         if (in_array($label, $skipKeys, true)) continue;
-        $url = sp_doc_url($entry); // SAFE — never passes array to htmlspecialchars
-        if ($url !== '') $docDisplay[$label] = $url;
+        $url   = sp_doc_url($entry);
+        $thumb = is_array($entry) ? ($entry['thumbnail'] ?? '') : '';
+        if ($url !== '') $docDisplay[$label] = ['url' => $url, 'thumbnail' => $thumb];
     }
 }
 ?>
@@ -213,8 +214,8 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
                         <?php foreach (
                             [
                                 'Previous School' => $student['Pre School'] ?? 'N/A',
-                                'Class Completed' => $student['Pre Class']  ?? 'N/A',
-                                'Marks Obtained'  => $student['Pre Marks']  ?? 'N/A',
+                                'Previous Class Completed' => $student['Pre Class']  ?? 'N/A',
+                                'Previous Marks% Obtained'  => $student['Pre Marks']  ?? 'N/A',
                             ] as $lbl => $val
                         ): ?>
                         <div>
@@ -364,8 +365,25 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
             <!-- Overall total -->
             <?php $overallTot = $yearlyTotal + $mGrand - (float)($totaldiscount ?? 0); ?>
             <div class="sp-total">
-                <div class="lbl">Yearly + Monthly &minus; Discount</div>
-                <div class="amt">₹<?= number_format($overallTot, 2) ?></div>
+                <div class="sp-total-cell">
+                    <div class="sp-total-label">Yearly Fees</div>
+                    <div class="sp-total-val">₹<?= number_format($yearlyTotal, 2) ?></div>
+                </div>
+                <div class="sp-total-sep">+</div>
+                <div class="sp-total-cell">
+                    <div class="sp-total-label">Monthly Fees</div>
+                    <div class="sp-total-val">₹<?= number_format($mGrand, 2) ?></div>
+                </div>
+                <div class="sp-total-sep">&minus;</div>
+                <div class="sp-total-cell">
+                    <div class="sp-total-label">Discount</div>
+                    <div class="sp-total-val sp-total-dis">₹<?= number_format((float)($totaldiscount ?? 0), 2) ?></div>
+                </div>
+                <div class="sp-total-eq">=</div>
+                <div class="sp-total-cell sp-total-cell--grand">
+                    <div class="sp-total-label">Grand Total</div>
+                    <div class="sp-total-val sp-total-grand">₹<?= number_format($overallTot, 2) ?></div>
+                </div>
             </div>
 
             <?php else: ?>
@@ -389,12 +407,25 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
                 <div class="sp-card-body">
                     <?php if (!empty($docDisplay)): ?>
                     <div class="sp-doc-grid">
-                        <?php foreach ($docDisplay as $label => $url):
-                                $ext  = strtolower(pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
-                                $icon = ($ext === 'pdf') ? 'fa-file-pdf-o' : 'fa-file-image-o';
+                        <?php foreach ($docDisplay as $label => $item):
+                                $url   = $item['url'];
+                                $thumb = $item['thumbnail'];
+                                $urlPath = rawurldecode(parse_url($url, PHP_URL_PATH) ?? '');
+                                $ext   = strtolower(pathinfo($urlPath, PATHINFO_EXTENSION));
+                                $isPdf = ($ext === 'pdf');
+                                $isImg = in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true);
                             ?>
                         <div class="sp-doc-card">
-                            <div class="sp-doc-icon"><i class="fa <?= $icon ?>"></i></div>
+                            <?php if ($isImg && $thumb !== ''): ?>
+                            <div class="sp-doc-thumb">
+                                <img src="<?= htmlspecialchars($thumb) ?>" alt="<?= htmlspecialchars($label) ?>"
+                                    onerror="this.parentElement.innerHTML='<i class=\'fa fa-file-image-o\' style=\'font-size:28px;color:var(--gold)\'></i>'">
+                            </div>
+                            <?php elseif ($isPdf): ?>
+                            <div class="sp-doc-icon sp-doc-icon--pdf"><i class="fa fa-file-pdf-o"></i></div>
+                            <?php else: ?>
+                            <div class="sp-doc-icon"><i class="fa fa-file-image-o"></i></div>
+                            <?php endif; ?>
                             <div class="sp-doc-name"><?= htmlspecialchars($label) ?></div>
                             <a href="<?= htmlspecialchars($url) ?>" target="_blank" class="sp-doc-link">
                                 <i class="fa fa-eye"></i> View
@@ -485,7 +516,7 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
                 ?>
             <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--sp-border);">
                 <h5
-                    style="font-family:'Lora',serif;font-size:16px;font-weight:700;color:var(--sp-navy);margin-bottom:12px;text-align:center;">
+                    style="font-family:var(--font-d);font-size:16px;font-weight:700;color:var(--t1);margin-bottom:12px;text-align:center;">
                     <i class="fa fa-ban" style="color:#dc2626;margin-right:6px;"></i>
                     Exempted Fees For This Student
                 </h5>
@@ -595,419 +626,432 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
 </script>
 
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Lora:wght@500;600;700&display=swap');
+/* ── Student Profile — ERP Gold Theme (day/night aware) ── */
 
-:root {
-    --sp-navy: #0d1f3c;
-    --sp-blue: #1e56d9;
-    --sp-sky: #ebf1fd;
-    --sp-gold: #f5a623;
-    --sp-green: #16a34a;
-    --sp-red: #dc2626;
-    --sp-text: #1a2535;
-    --sp-muted: #607080;
-    --sp-border: #dde5f0;
-    --sp-white: #ffffff;
-    --sp-bg: #f2f5fb;
-    --sp-shadow: 0 2px 18px rgba(13, 31, 60, .08);
+/* Map legacy --sp-* vars → ERP theme vars so inline HTML styles keep working */
+:root, [data-theme="night"], [data-theme="day"] {
+    --sp-muted:  var(--t3);
+    --sp-border: var(--border);
+    --sp-text:   var(--t1);
+    --sp-white:  var(--bg2);
+    --sp-bg:     var(--bg);
+    --sp-shadow: var(--sh);
     --sp-radius: 14px;
+    --sp-blue:   var(--gold);
+    --sp-sky:    var(--gold-dim);
+    --sp-gold:   var(--gold);
+    --sp-navy:   var(--t1);
+    --sp-green:  var(--green, #3DD68C);
+    --sp-red:    var(--rose, #E05C6F);
 }
 
+/* ── Page wrap ── */
 .sp-wrap {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    background: var(--sp-bg);
-    color: var(--sp-text);
+    font-family: var(--font-b);
+    background: var(--bg);
+    color: var(--t1);
     padding: 24px 20px 52px;
     min-height: 100vh;
 }
 
 .sp-heading {
-    font-family: 'Lora', serif;
-    font-size: 26px;
-    font-weight: 700;
-    color: var(--sp-navy);
+    font-family: var(--font-d);
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--t1);
     display: flex;
     align-items: center;
     gap: 10px;
     margin-bottom: 22px;
 }
+.sp-heading i { color: var(--gold); }
 
-.sp-heading i {
-    color: var(--sp-blue);
-}
-
-/* Hero */
+/* ── Hero — always dark with gold accent ── */
 .sp-hero {
-    background: linear-gradient(130deg, var(--sp-navy) 0%, #1a3a70 100%);
-    border-radius: var(--sp-radius);
+    background: linear-gradient(130deg, #0c1e38 0%, #070f1c 100%);
+    border: 1px solid rgba(15,118,110,.20);
+    border-radius: var(--r, 14px);
     padding: 28px 32px;
     display: flex;
     align-items: center;
     gap: 26px;
     margin-bottom: 20px;
-    box-shadow: var(--sp-shadow);
+    box-shadow: 0 4px 32px rgba(0,0,0,.45);
     position: relative;
     overflow: hidden;
     flex-wrap: wrap;
 }
-
+.sp-hero::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--gold) 0%, rgba(15,118,110,.1) 100%);
+}
 .sp-hero::after {
     content: '';
     position: absolute;
-    right: -50px;
-    top: -50px;
-    width: 220px;
-    height: 220px;
+    right: -60px; top: -60px;
+    width: 240px; height: 240px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, .05);
+    background: rgba(15,118,110,.04);
     pointer-events: none;
 }
 
 .sp-avatar {
-    width: 100px;
-    height: 100px;
+    width: 100px; height: 100px;
     border-radius: 50%;
     object-fit: cover;
-    border: 3px solid var(--sp-gold);
-    box-shadow: 0 4px 18px rgba(0, 0, 0, .3);
+    border: 3px solid var(--gold);
+    box-shadow: 0 4px 18px rgba(0,0,0,.4), 0 0 0 5px rgba(15,118,110,.12);
     flex-shrink: 0;
     position: relative;
     z-index: 1;
 }
 
-.sp-hero-info {
-    position: relative;
-    z-index: 1;
-    flex: 1;
-}
+.sp-hero-info { position: relative; z-index: 1; flex: 1; }
 
 .sp-hero-name {
-    font-family: 'Lora', serif;
-    font-size: 26px;
+    font-family: var(--font-b);
+    font-size: 22px;
     font-weight: 700;
-    color: #fff;
+    color: #F0E8D5;
     margin: 0 0 4px;
+    letter-spacing: -.2px;
 }
+.sp-hero-sub { color: rgba(148,201,195,.6); font-size: 13px; margin: 0 0 12px; font-family: var(--font-b); }
 
-.sp-hero-sub {
-    color: rgba(255, 255, 255, .65);
-    font-size: 14px;
-    margin: 0 0 12px;
-}
-
-.sp-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
+.sp-badges { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .sp-badge {
     padding: 3px 13px;
     border-radius: 20px;
     font-size: 12px;
     font-weight: 500;
-    background: rgba(255, 255, 255, .12);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, .18);
+    background: rgba(255,255,255,.07);
+    color: #94c9c3;
+    border: 1px solid rgba(15,118,110,.20);
+    font-family: var(--font-b);
 }
-
 .sp-badge-gold {
-    background: var(--sp-gold);
-    color: var(--sp-navy);
-    border-color: var(--sp-gold);
+    background: var(--gold);
+    color: #ffffff;
+    border-color: var(--gold);
     font-weight: 700;
+    font-family: var(--font-m);
 }
 
 .sp-hero-btns {
-    position: relative;
-    z-index: 1;
+    position: relative; z-index: 1;
     display: flex;
     flex-direction: column;
     gap: 8px;
     align-items: flex-end;
 }
 
-/* Buttons */
+/* ── Buttons ── */
 .sp-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     padding: 8px 18px;
-    border-radius: 8px;
+    border-radius: var(--r-sm, 8px);
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
     border: none;
     text-decoration: none;
-    transition: opacity .15s, transform .12s;
+    transition: all var(--ease);
     white-space: nowrap;
-    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-family: var(--font-b);
 }
+.sp-btn:hover { transform: translateY(-1px); text-decoration: none; }
 
-.sp-btn:hover {
-    opacity: .85;
-    transform: translateY(-1px);
-    text-decoration: none;
-}
+.sp-btn-blue  { background: var(--gold); color: #ffffff; }
+.sp-btn-blue:hover  { background: var(--gold2, #0d6b63); box-shadow: 0 4px 14px rgba(15,118,110,.4); color: #ffffff; }
 
-.sp-btn-blue {
-    background: var(--sp-blue);
-    color: #fff;
-}
-
-.sp-btn-green {
-    background: var(--sp-green);
-    color: #fff;
-}
+.sp-btn-green { background: var(--green, #3DD68C); color: #ffffff; }
+.sp-btn-green:hover { opacity: .88; }
 
 .sp-btn-ghost {
-    background: rgba(255, 255, 255, .12);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, .3);
+    background: rgba(255,255,255,.08);
+    color: #94c9c3;
+    border: 1px solid rgba(15,118,110,.25);
 }
+.sp-btn-ghost:hover { background: rgba(15,118,110,.12); color: var(--gold); border-color: var(--gold); }
 
-/* Tabs */
+/* ── Tabs ── */
 .sp-tabs {
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
-    background: var(--sp-white);
-    border-radius: var(--sp-radius);
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--r, 14px);
     padding: 7px;
-    box-shadow: var(--sp-shadow);
+    box-shadow: var(--sh);
     margin-bottom: 18px;
 }
 
 .sp-tab {
     padding: 8px 16px;
-    border-radius: 8px;
+    border-radius: var(--r-sm, 8px);
     font-size: 13px;
-    font-weight: 500;
-    color: var(--sp-muted);
+    font-weight: 600;
+    color: var(--t3);
     cursor: pointer;
     border: none;
     background: transparent;
-    transition: all .16s;
+    transition: all var(--ease);
     display: flex;
     align-items: center;
     gap: 6px;
-    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-family: var(--font-b);
 }
-
-.sp-tab:hover {
-    background: var(--sp-sky);
-    color: var(--sp-blue);
-}
-
+.sp-tab:hover  { background: var(--gold-dim); color: var(--gold); }
 .sp-tab.is-active {
-    background: var(--sp-blue);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(30, 86, 217, .28);
+    background: var(--gold);
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 2px 10px rgba(15,118,110,.3);
 }
 
-/* Panels */
-.sp-panel {
-    display: none;
-}
+/* ── Panels ── */
+.sp-panel { display: none; }
+.sp-panel.is-active { display: block; }
 
-.sp-panel.is-active {
-    display: block;
-}
-
-/* Card */
+/* ── Cards ── */
 .sp-card {
-    background: var(--sp-white);
-    border-radius: var(--sp-radius);
-    box-shadow: var(--sp-shadow);
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--r, 14px);
+    box-shadow: var(--sh);
     overflow: hidden;
     margin-bottom: 18px;
 }
-
 .sp-card-head {
-    padding: 13px 22px;
-    border-bottom: 1px solid var(--sp-border);
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     gap: 9px;
-    background: var(--sp-sky);
+    background: var(--bg3);
 }
-
 .sp-card-head h3 {
     margin: 0;
-    font-family: 'Lora', serif;
-    font-size: 17px;
-    font-weight: 600;
-    color: var(--sp-navy);
+    font-family: var(--font-b);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--t2);
+    text-transform: uppercase;
+    letter-spacing: .6px;
 }
+.sp-card-head i { color: var(--gold); }
+.sp-card-body { padding: 20px 22px; }
 
-.sp-card-head i {
-    color: var(--sp-blue);
-}
-
-.sp-card-body {
-    padding: 20px 22px;
-}
-
-/* Info grid */
+/* ── Info grid ── */
 .sp-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 14px;
 }
-
 .sp-field-label {
     font-size: 10.5px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: .6px;
-    color: var(--sp-muted);
+    color: var(--t3);
     margin-bottom: 3px;
+    font-family: var(--font-m);
 }
-
 .sp-field-value {
-    font-size: 14.5px;
-    font-weight: 500;
-    color: var(--sp-text);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--t1);
+    font-family: var(--font-b);
 }
 
-/* Chips */
-.sp-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-}
-
+/* ── Subject chips ── */
+.sp-chips { display: flex; flex-wrap: wrap; gap: 7px; }
 .sp-chip {
-    background: var(--sp-sky);
-    color: var(--sp-blue);
-    border: 1px solid var(--sp-border);
+    background: var(--gold-dim);
+    color: var(--gold);
+    border: 1px solid var(--gold-ring, rgba(15,118,110,.22));
     border-radius: 20px;
     padding: 4px 13px;
-    font-size: 12.5px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--font-b);
 }
 
-/* Doc grid */
+/* ── Documents ── */
 .sp-doc-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 14px;
 }
-
 .sp-doc-card {
-    border: 1px solid var(--sp-border);
-    border-radius: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r, 12px);
     padding: 18px 14px;
     text-align: center;
-    background: #fafbff;
-    transition: box-shadow .16s, transform .16s;
+    background: var(--bg3);
+    transition: box-shadow var(--ease), transform var(--ease), border-color var(--ease);
 }
-
 .sp-doc-card:hover {
-    box-shadow: 0 4px 14px rgba(30, 86, 217, .12);
+    box-shadow: 0 4px 18px rgba(15,118,110,.15);
     transform: translateY(-2px);
+    border-color: var(--gold-ring, rgba(15,118,110,.22));
 }
-
 .sp-doc-icon {
-    width: 46px;
-    height: 46px;
+    width: 46px; height: 46px;
     border-radius: 10px;
-    background: var(--sp-sky);
+    background: var(--gold-dim);
     display: flex;
     align-items: center;
     justify-content: center;
     margin: 0 auto 10px;
     font-size: 20px;
-    color: var(--sp-blue);
+    color: var(--gold);
 }
-
+.sp-doc-icon--pdf {
+    background: rgba(220,38,38,.10);
+    color: #dc2626;
+}
+.sp-doc-thumb {
+    width: 60px; height: 60px;
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 0 auto 10px;
+    border: 1px solid var(--border);
+}
+.sp-doc-thumb img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+}
 .sp-doc-name {
     font-size: 13px;
     font-weight: 600;
-    color: var(--sp-text);
+    color: var(--t1);
     margin-bottom: 12px;
+    font-family: var(--font-b);
 }
-
 .sp-doc-link {
     display: inline-flex;
     align-items: center;
     gap: 5px;
     padding: 6px 14px;
-    border-radius: 7px;
-    background: var(--sp-blue);
-    color: #fff;
+    border-radius: var(--r-sm, 7px);
+    background: var(--gold);
+    color: #ffffff;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 700;
     text-decoration: none;
-    transition: opacity .14s;
+    transition: all var(--ease);
+    font-family: var(--font-b);
 }
+.sp-doc-link:hover { background: var(--gold2, #0d6b63); color: #ffffff; text-decoration: none; }
 
-.sp-doc-link:hover {
-    opacity: .82;
-    color: #fff;
-    text-decoration: none;
-}
-
-/* Tables */
-.sp-tbl-wrap {
-    overflow-x: auto;
-}
-
+/* ── Tables ── */
+.sp-tbl-wrap { overflow-x: auto; }
 .sp-tbl {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13.5px;
+    font-size: 13px;
+    font-family: var(--font-b);
 }
-
 .sp-tbl th {
-    background: var(--sp-navy);
-    color: #fff;
+    background: linear-gradient(90deg, var(--gold) 0%, var(--gold2, #0d6b63) 100%);
+    color: #ffffff;
     padding: 10px 13px;
     text-align: left;
-    font-weight: 500;
+    font-weight: 700;
     white-space: nowrap;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .4px;
 }
-
 .sp-tbl td {
     padding: 9px 13px;
-    border-bottom: 1px solid var(--sp-border);
+    border-bottom: 1px solid var(--border);
+    color: var(--t2);
 }
-
-.sp-tbl tr:hover td {
-    background: var(--sp-sky);
-}
-
+.sp-tbl tr:hover td { background: var(--gold-dim); }
 .sp-tbl tfoot td {
-    background: var(--sp-gold);
-    color: var(--sp-navy);
+    background: var(--gold);
+    color: #ffffff;
     font-weight: 700;
     border: none;
 }
 
-/* Total */
+/* ── Fee summary strip ── */
 .sp-total {
-    background: linear-gradient(135deg, var(--sp-navy), #1a3a70);
-    border-radius: 12px;
-    padding: 18px 22px;
-    text-align: center;
-    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--gold);
+    border-radius: var(--r, 12px);
+    overflow: hidden;
     margin-top: 18px;
+    box-shadow: var(--sh);
+    flex-wrap: wrap;
 }
-
-.sp-total .lbl {
-    font-size: 12px;
-    opacity: .65;
+.sp-total-cell {
+    flex: 1;
+    min-width: 120px;
+    padding: 16px 20px;
+    text-align: center;
+    border-right: 1px solid var(--border);
+}
+.sp-total-cell:last-child { border-right: none; }
+.sp-total-cell--grand {
+    background: linear-gradient(135deg, #0c1e38 0%, #070f1c 100%);
+    flex: 1.4;
+}
+.sp-total-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .7px;
+    color: var(--t3);
+    font-family: var(--font-m);
     margin-bottom: 5px;
 }
-
-.sp-total .amt {
-    font-family: 'Lora', serif;
-    font-size: 30px;
+.sp-total-cell--grand .sp-total-label { color: rgba(148,201,195,.5); }
+.sp-total-val {
+    font-size: 18px;
     font-weight: 700;
-    color: var(--sp-gold);
+    color: var(--t1);
+    font-family: var(--font-b);
+}
+.sp-total-dis { color: var(--rose, #E05C6F); }
+.sp-total-grand {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--gold);
+    font-family: var(--font-b);
+}
+.sp-total-sep {
+    font-size: 18px;
+    color: var(--t3);
+    font-weight: 700;
+    padding: 0 2px;
+    flex-shrink: 0;
+    align-self: center;
+}
+.sp-total-eq {
+    font-size: 22px;
+    color: var(--gold);
+    font-weight: 800;
+    padding: 0 4px;
+    flex-shrink: 0;
+    align-self: center;
 }
 
-/* Discount */
+/* ── Discount ── */
 .sp-disc-row {
     display: flex;
     gap: 10px;
@@ -1015,116 +1059,88 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
     flex-wrap: wrap;
     margin-top: 10px;
 }
-
 .sp-disc-row input {
     flex: 1;
     min-width: 180px;
     padding: 8px 13px;
-    border: 1px solid var(--sp-border);
-    border-radius: 8px;
+    border: 1.5px solid var(--brd2);
+    border-radius: var(--r-sm, 8px);
     font-size: 13px;
     outline: none;
-    transition: border-color .14s;
-    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg3);
+    color: var(--t1);
+    transition: border-color var(--ease), box-shadow var(--ease);
+    font-family: var(--font-b);
 }
-
 .sp-disc-row input:focus {
-    border-color: var(--sp-blue);
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(15,118,110,.15);
 }
 
-/* Modal */
+/* ── Modal ── */
 .sp-overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, .52);
+    background: rgba(0,0,0,.6);
     z-index: 9100;
     align-items: center;
     justify-content: center;
+    backdrop-filter: blur(2px);
 }
-
-.sp-overlay.open {
-    display: flex;
-}
+.sp-overlay.open { display: flex; }
 
 .sp-modal {
-    background: var(--sp-white);
-    border-radius: var(--sp-radius);
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--r, 14px);
     width: 96%;
     max-width: 1080px;
     max-height: 86vh;
     overflow-y: auto;
-    box-shadow: 0 8px 40px rgba(0, 0, 0, .22);
+    box-shadow: 0 8px 40px rgba(0,0,0,.35);
 }
-
 .sp-modal-head {
-    padding: 16px 22px;
-    border-bottom: 1px solid var(--sp-border);
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: space-between;
     position: sticky;
     top: 0;
-    background: var(--sp-white);
+    background: var(--bg2);
     z-index: 1;
 }
-
 .sp-modal-head h4 {
     margin: 0;
-    font-family: 'Lora', serif;
-    font-size: 18px;
+    font-family: var(--font-d);
+    font-size: 16px;
     font-weight: 700;
-    color: var(--sp-navy);
+    color: var(--t1);
 }
-
 .sp-modal-close {
     background: none;
     border: none;
     font-size: 22px;
     line-height: 1;
-    color: var(--sp-muted);
+    color: var(--t3);
     cursor: pointer;
     padding: 4px 8px;
     border-radius: 6px;
-    transition: background .14s;
+    transition: all var(--ease);
 }
+.sp-modal-close:hover { background: var(--gold-dim); color: var(--gold); }
+.sp-modal-body { padding: 22px; }
 
-.sp-modal-close:hover {
-    background: #fee2e2;
-    color: var(--sp-red);
-}
-
-.sp-modal-body {
-    padding: 22px;
-}
-
+/* ── Responsive ── */
 @media (max-width: 720px) {
-    .sp-hero {
-        flex-direction: column;
-        text-align: center;
-    }
-
-    .sp-hero-btns {
-        align-items: center;
-    }
-
-    .sp-badges {
-        justify-content: center;
-    }
-
-    .sp-grid {
-        grid-template-columns: 1fr 1fr;
-    }
+    .sp-hero { flex-direction: column; text-align: center; }
+    .sp-hero-btns { align-items: center; }
+    .sp-badges { justify-content: center; }
+    .sp-grid { grid-template-columns: 1fr 1fr; }
 }
-
 @media (max-width: 480px) {
-    .sp-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .sp-tab {
-        padding: 7px 10px;
-        font-size: 12px;
-    }
+    .sp-grid { grid-template-columns: 1fr; }
+    .sp-tab { padding: 7px 10px; font-size: 12px; }
 }
 </style>

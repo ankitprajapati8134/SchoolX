@@ -162,6 +162,27 @@ class Firebase
     }
 
     /**
+     * Shallow fetch — returns only the immediate child keys of a path
+     * as an array of strings, WITHOUT downloading any child data.
+     * Uses Firebase's ?shallow=true REST parameter, which is orders of
+     * magnitude faster than fetching the full subtree.
+     * Returns [] on failure or empty node.
+     */
+    public function shallow_get(string $path): array
+    {
+        try {
+            $value = $this->database->getReference($path)->shallow()->getSnapshot()->getValue();
+            if (!is_array($value)) {
+                return [];
+            }
+            return array_keys($value);
+        } catch (\Exception $e) {
+            log_message('error', 'Firebase::shallow_get() failed for path [' . $path . ']: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
      * Get children at a path as a snapshot collection.
      */
     public function getChildren(string $path)

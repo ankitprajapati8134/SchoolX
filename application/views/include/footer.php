@@ -6,9 +6,15 @@
         <div class="giq-foot-left">
             <div class="giq-foot-mark">G</div>
             <div class="giq-foot-copy">
-                <strong>© <?= date('Y') ?>–<?= date('Y') + 1 ?></strong>
+                <!-- <strong>© <?= date('Y') ?>–<?= date('Y') + 1 ?></strong> -->
+                 <?php
+$start = date('Y');
+$end   = substr($start + 1, -2);
+?>
+
+<strong>© <?= $start . '-' . $end ?></strong>
                 <span class="giq-foot-sep">·</span>
-                <a href="https://graderiq.com/" target="_blank" rel="noopener">GraderIQ</a>
+                <a href="https://graderiq.com/" target="_blank" rel="noopener">SchoolX</a>
                 <span class="giq-foot-sep">·</span>
                 All rights reserved.
             </div>
@@ -172,7 +178,7 @@
         left: 0;
         right: 0;
         height: 1px;
-        background: linear-gradient(90deg, var(--gold, #F5AF00) 0%, rgba(245, 175, 0, .2) 60%, transparent 100%);
+        background: linear-gradient(90deg, var(--gold, #0f766e) 0%, rgba(15, 118, 110, .2) 60%, transparent 100%);
     }
 
     .giq-foot-inner {
@@ -195,15 +201,15 @@
         width: 22px;
         height: 22px;
         border-radius: 5px;
-        background: var(--gold, #F5AF00);
+        background: var(--gold, #0f766e);
         display: flex;
         align-items: center;
         justify-content: center;
         font-family: var(--font-d, 'Syne', sans-serif);
         font-size: 11px;
         font-weight: 800;
-        color: #0f0d06;
-        box-shadow: 0 0 8px rgba(245, 175, 0, .3);
+        color: #ffffff;
+        box-shadow: 0 0 8px rgba(15, 118, 110, .3);
         flex-shrink: 0;
     }
 
@@ -214,24 +220,24 @@
     }
 
     .giq-foot-copy strong {
-        color: var(--t2, #C8B98A);
+        color: var(--t2, #94c9c3);
         font-weight: 600;
     }
 
     .giq-foot-copy a {
-        color: var(--gold, #F5AF00) !important;
+        color: var(--gold, #0f766e) !important;
         font-weight: 700;
         text-decoration: none !important;
         transition: color .15s;
     }
 
     .giq-foot-copy a:hover {
-        color: var(--gold2, #D49700) !important;
+        color: var(--gold2, #0d6b63) !important;
     }
 
     /* Separator */
     .giq-foot-sep {
-        color: var(--border, rgba(245, 175, 0, .09));
+        color: var(--border, rgba(15, 118, 110, .09));
         font-size: 14px;
         margin: 0 2px;
     }
@@ -253,7 +259,7 @@
     }
 
     .giq-foot-dev span {
-        color: var(--gold, #F5AF00);
+        color: var(--gold, #0f766e);
     }
 
     .giq-foot-tag {
@@ -262,9 +268,9 @@
         font-family: var(--font-m, 'JetBrains Mono', monospace);
         padding: 2px 8px;
         border-radius: 4px;
-        background: rgba(245, 175, 0, .09);
-        color: var(--gold, #F5AF00);
-        border: 1px solid rgba(245, 175, 0, .22);
+        background: rgba(15, 118, 110, .09);
+        color: var(--gold, #0f766e);
+        border: 1px solid rgba(15, 118, 110, .22);
         letter-spacing: .3px;
     }
 

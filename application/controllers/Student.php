@@ -46,6 +46,7 @@ class Student extends MY_Controller
 
         $classNames    = [];
         $classSections = [];
+        $sessionNode   = [];   // initialised here so the enrollment filter below is always safe
 
         if (!empty($school_name)) {
             /*
@@ -85,6 +86,33 @@ class Student extends MY_Controller
                 }
             }
         }
+
+        /*
+         * SESSION ISOLATION FIX: Only show students enrolled in the current session.
+         * The $sessionNode already contains Students/List data for every class-section,
+         * so we can collect enrolled IDs without any additional Firebase call and then
+         * discard global profiles that don't belong to this session.
+         *
+         * In a brand-new session (no classes yet) the list is correctly empty.
+         */
+        $enrolledIds = [];
+        if (is_array($sessionNode)) {
+            foreach ($sessionNode as $classKey => $classVal) {
+                if (strpos($classKey, 'Class ') !== 0 || !is_array($classVal)) continue;
+                foreach ($classVal as $sectionKey => $sectionVal) {
+                    if (strpos($sectionKey, 'Section ') !== 0 || !is_array($sectionVal)) continue;
+                    $list = $sectionVal['Students']['List'] ?? null;
+                    if (is_array($list)) {
+                        foreach (array_keys($list) as $sid) {
+                            $enrolledIds[$sid] = true;
+                        }
+                    }
+                }
+            }
+        }
+        $data['students'] = array_filter($data['students'], function ($student) use ($enrolledIds) {
+            return isset($enrolledIds[$student['User Id']]);
+        });
 
         $data['classNames']    = $classNames;
         $data['classSections'] = $classSections;
@@ -196,6 +224,72 @@ class Student extends MY_Controller
     //     $this->load->view('include/footer');
     // }
 
+
+    public function id_card()
+    {
+        $school_id    = $this->school_id;
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        /* ── 1. Fetch all registered students globally ── */
+        $allStudents = $this->CM->select_data('Users/Parents/' . $school_id);
+        if (!is_array($allStudents)) {
+            $allStudents = [];
+        }
+        foreach (['Count', 'TC Students', ''] as $k) {
+            unset($allStudents[$k]);
+        }
+        $allStudents = array_filter($allStudents, function ($s) {
+            return is_array($s) && !empty($s['User Id']);
+        });
+
+        /* ── 2. Session isolation: targeted Students/List fetches ── */
+        $enrolledIds = [];
+        if (!empty($school_name)) {
+            $sessionClassKeys = $this->firebase->shallow_get(
+                'Schools/' . $school_name . '/' . $session_year
+            );
+            foreach ($sessionClassKeys as $classKey) {
+                if (strpos($classKey, 'Class ') !== 0) continue;
+                $sectionKeys = $this->firebase->shallow_get(
+                    'Schools/' . $school_name . '/' . $session_year . '/' . $classKey
+                );
+                foreach ($sectionKeys as $sectionKey) {
+                    if (strpos($sectionKey, 'Section ') !== 0) continue;
+                    $list = $this->CM->select_data(
+                        'Schools/' . $school_name . '/' . $session_year
+                        . '/' . $classKey . '/' . $sectionKey . '/Students/List'
+                    );
+                    if (is_array($list)) {
+                        foreach (array_keys($list) as $sid) {
+                            $enrolledIds[$sid] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        /* ── 3. Filter & sort ── */
+        $students = array_values(array_filter($allStudents, function ($s) use ($enrolledIds) {
+            return isset($enrolledIds[$s['User Id']]);
+        }));
+
+        usort($students, function ($a, $b) {
+            $c = strcmp($a['Class'] ?? '', $b['Class'] ?? '');
+            if ($c) return $c;
+            $c = strcmp($a['Section'] ?? '', $b['Section'] ?? '');
+            if ($c) return $c;
+            return strcmp($a['Name'] ?? '', $b['Name'] ?? '');
+        });
+
+        $data['students']     = $students;
+        $data['session_year'] = $session_year;
+        $data['school_name']  = $school_name;
+
+        $this->load->view('include/header');
+        $this->load->view('student_id_card', $data);
+        $this->load->view('include/footer');
+    }
 
     public function master_student()
     {
@@ -388,20 +482,21 @@ class Student extends MY_Controller
                     [$studentId => $studentName]
                 );
 
-                 // Add inside the foreach loop in import_students(), after the student insert
+                // Add inside the foreach loop in import_students(), after the student insert
                 $phone = trim($rowData['Phone Number'] ?? '');
                 if ($phone !== '') {
                     $this->CM->addKey_pair_data('Exits/', [$phone => $school_id]);
                     $this->CM->addKey_pair_data('User_ids_pno/', [$phone => $studentId]);
                 }
 
-                
+
                 // ✅ FETCH SUBJECTS
                 if (!isset($subjectCache[$classNumber])) {
 
                     $subjectCache[$classNumber] = [
-                        'core'        => [],
-                        'allSubjects' => [],
+                        'core'              => [],   // core subjects → student's Subjects node
+                        'allSubjects'       => [],   // everything except additional → All Subjects path
+                        'additionalSubjects' => [],  // additional only → student's Additional Subjects node
                     ];
 
                     $rawList = $this->firebase->get(
@@ -421,23 +516,29 @@ class Student extends MY_Controller
 
                             $type = strtolower(trim($item['category'] ?? ''));
 
-                            // ⭐ ALL subjects go to All Subjects path
-                            $subjectCache[$classNumber]['allSubjects'][(string)$code] = $subName;
+                            if ($type === 'additional') {
+                                // ⭐ Additional subjects → Student's Additional Subjects node
+                                $subjectCache[$classNumber]['additionalSubjects'][$subName] = "";
+                            } else {
+                                // ⭐ Everything except additional → All Subjects path
+                                $subjectCache[$classNumber]['allSubjects'][(string)$code] = $subName;
 
-                            // ⭐ Only CORE subjects go to student
-                            if ($type === 'core') {
-                                $subjectCache[$classNumber]['core'][(string)$code] = [
-                                    'name' => $subName,
-                                    'type' => 'core'
-                                ];
+                                // ⭐ Only CORE → student's Subjects node
+                                if ($type === 'core') {
+                                    $subjectCache[$classNumber]['core'][(string)$code] = [
+                                        'name' => $subName,
+                                        'type' => 'core'
+                                    ];
+                                }
                             }
                         }
                     }
 
                     log_message('error', 'Core subject cache: ' . json_encode($subjectCache[$classNumber]['core']));
                     log_message('error', 'All subjects cache: ' . json_encode($subjectCache[$classNumber]['allSubjects']));
+                    log_message('error', 'Additional subjects cache: ' . json_encode($subjectCache[$classNumber]['additionalSubjects']));
 
-                    // ✅ Insert ALL subjects to class path (only once per class)
+                    // ✅ Insert ALL subjects (except additional) to class path (only once per class)
                     if (!empty($subjectCache[$classNumber]['allSubjects'])) {
                         $this->firebase->set(
                             "Schools/{$school_name}/{$session_year}/Class {$className}/All Subjects",
@@ -451,6 +552,14 @@ class Student extends MY_Controller
                     $this->firebase->set(
                         "Users/Parents/{$school_id}/{$studentId}/Subjects",
                         $subjectCache[$classNumber]['core']
+                    );
+                }
+
+                // ✅ Assign additional subjects to student under class roster
+                if (!empty($subjectCache[$classNumber]['additionalSubjects'])) {
+                    $this->firebase->set(
+                        "Schools/{$school_name}/{$session_year}/{$combinedClass}/Students/{$studentId}/Additional Subjects",
+                        $subjectCache[$classNumber]['additionalSubjects']
                     );
                 }
 
@@ -777,9 +886,13 @@ class Student extends MY_Controller
                         if ($subName === '') continue;
 
                         $type = strtolower(trim($item['category'] ?? ''));
+                        // ⭐ Skip additional subjects from All Subjects path
+                        if ($type !== 'additional') {
+                            $allSubjects[(string)$code] = $subName;
+                        }
 
-                        // ⭐ ALL subjects → All Subjects path
-                        $allSubjects[(string)$code] = $subName;
+                        // // ⭐ ALL subjects → All Subjects path
+                        // $allSubjects[(string)$code] = $subName;
 
                         // ⭐ Only CORE → student's Subjects node
                         if ($type === 'core') {
@@ -896,6 +1009,7 @@ class Student extends MY_Controller
         $this->load->view('studentAdmission', $data);
         $this->load->view('include/footer');
     }
+    
     private function generatePassword($name, $dob)
     {
         $cleanName = preg_replace('/[^a-zA-Z]/', '', $name);
@@ -1022,19 +1136,14 @@ class Student extends MY_Controller
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
-        $basePath = "Schools/{$school_name}/{$session_year}";
-        $data = $this->CM->select_data($basePath);
+        // Shallow fetch — reads only top-level key names, not the full subtree
+        $keys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}");
 
-        $classes = [];
+        $classes = array_values(array_filter($keys, function ($k) {
+            return strpos($k, 'Class ') === 0;
+        }));
 
-        if (is_array($data)) {
-            foreach ($data as $key => $value) {
-                if (strpos($key, 'Class ') === 0 && is_array($value)) {
-                    $classes[] = $key; // e.g. "Class 8th"
-                }
-            }
-        }
-
+        header('Content-Type: application/json');
         echo json_encode($classes);
     }
 
@@ -1043,29 +1152,26 @@ class Student extends MY_Controller
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
-        $input = json_decode(file_get_contents("php://input"), true);
-        $className = trim($input['class_name'] ?? '');
+        // Read from $_POST (not php://input) so CI CSRF filter can validate the token
+        $className = trim((string)$this->input->post('class_name'));
 
         if ($className === '') {
+            header('Content-Type: application/json');
             echo json_encode([]);
             return;
         }
 
-        // 🔥 DIRECT PATH (matches Firebase exactly)
-        $path = "Schools/{$school_name}/{$session_year}/{$className}";
-        $data = $this->CM->select_data($path);
+        // Shallow fetch — reads only section key names under the class node
+        $keys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}/{$className}");
 
         $sections = [];
-
-        if (is_array($data)) {
-            foreach ($data as $key => $value) {
-                // pick only "Section A", "Section B" etc
-                if (strpos($key, 'Section ') === 0) {
-                    $sections[] = str_replace('Section ', '', $key);
-                }
+        foreach ($keys as $key) {
+            if (strpos($key, 'Section ') === 0) {
+                $sections[] = str_replace('Section ', '', $key);
             }
         }
 
+        header('Content-Type: application/json');
         echo json_encode($sections);
     }
 
@@ -1774,7 +1880,7 @@ class Student extends MY_Controller
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
-        $path = "/Schools/$school_name/$session_year/Accounts/Fees/Classes Fees/$className '$section'"; // Construct path dynamically
+        $path = "Schools/$school_name/$session_year/Accounts/Fees/Classes Fees/Class $className/Section $section";
 
         // Fetching data from Firebase
         $feesData = $this->CM->get_data($path);

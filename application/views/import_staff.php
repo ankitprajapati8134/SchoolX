@@ -36,12 +36,18 @@
                         <div class="alert alert-info mt-3">
                             <strong>Instructions:</strong>
                             <ul>
-                                
-                                <li>Upload only <b>.xlsx</b> file in the given format.</li>
-                                <!-- <li>Class format must be: <b>Class 8</b></li>
-                                <li>Section must be: <b>A / B / C</b></li> -->
-                                <li>Photo upload not required.</li>
+                                <li>Upload <b>.xlsx</b> or <b>.csv</b> file in the exact header format below.</li>
+                                <li><b>Required column:</b> Name, Phone Number</li>
+                                <li>All other columns are optional — leave blank if not available.</li>
+                                <li>DOB &amp; Date Of Joining format: <b>30-06-1990</b> or <b>1990-06-30</b></li>
+                                <li>Phone Number must be a valid 10-digit Indian mobile number.</li>
+                                <li>Photo &amp; Documents can be uploaded later via Edit Staff.</li>
                             </ul>
+                        </div>
+
+                        <div class="alert alert-secondary mt-2">
+                            <strong>Excel Headers (in order):</strong><br>
+                            <code>Name | Phone Number | DOB | Email | Gender | Department | Position | Employment Type | Date Of Joining | Father Name | Religion | Category | Qualification | Experience | University | Year Of Passing | Account Holder Name | Account Number | Bank Name | IFSC Code | Emergency Contact Name | Emergency Contact Number | Street | City | State | Postal Code | Basic Salary | Allowances</code>
                         </div>
 
                         <button type="submit" class="btn btn-success">

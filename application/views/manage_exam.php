@@ -1,617 +1,617 @@
+<?php defined('BASEPATH') or exit('No direct script access allowed'); ?>
+
 <div class="content-wrapper">
-    <div class="page_container">
-        <div class="container">
-            <div class="title-bar">Add Exam</div>
-            <div class="add-exam">
+<div class="ex-wrap">
 
-                <form action="<?php echo base_url() . 'exam/manage_exam' ?>" method="post" id="add-exam-form">
-                    <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" 
+  <!-- ── Page Header ── -->
+  <div class="ex-page-title">
+    <i class="fa fa-file-text-o"></i> Create Exam
+  </div>
+  <ol class="ex-breadcrumb">
+    <li><a href="<?= base_url('admin') ?>">Dashboard</a></li>
+    <li>Manage Exam</li>
+  </ol>
+
+  <form id="examForm" autocomplete="off">
+    <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>"
            value="<?= $this->security->get_csrf_hash() ?>">
-                    <!-- Exam Information -->
-                    <div class="form-section">
-                        <h3>Exam Information</h3>
-                        <div class="form-grid">
-                            <div>
-                                <label for="examName">Exam Name:</label>
-                                <input type="text" name="examName" id="examName" placeholder="Enter exam name"
-                                    required />
-                            </div>
-                            <div>
-                                <label for="gradingScale">Grading Scale:</label>
-                                <select id="gradingScale" name="gradingScale">
-                                    <option value="A+ to F">A+ to F</option>
-                                    <option value="Percentage">Percentage</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="startDate">Start Date:</label>
-                                <input type="date" name="startDate" id="startDate" required />
-                            </div>
-                            <div>
-                                <label for="endDate">End Date:</label>
-                                <input type="date" name="endDate" id="endDate" required />
-                            </div>
+    <input type="hidden" id="examScheduleInput" name="examSchedule">
 
-                        </div>
-                    </div>
+    <!-- ══ CARD 1 — Exam Info ══════════════════════════════════════════ -->
+    <div class="ex-card">
+      <div class="ex-card-head">
+        <i class="fa fa-info-circle"></i> Exam Information
+      </div>
+      <div class="ex-card-body">
+        <div class="ex-grid">
 
-                    <!-- Dynamic Table Section -->
-                    <div id="scheduleSection" class="form-section">
-                        <h3>Exam Schedule</h3>
-                        <p>Fill in exam details after entering Exam Information.</p>
-                    </div>
+          <div class="ex-field">
+            <label for="examName">Exam Name <span class="ex-req">*</span></label>
+            <input type="text" id="examName" name="examName"
+                   placeholder="e.g. Mid-Term 2026" maxlength="60" required>
+          </div>
 
-                    <input type="hidden" id="examScheduleInput" name="examSchedule">
+          <div class="ex-field">
+            <label for="gradingScale">Grading Scale <span class="ex-req">*</span></label>
+            <select id="gradingScale" name="gradingScale">
+              <option value="A+ to F">A+ to F</option>
+              <option value="Percentage">Percentage</option>
+            </select>
+          </div>
 
+          <div class="ex-field">
+            <label for="startDate">Start Date <span class="ex-req">*</span></label>
+            <input type="date" id="startDate" name="startDate" required>
+          </div>
 
-                    <div class="form-section">
-                        <h3>General Instructions</h3>
-                        <textarea name="generalInstructions" id="generalInstructions" rows="5"
-                            placeholder="Enter each instruction on a new line..."></textarea>
-                    </div>
+          <div class="ex-field">
+            <label for="endDate">End Date <span class="ex-req">*</span></label>
+            <input type="date" id="endDate" name="endDate" required>
+          </div>
 
-                    <!-- <div class="form-actions"> -->
-                    <div class="form-section">
-                        <button class="btn btn-success btn-lg" type="submit">Save Exam</button>
-                    </div>
-                </form>
-            </div>
         </div>
+      </div>
     </div>
-</div>
 
+    <!-- ══ CARD 2 — Schedule (injected by JS) ═════════════════════════ -->
+    <div id="scheduleSection"></div>
 
-<!-- Class Modal -->
-<div id="selectionModal" class="modal" style="display: none;">
-    <div class="modal-content">
-        <span class="close-button" onclick="closeModal()">&times;</span>
-        <h3 id="modalTitle">Select an Option</h3>
-        <div id="modalOptions"></div>
+    <!-- ══ CARD 3 — General Instructions ═════════════════════════════ -->
+    <div class="ex-card">
+      <div class="ex-card-head">
+        <i class="fa fa-list-ul"></i> General Instructions
+      </div>
+      <div class="ex-card-body">
+        <textarea id="generalInstructions" name="generalInstructions"
+                  rows="5" placeholder="Enter each instruction on a new line..."></textarea>
+      </div>
     </div>
-</div>
 
+    <!-- ══ Submit ═════════════════════════════════════════════════════ -->
+    <div class="ex-actions">
+      <button type="button" id="saveBtn" class="ex-btn-save">
+        <i class="fa fa-save"></i> Save Exam
+      </button>
+    </div>
 
+  </form>
 
+  <!-- Toast container -->
+  <div id="exToastWrap" class="ex-toast-wrap"></div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</div><!-- /.ex-wrap -->
+</div><!-- /.content-wrapper -->
+
 
 <script>
-document.addEventListener("DOMContentLoaded", () => {
-            const startDateInput = document.getElementById("startDate");
-            const endDateInput = document.getElementById("endDate");
-            const scheduleSection = document.getElementById("scheduleSection");
-            const totalmarks = document.getElementById("totalmarks");
+(function () {
+  'use strict';
 
-            const classList = <?php echo json_encode($classNames ?? []); ?>;
-            const subjectsList = <?php echo json_encode($subjects ?? []); ?>;
+  /* ── Data from PHP ─────────────────────────────────────── */
+  var classList    = <?= json_encode(array_values($classNames ?? [])) ?>;
+  var subjectsList = <?= json_encode((object)($subjects ?? [])) ?>;
 
-            let selectedClass = '';
-            let modalCallback = null;
+  /* ── Element refs ─────────────────────────────────────── */
+  var startIn   = document.getElementById('startDate');
+  var endIn     = document.getElementById('endDate');
+  var schedSec  = document.getElementById('scheduleSection');
+  var saveBtn   = document.getElementById('saveBtn');
+  var textarea  = document.getElementById('generalInstructions');
 
-            let selectionModal = document.getElementById("selectionModal");
-            const modalTitle = document.getElementById("modalTitle");
-            const modalOptions = document.getElementById("modalOptions");
-            const textarea = document.getElementById("generalInstructions");
+  /* ── Bullet-point textarea ────────────────────────────── */
+  textarea.addEventListener('input', function () {
+    if (this.value.length === 1 && this.value !== '•') {
+      this.value = '• ' + this.value;
+    }
+  });
+  textarea.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      var pos = this.selectionStart;
+      this.value = this.value.substring(0, pos) + '\n• ' + this.value.substring(pos);
+      this.selectionStart = this.selectionEnd = pos + 3;
+    }
+  });
 
+  /* ── Date change → regenerate schedule ───────────────── */
+  function onDateChange() {
+    var s = startIn.value, e = endIn.value;
+    if (!s || !e) return;
+    var start = new Date(s), end = new Date(e);
+    if (isNaN(start) || isNaN(end)) return;
+    if (start > end) { showToast('End date must be on or after start date.', 'error'); return; }
+    buildSchedule(start, end);
+  }
+  startIn.addEventListener('change', onDateChange);
+  endIn.addEventListener('change', onDateChange);
 
+  function fmtDate(d) {
+    return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear();
+  }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
 
+  /* ── Build full schedule section ─────────────────────── */
+  function buildSchedule(start, end) {
+    if (!classList.length) {
+      schedSec.innerHTML =
+        '<div class="ex-card"><div class="ex-card-body ex-no-class">' +
+        '<i class="fa fa-exclamation-circle"></i> No classes found in this session. ' +
+        'Please add classes before creating an exam.</div></div>';
+      return;
+    }
 
-            endDateInput.addEventListener("change", () => {
-                const startDate = new Date(startDateInput.value);
-                const endDate = new Date(endDateInput.value);
+    var html = '<div class="ex-card">' +
+      '<div class="ex-card-head"><i class="fa fa-calendar"></i> Exam Schedule</div>' +
+      '<div class="ex-card-body ex-schedule-body">';
 
-                if (startDate && endDate && startDate <= endDate) {
-                    generateScheduleTable(startDate, endDate);
-                }
-            });
+    var cur = new Date(start);
+    while (cur <= end) {
+      var fd = fmtDate(cur);
+      html += buildDateBlock(fd);
+      cur.setDate(cur.getDate() + 1);
+    }
+    html += '</div></div>';
+    schedSec.innerHTML = html;
+  }
 
-            function formatDate(date) {
-                const day = String(date.getDate()).padStart(2, '0');
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const year = date.getFullYear();
-                return `${day}/${month}/${year}`;
-            }
+  function buildDateBlock(fd) {
+    return '<div class="ex-date-block">' +
+      '<div class="ex-date-label"><i class="fa fa-calendar-o"></i> ' + esc(fd) + '</div>' +
+      '<div class="ex-table-wrap">' +
+      '<table class="ex-sched-table"><thead><tr>' +
+      '<th>Class</th><th>Subject</th><th>Start Time</th><th>End Time</th>' +
+      '<th>Total Marks</th><th></th></tr></thead>' +
+      '<tbody data-date="' + esc(fd) + '">' + makeRow() + '</tbody>' +
+      '</table></div></div>';
+  }
 
-            function generateScheduleTable(startDate, endDate) {
-                scheduleSection.innerHTML = "<h3>Exam Schedule</h3>";
-                let currentDate = new Date(startDate);
+  function classOptions() {
+    return classList.map(function (c) {
+      return '<option value="' + esc(c) + '">' + esc(c) + '</option>';
+    }).join('');
+  }
 
-                while (currentDate <= endDate) {
-                    const formattedDate = formatDate(currentDate);
-                    const section = document.createElement("div");
-                    section.classList.add("date-section");
-                    section.innerHTML = `
-                <h4>${formattedDate}</h4>
-                <table class="schedule-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Class</th>
-                            <th>Subject</th>
-                            <th>Time</th>
-                            <th>Total Marks</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${generateRow(formattedDate)}
-                    </tbody>
-                </table>
-            `;
-                    scheduleSection.appendChild(section);
-                    currentDate.setDate(currentDate.getDate() + 1);
-                }
-            }
+  function makeRow() {
+    return '<tr>' +
+      '<td><select class="ex-sel cls-sel" onchange="exUpdateSubjects(this)">' +
+      '<option value="">— Select Class —</option>' + classOptions() +
+      '</select></td>' +
+      '<td><select class="ex-sel subj-sel" disabled>' +
+      '<option value="">— Select Class First —</option></select></td>' +
+      '<td><input type="time" class="ex-time start-time"></td>' +
+      '<td><input type="time" class="ex-time end-time"></td>' +
+      '<td><input type="number" class="ex-marks" value="100" min="1" max="9999"></td>' +
+      '<td class="ex-row-act">' +
+      '<button type="button" class="ex-btn-icon ex-btn-add" onclick="exAddRow(this)">' +
+      '<i class="fa fa-plus"></i></button>' +
+      '<button type="button" class="ex-btn-icon ex-btn-del" onclick="exDelRow(this)">' +
+      '<i class="fa fa-trash"></i></button>' +
+      '</td></tr>';
+  }
 
+  /* ── Exposed to inline onclick ───────────────────────── */
+  window.exUpdateSubjects = function (sel) {
+    var cls     = sel.value;
+    var row     = sel.closest('tr');
+    var subjSel = row.querySelector('.subj-sel');
+    subjSel.innerHTML = '<option value="">— Select Subject —</option>';
+    subjSel.disabled  = !cls;
+    if (!cls) return;
 
-            function generateRow(date) {
-                return `
-                <tr>
-                    <td class="text-center"><strong>${date}</strong></td>
-                    <td>
-                        <button type="button" class="btn btn-primary" onclick="openModal('Class', this)">Select Class</button>
-                        <span class="selected-class" data-class="" style="margin-left: 10px;"></span>
-                    </td>
-                    <td>
-                        <button type="button" class="btn btn-primary" onclick="openModal('Subject', this)" disabled>Select Subject</button>
-                        <span class="selected-subject" data-subject="" style="margin-left: 10px;"></span>
-                    </td>
-                    <td>
-                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px; width: 100%;">
-                            <label>Start Time:</label>
-                            <input type="time" class="start-time-input" required />
-                            <label>End Time:</label>
-                            <input type="time" class="end-time-input" required />
-                        </div>
+    var subs = subjectsList[cls];
+    if (subs && typeof subs === 'object') {
+      Object.keys(subs).forEach(function (s) {
+        var o = document.createElement('option');
+        o.value = s; o.textContent = s;
+        subjSel.appendChild(o);
+      });
+    } else {
+      subjSel.innerHTML = '<option value="">No subjects found</option>';
+      subjSel.disabled = true;
+    }
+  };
 
-                    </td>
-                    <td>
-                        <input type="number" class="marks-input" value="100" placeholder="Total Marks" required />
-                    </td>
-                    <td>
-                        <button type="button" class="btn btn-success" onclick="addRow(this)">
-                            <i class="fa fa-plus"></i>
-                        </button>
-                        <button type="button" class="btn btn-danger" onclick="removeRow(this)">
-                            <i class="fa fa-times"></i>
-                        </button>
-                    </td>
-                </tr>
-            `;
-            }
+  window.exAddRow = function (btn) {
+    var tbody = btn.closest('tbody');
+    tbody.insertAdjacentHTML('beforeend', makeRow());
+  };
 
-            // Attach openModal to the window object for global access
-            window.openModal = function(type, element) {
-                modalCallback = function(selectedValue) {
-                    if (type === "Class") {
-                        let classSpan = element.nextElementSibling;
-                        classSpan.textContent = selectedValue;
-                        classSpan.setAttribute("data-class", selectedValue);
-                        classSpan.classList.add("selected-highlight");
+  window.exDelRow = function (btn) {
+    var tbody = btn.closest('tbody');
+    if (tbody.rows.length <= 1) {
+      showToast('At least one row per date is required.', 'warning');
+      return;
+    }
+    btn.closest('tr').remove();
+  };
 
-                        // Reset subject when class is changed
-                        let row = element.closest("tr");
-                        let subjectButton = row.querySelector("td:nth-child(3) button");
-                        let subjectSpan = row.querySelector("td:nth-child(3) .selected-subject");
+  /* ── Save ────────────────────────────────────────────── */
+  saveBtn.addEventListener('click', function () {
+    var examName    = document.getElementById('examName').value.trim();
+    var startDate   = startIn.value;
+    var endDate     = endIn.value;
 
+    if (!examName)    { showToast('Please enter an exam name.', 'error'); return; }
+    if (!startDate)   { showToast('Please select a start date.', 'error'); return; }
+    if (!endDate)     { showToast('Please select an end date.', 'error'); return; }
 
-                        if (subjectButton) {
-                            subjectButton.textContent = "Select Subject";
-                            subjectButton.removeAttribute("data-value");
-                            subjectButton.classList.remove("selected-highlight");
-                            subjectButton.disabled = false; // Enable subject button after class selection
-                        }
+    var rows = document.querySelectorAll('.ex-sched-table tbody tr');
+    if (!rows.length) {
+      showToast('Please set dates to generate the schedule first.', 'error');
+      return;
+    }
 
-                        if (subjectSpan) {
-                            subjectSpan.textContent = "";
-                            subjectSpan.removeAttribute("data-subject");
-                            subjectSpan.classList.remove("selected-highlight");
-                        }
+    var scheduleData = [];
+    var hasError     = false;
 
-                    } else if (type === "Subject") {
+    rows.forEach(function (row) {
+      if (hasError) return;
+      var tbody  = row.closest('tbody');
+      var date   = tbody.dataset.date;
+      var cls    = row.querySelector('.cls-sel').value;
+      var subj   = row.querySelector('.subj-sel').value;
+      var st     = row.querySelector('.start-time').value;
+      var et     = row.querySelector('.end-time').value;
+      var marks  = row.querySelector('.ex-marks').value;
 
-                        let subjectSpan = element.nextElementSibling;
-                        subjectSpan.textContent = selectedValue;
-                        subjectSpan.setAttribute("data-subject", selectedValue);
-                        subjectSpan.classList.add("selected-highlight");
+      if (!cls || !subj || !st || !et || !marks) {
+        showToast('Please fill in all fields in every schedule row.', 'error');
+        hasError = true;
+        return;
+      }
+      scheduleData.push({
+        date:       date,
+        className:  cls,
+        subject:    subj,
+        time:       st + ' - ' + et,
+        totalMarks: marks
+      });
+    });
 
-                        // Also update the button text for clarity
-                        // element.textContent = selectedValue;
-                        element.textContent = "Change Subject";
-                        element.setAttribute("data-value", selectedValue);
-                        element.classList.add("selected-highlight");
-                    }
-                };
+    if (hasError) return;
+    if (!scheduleData.length) {
+      showToast('No schedule entries found. Please add rows.', 'error');
+      return;
+    }
 
-                modalTitle.textContent = `Select ${type}`;
-                modalOptions.innerHTML = getOptions(type, element);
-                selectionModal.style.display = "block";
+    document.getElementById('examScheduleInput').value = JSON.stringify(scheduleData);
 
-                // Close modal when clicking outside
-                document.addEventListener("click", closeModalOnOutside);
-            };
+    /* Refresh CSRF token value before sending */
+    var csrfName  = '<?= $this->security->get_csrf_token_name() ?>';
+    var csrfInput = document.querySelector('input[name="' + csrfName + '"]');
 
+    var fd = new FormData(document.getElementById('examForm'));
 
-            // Generate Options for Class and Subject
-            function getOptions(type, element) {
-                if (type === "Class") {
-                    return classList.length ?
-                        classList.map(cls => `<button type ="button" onclick ="selectOption('${cls}', '${type}', event)" >${cls}</button>`).join("")
-                        : "<p>No classes available</p>";
-                        }
-                    else if (type === "Subject") {
-                        let row = element.closest("tr");
-                        let classSpan = row.querySelector(".selected-class");
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving…';
 
-                        if (!classSpan || !classSpan.getAttribute("data-class")) {
-                            return "<p>Please select a class first.</p>";
-                        }
+    fetch('<?= base_url('exam/manage_exam') ?>', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.status === 'success') {
+          showToast('Exam saved successfully!', 'success');
+          setTimeout(function () { location.reload(); }, 1500);
+        } else {
+          showToast(res.message || 'Failed to save exam.', 'error');
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = '<i class="fa fa-save"></i> Save Exam';
+          /* Refresh CSRF if returned */
+          if (res.csrf_token && csrfInput) csrfInput.value = res.csrf_token;
+        }
+      })
+      .catch(function () {
+        showToast('Server error. Please try again.', 'error');
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="fa fa-save"></i> Save Exam';
+      });
+  });
 
-                        let className = classSpan.getAttribute("data-class");
+  /* ── Toast helper ────────────────────────────────────── */
+  function showToast(msg, type) {
+    var wrap  = document.getElementById('exToastWrap');
+    var el    = document.createElement('div');
+    var icons = { success: 'check-circle', error: 'times-circle', warning: 'exclamation-triangle', info: 'info-circle' };
+    el.className = 'ex-toast ex-toast-' + (type || 'info');
+    el.innerHTML = '<i class="fa fa-' + (icons[type] || 'info-circle') + '"></i> ' + msg;
+    wrap.appendChild(el);
+    setTimeout(function () {
+      el.classList.add('ex-toast-fade');
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 400);
+    }, 3200);
+  }
 
-                        // Check if subjects are available for the selected class
-                        if (!subjectsList[className] || Object.keys(subjectsList[className]).length === 0) {
-                            return "<p>No subjects available.</p>";
-                        }
-
-
-                        return Object.keys(subjectsList[className])
-                        .map(sub => `<button type ="button" onclick ="selectOption('${sub}', '${type}', event)" >${sub}</button>`).join("");
-                        }
-                    }
-
-                    // Handle Option Selection
-                    window.selectOption = function(selectedValue, type, event) {
-                        if (modalCallback) modalCallback(selectedValue);
-                        selectionModal.style.display = "none";
-                        event.stopPropagation();
-                        document.removeEventListener("click", closeModalOnOutside);
-                    };
-
-
-
-                    function closeModalOnOutside(event) {
-                        if (!selectionModal.contains(event.target) && !event.target.closest(".btn-primary")) {
-                            window.closeModal();
-                        }
-                    }
-
-
-                    // Close Modal on Close Button Click
-                    window.closeModal = function() {
-                        selectionModal.style.display = "none";
-                        modalCallback = null;
-
-                        document.removeEventListener("click", closeModalOnOutside);
-                    };
-
-
-
-
-                    textarea.addEventListener("input", function() {
-                        // If the user starts typing and it's the first character, add a bullet point
-                        if (textarea.value.length === 1 && textarea.value !== "•") {
-                            textarea.value = "• " + textarea.value;
-                        }
-                    });
-
-                    textarea.addEventListener("keydown", function(event) {
-                        if (event.key === "Enter") {
-                            event.preventDefault(); // Prevents new line default behavior
-
-                            // Get current text
-                            let cursorPos = textarea.selectionStart;
-                            let textBeforeCursor = textarea.value.substring(0, cursorPos);
-                            let textAfterCursor = textarea.value.substring(cursorPos);
-
-                            // Insert a new bullet point at the next line
-                            textarea.value = textBeforeCursor + "\n• " + textAfterCursor;
-
-                            // Move cursor to correct position
-                            textarea.selectionStart = textarea.selectionEnd = cursorPos + 3;
-                        }
-                    });
-
-
-                    window.addRow = function(button) {
-                        const tableBody = button.closest("tbody");
-                        const row = generateRow(button.closest("tr").querySelector("td").textContent);
-                        tableBody.insertAdjacentHTML("beforeend", row);
-                    };
-
-                    window.removeRow = function(button) {
-                        const row = button.closest("tr");
-                        row.parentElement.removeChild(row);
-                    };
-                });
-
-
-
-
-
-            $(document).ready(function() {
-                $("#add-exam-form").on("submit", function(e) {
-                    e.preventDefault(); // Prevent default form submission
-
-                    const scheduleData = [];
-
-                    // Iterate over each table row to collect schedule data
-                    $(".schedule-table tbody tr").each(function() {
-                        const row = $(this);
-
-                        const date = row.find("td:first").text().trim();
-                        const className = row.find(".selected-class").attr("data-class");
-                        const subject = row.find(".selected-subject").attr("data-subject");
-                        const startTime = row.find(".start-time-input").val();
-                        const endTime = row.find(".end-time-input").val();
-                        const totalMarks = row.find(".marks-input").val();
-
-                        // Trim the values and validate
-                        if (!className.trim() || !subject.trim() || !startTime.trim() || !
-                            endTime.trim() || !totalMarks.trim()) {
-                            alert("Please fill in all schedule fields correctly.");
-                            return false; // Exit the loop if any field is missing
-                        }
-
-
-                        // Append data to the schedule array
-                        scheduleData.push({
-                            date: date,
-                            className: className,
-                            subject: subject,
-                            time: `${startTime} - ${endTime}`,
-                            totalMarks: totalMarks
-                        });
-                    });
-
-                    // If no schedule data, show alert and stop submission
-                    if (scheduleData.length === 0) {
-                        alert("Please add at least one schedule.");
-                        return;
-                    }
-
-                    // Add the JSON string to the hidden input
-                    $("#examScheduleInput").val(JSON.stringify(scheduleData));
-
-                    // Submit the form via AJAX
-                    $.ajax({
-                        url: $(this).attr("action"),
-                        method: $(this).attr("method"),
-                        data: $(this).serialize(),
-                        dataType: "json",
-                        success: function(response) {
-                            if (response.status === "success") {
-                                alert("Exam saved successfully!");
-                                location.reload();
-                            } else {
-                                alert(response.message);
-                            }
-                        },
-                        error: function(xhr, status, error) {
-                            console.error("AJAX Error:", error);
-                            alert("An error occurred. Please try again.");
-                        }
-                    });
-                });
-            });
+})();
 </script>
 
 
-
 <style>
-body {
-    font-family: Arial, sans-serif;
-    background-color: #f8f9fa;
-    margin: 0;
+/* ═══════════════════════════════════════════════════════════
+   Exam Module — teal / navy global theme
+═══════════════════════════════════════════════════════════ */
+
+.ex-wrap {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 24px 16px 56px;
 }
 
-.container {
-    width: 98%;
-    padding-right: 20px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    padding-bottom: 20px;
-    font-size: 16px;
+/* ── Header ──────────────────────────────────────────────── */
+.ex-page-title {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--t1);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ex-page-title i { color: var(--gold); }
+
+.ex-breadcrumb {
+  list-style: none;
+  margin: 0 0 22px;
+  padding: 0;
+  display: flex;
+  gap: 6px;
+  font-size: .83rem;
+  color: var(--t3);
+}
+.ex-breadcrumb li + li::before { content: '›'; margin-right: 6px; }
+.ex-breadcrumb a { color: var(--gold); text-decoration: none; }
+.ex-breadcrumb a:hover { text-decoration: underline; }
+
+/* ── Cards ───────────────────────────────────────────────── */
+.ex-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  box-shadow: var(--sh);
+}
+.ex-card-head {
+  background: var(--gold);
+  color: #fff;
+  font-size: .92rem;
+  font-weight: 600;
+  padding: 11px 18px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.ex-card-body { padding: 20px; }
+
+/* ── 4-column info grid ──────────────────────────────────── */
+.ex-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+@media (max-width: 860px) { .ex-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .ex-grid { grid-template-columns: 1fr; } }
+
+.ex-field { display: flex; flex-direction: column; gap: 5px; }
+.ex-field label {
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--t2);
+  letter-spacing: .02em;
+}
+.ex-req { color: #ef4444; }
+
+.ex-field input,
+.ex-field select {
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg3);
+  color: var(--t1);
+  font-size: .88rem;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color .18s, box-shadow .18s;
+}
+.ex-field input:focus,
+.ex-field select:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-ring);
 }
 
-.title-bar {
-    background-color: #007bff;
-    color: white;
-    margin-top: 20px;
-    font-weight: bold;
-    text-align: center;
-    font-size: 24px;
-    padding: 10px;
-    border-radius: 5px;
-    margin-bottom: 20px;
+/* ── Schedule card body ──────────────────────────────────── */
+.ex-schedule-body { padding: 0; }
+
+.ex-date-block {
+  border-bottom: 1px solid var(--border);
+}
+.ex-date-block:last-child { border-bottom: none; }
+
+.ex-date-label {
+  background: var(--gold-dim);
+  border-bottom: 1px solid var(--border);
+  padding: 9px 18px;
+  font-size: .84rem;
+  font-weight: 700;
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
-.add-exam {
-    max-width: 1020px;
-    margin: 0 auto;
-    padding: 20px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    background-color: white;
+.ex-table-wrap { overflow-x: auto; }
+
+.ex-sched-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 680px;
+}
+.ex-sched-table th {
+  background: var(--bg3);
+  color: var(--t2);
+  font-size: .78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 9px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.ex-sched-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.ex-sched-table tr:last-child td { border-bottom: none; }
+.ex-sched-table tr:hover td { background: var(--gold-dim); }
+
+/* Inline selects & inputs inside the table */
+.ex-sel {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg2);
+  color: var(--t1);
+  font-size: .84rem;
+  width: 100%;
+  min-width: 140px;
+  box-sizing: border-box;
+}
+.ex-sel:focus { outline: none; border-color: var(--gold); }
+
+.ex-time {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg2);
+  color: var(--t1);
+  font-size: .84rem;
+  width: 100%;
+  min-width: 100px;
+  box-sizing: border-box;
+}
+.ex-time:focus { outline: none; border-color: var(--gold); }
+
+.ex-marks {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg2);
+  color: var(--t1);
+  font-size: .84rem;
+  width: 80px;
+  box-sizing: border-box;
+}
+.ex-marks:focus { outline: none; border-color: var(--gold); }
+
+/* Row action buttons */
+.ex-row-act { white-space: nowrap; }
+.ex-btn-icon {
+  width: 28px; height: 28px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: .78rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 4px;
+  transition: opacity .18s, transform .1s;
+}
+.ex-btn-icon:active { transform: scale(.93); }
+.ex-btn-add { background: var(--gold); color: #fff; }
+.ex-btn-del { background: #ef4444; color: #fff; }
+.ex-btn-add:hover { opacity: .85; }
+.ex-btn-del:hover { opacity: .85; }
+
+/* No-classes notice */
+.ex-no-class {
+  text-align: center;
+  padding: 28px;
+  color: var(--t3);
+  font-size: .9rem;
+}
+.ex-no-class i { color: #d97706; margin-right: 6px; }
+
+/* ── Instructions textarea ──────────────────────────────── */
+.ex-card-body textarea {
+  width: 100%;
+  padding: 10px 13px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg3);
+  color: var(--t1);
+  font-size: .88rem;
+  resize: vertical;
+  box-sizing: border-box;
+  line-height: 1.6;
+}
+.ex-card-body textarea:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-ring);
 }
 
-.date-section {
-    margin-bottom: 20px;
+/* ── Actions row ─────────────────────────────────────────── */
+.ex-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
 }
-
-.schedule-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 10px;
+.ex-btn-save {
+  padding: 10px 28px;
+  background: var(--gold);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: .92rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background .18s, transform .1s;
 }
+.ex-btn-save:hover:not(:disabled) { background: var(--gold2); }
+.ex-btn-save:active:not(:disabled) { transform: scale(.97); }
+.ex-btn-save:disabled { opacity: .65; cursor: not-allowed; }
 
-.schedule-table th,
-.schedule-table td {
-    border: 1px solid #ddd;
-    padding: 8px;
-    text-align: left;
+/* ── Toast ───────────────────────────────────────────────── */
+.ex-toast-wrap {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 9999;
 }
-
-.schedule-table th {
-    background-color: #f1f1f1;
+.ex-toast {
+  padding: 11px 18px;
+  border-radius: 8px;
+  font-size: .86rem;
+  font-weight: 500;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.22);
+  animation: ex-slide-in .3s ease;
+  min-width: 240px;
 }
+.ex-toast-success { background: #0f766e; }
+.ex-toast-error   { background: #dc2626; }
+.ex-toast-warning { background: #d97706; }
+.ex-toast-info    { background: #2563eb; }
+.ex-toast-fade    { opacity: 0; transition: opacity .4s; }
 
-/* Modal Styles */
-.modal {
-    display: none;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 300px;
-    background: rgba(255, 255, 255, 1);
-    z-index: 1000;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    padding: 20px;
-    border-radius: 5px;
-}
-
-.modal-content {
-    background: white;
-    padding: 20px;
-    border-radius: 5px;
-    width: 339px;
-    text-align: center;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-.close-button {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    font-size: 20px;
-    cursor: pointer;
-}
-
-input,
-select,
-textarea {
-    width: 100%;
-    padding: 10px;
-    margin-top: 10px;
-    margin-bottom: 10px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-}
-
-.selected-highlight {
-    font-weight: bold;
-
-    border-bottom: 2px solid #007bff;
-    padding: 6px;
-}
-
-button {
-    cursor: pointer;
-}
-
-#preview {
-    background-color: #6c757d;
-}
-
-h3 {
-    background-color: #007bff;
-    color: white;
-    padding: 10px;
-    border-radius: 5px;
-    font-size: 18px;
-}
-
-.time-input {
-    width: 45%;
-    padding: 5px;
-    margin: 5px 2%;
-    box-sizing: border-box;
-}
-
-/* Time Modal */
-#timeModal {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-#timeModal .modal-content {
-    background: white;
-    padding: 20px;
-    border-radius: 5px;
-    width: 300px;
-    text-align: center;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-#timeModal .btn {
-    margin-top: 10px;
-}
-
-/* Form Sections */
-.form-section {
-    max-width: 910px;
-    margin: 0 auto;
-}
-
-.form-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
-}
-
-.form-grid div {
-    display: flex;
-    flex-direction: column;
-}
-
-label {
-    font-weight: bold;
-    margin-bottom: 8px;
-}
-
-input,
-select {
-    padding: 8px;
-    font-size: 16px;
-}
-
-/* Modal Adjustments */
-.modal {
-    width: 90%;
-    max-width: 400px;
-    max-height: 70vh;
-    overflow-y: auto;
-}
-
-#modalOptions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 10px;
-    max-height: 50vh;
-    overflow-y: auto;
-}
-
-#modalOptions button {
-    width: 45%;
-    padding: 10px;
-    border: 1px solid #ccc;
-    background: #f8f9fa;
-    border-radius: 5px;
-    cursor: pointer;
-}
-
-#modalOptions button:hover {
-    background: #007bff;
-    color: white;
+@keyframes ex-slide-in {
+  from { transform: translateX(60px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
 }
 </style>

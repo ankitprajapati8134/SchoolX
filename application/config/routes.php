@@ -63,6 +63,29 @@ $route['accounts/get'] = 'AccountController/getAccounts';
 $route['fees/lookup_student']    = 'fees/lookup_student';
 $route['fees/fetch_fee_details'] = 'fees/fetch_fee_details';
 
+// Result Management
+$route['result']                                          = 'result/index';
+$route['result/template_designer']                        = 'result/template_designer';
+$route['result/template_designer/(:any)']                 = 'result/template_designer/$1';
+$route['result/marks_entry']                              = 'result/marks_entry';
+$route['result/marks_entry/(:any)']                       = 'result/marks_entry/$1';
+$route['result/marks_sheet/(:any)/(:any)/(:any)/(:any)']  = 'result/marks_sheet/$1/$2/$3/$4';
+$route['result/class_result']                             = 'result/class_result';
+$route['result/class_result/(:any)']                      = 'result/class_result/$1';
+$route['result/student_result/(:any)']                    = 'result/student_result/$1';
+$route['result/report_card/(:any)/(:any)']                = 'result/report_card/$1/$2';
+$route['result/cumulative']                               = 'result/cumulative';
+$route['result/save_template']                            = 'result/save_template';
+$route['result/get_template']                             = 'result/get_template';
+$route['result/save_marks']                               = 'result/save_marks';
+$route['result/get_marks']                                = 'result/get_marks';
+$route['result/compute_results']                          = 'result/compute_results';
+$route['result/get_class_result_data']                    = 'result/get_class_result_data';
+$route['result/get_cumulative_data']                      = 'result/get_cumulative_data';
+$route['result/save_cumulative_config']                   = 'result/save_cumulative_config';
+$route['result/compute_cumulative']                       = 'result/compute_cumulative';
+$route['result/get_exam_status']                          = 'result/get_exam_status';
+
 
 
 

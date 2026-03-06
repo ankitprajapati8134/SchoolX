@@ -1,1035 +1,917 @@
+<?php defined('BASEPATH') or exit('No direct script access allowed'); ?>
+
 <div class="content-wrapper">
-    <div class="page_container">
-        <div class="container">
-            <div>
-                <h2 class="header"><i class="fa fa-user"></i> Admin Administration</h2>
+<div class="ma-wrap">
+
+    <!-- ── Page title + breadcrumb ── -->
+    <div class="ma-page-title"><i class="fa fa-shield"></i> Admin Management</div>
+    <ol class="ma-breadcrumb">
+        <li><a href="<?= base_url('admin') ?>">Dashboard</a></li>
+        <li>Manage Admins</li>
+    </ol>
+
+    <!-- ── Tab bar ── -->
+    <div class="ma-tabs">
+        <button class="ma-tab" data-target="ma-listing" id="tabListing">
+            <i class="fa fa-list-ul"></i> Admin Listing
+        </button>
+        <button class="ma-tab" data-target="ma-create">
+            <i class="fa fa-user-plus"></i> Add New Admin
+        </button>
+        <button class="ma-tab" data-target="ma-password">
+            <i class="fa fa-key"></i> Update Password
+        </button>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         PANEL 1 — ADMIN LISTING
+    ══════════════════════════════════════════ -->
+    <div class="ma-panel" id="ma-listing">
+        <div class="ma-card">
+            <div class="ma-card-head">
+                <span><i class="fa fa-list-ul"></i> All Administrators</span>
+                <span class="ma-count"><?= count($activeAdmins) + count($inactiveAdmins) ?> total</span>
             </div>
-
-            <div class="nav-tabs">
-                <a href="#" class="active" onclick="showSection('make-user')">Make Admin</a>
-                <a href="#" onclick="showSection('update-password')">Update Password</a>
-                <a href="#" onclick="showSection('user-listing')">Admin Listing</a>
-            </div>
-
-            <div id="make-user" class="content active">
-                <div class="icon">
-                    <i class="fa fa-user-plus"></i>
-                </div>
-                <div class="form">
-                    <form id="add_admin_form">
-
-                        <div class="form-container">
-
-                            <div class="form-column">
-                                <h2>Personal Information</h2>
-                                <div class="form-group">
-                                    <label for="name">Name <span style="color: red;">*</span></label>
-                                    <input type="text" id="name" name="name" placeholder="Enter full name" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="email">Email ID <span style="color: red;">*</span></label>
-                                    <input type="email" id="email" name="email" placeholder="Enter email address"
-                                        required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="phone">Phone Number <span style="color: red;">*</span></label>
-                                    <input type="tel" id="phone" name="phone" placeholder="Enter phone number" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="dob">Date of Birth <span style="color: red;">*</span></label>
-                                    <input type="date" id="dob" name="dob" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="gender">Gender <span style="color: red;">*</span></label>
-                                    <select id="gender" name="gender" required>
-                                        <option value="" disabled selected>Select gender</option>
-                                        <option value="Male">Male</option>
-                                        <option value="Female">Female</option>
-                                        <option value="Other">Other</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="role">Role <span style="color: red;">*</span></label>
-                                    <select id="role" name="role" required>
-                                        <option value="" disabled selected>Select role</option>
-                                        <option value="Super Admin">Super Admin</option>
-                                        <option value="Accountant">Accountant</option>
-                                        <option value="Academic Admin">Academic Admin</option>
-                                    </select>
-                                </div>
-                            </div>
-
-
-                            <div class="form-column">
-                                <h2>Credentials</h2>
-                                <div class="form-group">
-                                    <label for="adminId">Admin ID <span style="color: red;">*</span></label>
-                                    <input type="text" id="admin" name="admin"
-                                        value="<?php echo isset($adminId) ? $adminId : 'NA'; ?>" required disabled>
-                                </div>
-                                <div class="form-group">
-                                    <label for="password">Password <span style="color: red;">*</span></label>
-                                    <div class="password-container">
-                                        <input type="password" id="password" name="password"
-                                            placeholder="Enter password" required>
-                                        <span toggle="#password" class="fa fa-eye toggle-password"></span>
-
-                                    </div>
-                                </div>
-                                <div class="form-group ">
-                                    <label for="confirm_password"> Confirm Password <span style="color: red;">*</span></label>
-                                    <div class="password-container">
-
-                                        <input type="password" id="confirm_password" name="confirm_password"
-                                            placeholder="Re-enter password" required>
-                                        <span toggle="#confirm_password" class="fa fa-eye toggle-password"></span>
-
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-
-                        <div class="buttons">
-                            <button type="submit" class="btn btn-danger">Create New Admin</button>
-
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-
-
-
-
-            <!-- Update Password Section -->
-            <div id="update-password" class="content">
-                <div class="icon">
-                    <i class="fa fa-key"></i>
-                </div>
-                <div class="form">
-                    <form id="updatePasswordForm">
-                        <div class="form-group">
-                            <label>Select Admin <span style="color: red;">*</span></label>
-                            <select name="admin_id" required>
-                                <option value="" disabled selected>Select Admin</option>
-                                <?php if (!empty($adminList)): ?>
-                                    <?php foreach ($adminList as $admin): ?>
-                                        <option value="<?= explode(' - ', $admin)[0] ?>"><?= $admin ?></option>
-                                    <?php endforeach; ?>
-                                <?php else: ?>
-                                    <option value="" disabled>No admins found</option>
-                                <?php endif; ?>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label>New Password <span style="color: red;">*</span></label>
-                            <div class="password-container">
-                                <input type="password" id="newPassword" name="newPassword" required>
-                                <span toggle="#newPassword" class="fa fa-eye toggle-password"></span>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Confirm Password <span style="color: red;">*</span></label>
-                            <div class="password-container">
-                                <input type="password" id="confirmPassword" name="confirmPassword" required>
-                                <span toggle="#confirmPassword" class="fa fa-eye toggle-password"></span>
-                            </div>
-                        </div>
-                        <div class="buttons">
-                            <button type="submit" class="btn update-password">Update Password</button>
-
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- user listing -->
-            <div id="user-listing" class="content">
-                <div class="user-list">
-                    <table class="table table-striped table-bordered dataTable">
+            <div class="ma-card-body--table">
+                <div class="ma-tbl-wrap">
+                    <table class="ma-tbl">
                         <thead>
                             <tr>
-                                <th>Sr. No.</th>
-                                <th>Admin Id</th>
-                                <th>Admin Name</th>
-                                <th>Admin Role</th>
+                                <th>#</th>
+                                <th>Admin ID</th>
+                                <th>Name</th>
+                                <th>Role</th>
                                 <th>Status</th>
-                                <th>Action</th>
-
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php
-                            $srNo = 1;
-                            foreach ($activeAdmins as $admin) { ?>
-                                <tr>
-                                    <td><?php echo $srNo++; ?></td>
-                                    <td><?php echo $admin['id']; ?></td>
-                                    <td><?php echo $admin['name']; ?></td>
-                                    <td><?php echo $admin['role']; ?></td>
-                                    <td><strong><?php echo $admin['status']; ?></strong></td>
-                                    <td>
-                                        <button class="btn-action view-details" data-id="<?php echo $admin['id']; ?>">
-                                            <i class="fa fa-eye"> View</i>
-                                        </button>
-
-                                    </td>
-                                </tr>
-                            <?php } ?>
-                            <?php foreach ($inactiveAdmins as $admin) { ?>
-                                <tr>
-                                    <td><?php echo $srNo++; ?></td>
-                                    <td><?php echo $admin['id']; ?></td>
-                                    <td><?php echo $admin['name']; ?></td>
-                                    <td><?php echo $admin['role']; ?></td>
-                                    <td><?php echo $admin['status']; ?></td>
-                                    <td>
-                                        <button class="btn-action view-details" data-id="<?php echo $admin['id']; ?>">
-                                            <i class="fa fa-eye"> View</i>
-                                        </button>
-                                    </td>
-                                </tr>
-                            <?php } ?>
-
+                        <?php $sr = 1; ?>
+                        <?php foreach ($activeAdmins as $admin): ?>
+                            <tr>
+                                <td class="ma-num"><?= $sr++ ?></td>
+                                <td class="ma-mono"><?= htmlspecialchars($admin['id'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><?= htmlspecialchars($admin['name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><span class="ma-role-badge"><?= htmlspecialchars($admin['role'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                                <td><span class="ma-status ma-status--active"><i class="fa fa-circle"></i> Active</span></td>
+                                <td>
+                                    <button class="ma-act-btn ma-act-view" data-id="<?= htmlspecialchars($admin['id'], ENT_QUOTES, 'UTF-8') ?>" title="View / Edit">
+                                        <i class="fa fa-pencil"></i> Edit
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <?php foreach ($inactiveAdmins as $admin): ?>
+                            <tr class="ma-row--inactive">
+                                <td class="ma-num"><?= $sr++ ?></td>
+                                <td class="ma-mono"><?= htmlspecialchars($admin['id'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><?= htmlspecialchars($admin['name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><span class="ma-role-badge"><?= htmlspecialchars($admin['role'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                                <td><span class="ma-status ma-status--inactive"><i class="fa fa-circle"></i> Inactive</span></td>
+                                <td>
+                                    <button class="ma-act-btn ma-act-view" data-id="<?= htmlspecialchars($admin['id'], ENT_QUOTES, 'UTF-8') ?>" title="View / Edit">
+                                        <i class="fa fa-pencil"></i> Edit
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <?php if (empty($activeAdmins) && empty($inactiveAdmins)): ?>
+                            <tr><td colspan="6" class="ma-empty"><i class="fa fa-inbox"></i><br>No administrators found</td></tr>
+                        <?php endif; ?>
                         </tbody>
                     </table>
-                </div>
-
-            </div>
-
-            <div id="viewAdminModal" class="modal" style="display: none;">
-                <div class="modal-content">
-                    <span class="close" onclick="closeModal()">&times;</span>
-                    <h2>
-                        <strong>Admin Information: <span id="modal-id"></span></strong>
-                    </h2>
-
-
-                    <form id="user-info-form">
-                        <label for="modal-name">Name:</label>
-                        <input type="text" id="modal-name" name="name" value="" disabled />
-
-                        <label for="modal-email">Email:</label>
-                        <input type="email" id="modal-email" name="email" value="" disabled />
-
-                        <label for="modal-phone">Phone Number:</label>
-                        <input type="text" id="modal-phone" name="phone" value="" disabled />
-
-                        <label for="modal-dob">Date of Birth:</label>
-                        <input type="date" id="modal-dob" name="dob" value="" disabled />
-
-                        <label for="modal-gender">Gender:</label>
-                        <select id="modal-gender" name="gender" disabled>
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                            <option value="Other">Other</option>
-                        </select>
-
-                        <label for="modal-role">Role:</label>
-                        <select id="modal-role" name="role" value="" disabled>
-                            <option value="Super Admin">Super Admin</option>
-                            <option value="Accountant">Accountant</option>
-                            <option value="Academic Admin">Academic Admin</option>
-                        </select>
-
-                        <label for="modal-status">Status:</label>
-                        <label for="modal-status" class="switch">
-                            <input type="checkbox" id="modal-status" disabled>
-                            <span class="slider round"></span>
-                        </label>
-
-
-                        <div class="button-container">
-                            <button type="button" id="edit-btn" onclick="enableEditing()">Edit</button>
-                            <button type="button" id="save-btn" onclick="saveChanges()"
-                                style="display: none;">Save</button>
-                        </div>
-                    </form>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- ══════════════════════════════════════════
+         PANEL 2 — ADD NEW ADMIN
+    ══════════════════════════════════════════ -->
+    <div class="ma-panel" id="ma-create" style="display:none;">
+        <div class="ma-card">
+            <div class="ma-card-head">
+                <span><i class="fa fa-user-plus"></i> Create New Administrator</span>
+            </div>
+            <div class="ma-card-body">
+                <form id="addAdminForm" autocomplete="off">
+
+                    <div class="ma-form-grid">
+
+                        <!-- Left: Personal Info -->
+                        <div class="ma-form-section">
+                            <div class="ma-section-title"><i class="fa fa-user"></i> Personal Information</div>
+
+                            <div class="ma-field">
+                                <label>Full Name <span class="ma-req">*</span></label>
+                                <input type="text" id="newName" name="name" class="ma-input" placeholder="Enter full name" required>
+                            </div>
+                            <div class="ma-field">
+                                <label>Email Address <span class="ma-req">*</span></label>
+                                <input type="email" id="newEmail" name="email" class="ma-input" placeholder="Enter email" required>
+                            </div>
+                            <div class="ma-field">
+                                <label>Phone Number <span class="ma-req">*</span></label>
+                                <input type="tel" id="newPhone" name="phone" class="ma-input" placeholder="Enter phone number" required>
+                            </div>
+                            <div class="ma-field">
+                                <label>Date of Birth <span class="ma-req">*</span></label>
+                                <input type="date" id="newDob" name="dob" class="ma-input" required>
+                            </div>
+                            <div class="ma-field">
+                                <label>Gender <span class="ma-req">*</span></label>
+                                <select id="newGender" name="gender" class="ma-select" required>
+                                    <option value="" disabled selected>Select gender</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div class="ma-field">
+                                <label>Role <span class="ma-req">*</span></label>
+                                <select id="newRole" name="role" class="ma-select" required>
+                                    <option value="" disabled selected>Select role</option>
+                                    <option value="Super Admin">Super Admin</option>
+                                    <option value="Accountant">Accountant</option>
+                                    <option value="Academic Admin">Academic Admin</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Right: Credentials -->
+                        <div class="ma-form-section">
+                            <div class="ma-section-title"><i class="fa fa-lock"></i> Credentials</div>
+
+                            <div class="ma-field">
+                                <label>Admin ID</label>
+                                <input type="text" name="admin" class="ma-input" value="<?= htmlspecialchars($adminId ?? 'NA', ENT_QUOTES, 'UTF-8') ?>" disabled>
+                                <span class="ma-hint">Auto-generated</span>
+                            </div>
+                            <div class="ma-field">
+                                <label>Password <span class="ma-req">*</span></label>
+                                <div class="ma-pwd-wrap">
+                                    <input type="password" id="newPassword" name="password" class="ma-input" placeholder="Enter password" required>
+                                    <button type="button" class="ma-pwd-eye" data-target="newPassword"><i class="fa fa-eye"></i></button>
+                                </div>
+                            </div>
+                            <div class="ma-field">
+                                <label>Confirm Password <span class="ma-req">*</span></label>
+                                <div class="ma-pwd-wrap">
+                                    <input type="password" id="newConfirmPassword" name="confirm_password" class="ma-input" placeholder="Re-enter password" required>
+                                    <button type="button" class="ma-pwd-eye" data-target="newConfirmPassword"><i class="fa fa-eye"></i></button>
+                                </div>
+                            </div>
+
+                            <div class="ma-pwd-strength" id="pwdStrength" style="display:none;">
+                                <div class="ma-pwd-bar"><div class="ma-pwd-fill" id="pwdFill"></div></div>
+                                <span class="ma-pwd-lbl" id="pwdLbl"></span>
+                            </div>
+                        </div>
+
+                    </div><!-- /.ma-form-grid -->
+
+                    <div class="ma-form-actions">
+                        <button type="reset" class="ma-btn ma-btn-ghost"><i class="fa fa-times"></i> Clear</button>
+                        <button type="submit" class="ma-btn ma-btn-primary" id="createAdminBtn">
+                            <i class="fa fa-user-plus"></i> Create Admin
+                        </button>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         PANEL 3 — UPDATE PASSWORD
+    ══════════════════════════════════════════ -->
+    <div class="ma-panel" id="ma-password" style="display:none;">
+        <div class="ma-card" style="max-width:520px;">
+            <div class="ma-card-head">
+                <span><i class="fa fa-key"></i> Update Admin Password</span>
+            </div>
+            <div class="ma-card-body">
+                <form id="updatePwdForm" autocomplete="off">
+
+                    <div class="ma-field">
+                        <label>Select Administrator <span class="ma-req">*</span></label>
+                        <select name="admin_id" id="updAdminSel" class="ma-select" required>
+                            <option value="" disabled selected>Select admin</option>
+                            <?php foreach ($adminList as $a): ?>
+                            <option value="<?= htmlspecialchars(explode(' - ', $a)[0], ENT_QUOTES, 'UTF-8') ?>">
+                                <?= htmlspecialchars($a, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="ma-field">
+                        <label>New Password <span class="ma-req">*</span></label>
+                        <div class="ma-pwd-wrap">
+                            <input type="password" id="updNewPwd" name="newPassword" class="ma-input" placeholder="Enter new password" required>
+                            <button type="button" class="ma-pwd-eye" data-target="updNewPwd"><i class="fa fa-eye"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="ma-field">
+                        <label>Confirm Password <span class="ma-req">*</span></label>
+                        <div class="ma-pwd-wrap">
+                            <input type="password" id="updConfirmPwd" name="confirmPassword" class="ma-input" placeholder="Re-enter password" required>
+                            <button type="button" class="ma-pwd-eye" data-target="updConfirmPwd"><i class="fa fa-eye"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="ma-form-actions" style="margin-top:24px;">
+                        <button type="submit" class="ma-btn ma-btn-primary" id="updatePwdBtn">
+                            <i class="fa fa-check"></i> Update Password
+                        </button>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+    </div>
+
+</div><!-- /.ma-wrap -->
+</div><!-- /.content-wrapper -->
+
+
+<!-- ══════════════════════════════════════════
+     VIEW / EDIT MODAL
+══════════════════════════════════════════ -->
+<div class="ma-overlay" id="maOverlay">
+    <div class="ma-modal">
+        <div class="ma-modal-head">
+            <div>
+                <div class="ma-modal-title"><i class="fa fa-user-circle-o"></i> Admin Details</div>
+                <div class="ma-modal-id" id="maModalId"></div>
+            </div>
+            <button class="ma-modal-close" id="maModalClose">&times;</button>
+        </div>
+        <div class="ma-modal-body">
+            <form id="editAdminForm" autocomplete="off">
+
+                <div class="ma-modal-grid">
+                    <div class="ma-field">
+                        <label>Full Name</label>
+                        <input type="text" id="mName" name="name" class="ma-input" disabled>
+                    </div>
+                    <div class="ma-field">
+                        <label>Email</label>
+                        <input type="email" id="mEmail" name="email" class="ma-input" disabled>
+                    </div>
+                    <div class="ma-field">
+                        <label>Phone Number</label>
+                        <input type="text" id="mPhone" name="phone" class="ma-input" disabled>
+                    </div>
+                    <div class="ma-field">
+                        <label>Date of Birth</label>
+                        <input type="date" id="mDob" name="dob" class="ma-input" disabled>
+                    </div>
+                    <div class="ma-field">
+                        <label>Gender</label>
+                        <select id="mGender" name="gender" class="ma-select" disabled>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="ma-field">
+                        <label>Role</label>
+                        <select id="mRole" name="role" class="ma-select" disabled>
+                            <option value="Super Admin">Super Admin</option>
+                            <option value="Accountant">Accountant</option>
+                            <option value="Academic Admin">Academic Admin</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="ma-field ma-field--toggle">
+                    <label>Account Status</label>
+                    <label class="ma-toggle">
+                        <input type="checkbox" id="mStatus" disabled>
+                        <span class="ma-toggle-track">
+                            <span class="ma-toggle-thumb"></span>
+                        </span>
+                        <span class="ma-toggle-lbl" id="mStatusLbl">Active</span>
+                    </label>
+                </div>
+
+            </form>
+        </div>
+        <div class="ma-modal-foot">
+            <button class="ma-btn ma-btn-ghost" id="maEditBtn"><i class="fa fa-pencil"></i> Edit</button>
+            <button class="ma-btn ma-btn-primary" id="maSaveBtn" style="display:none;"><i class="fa fa-check"></i> Save Changes</button>
+        </div>
+    </div>
 </div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
 <script>
-    function enableEditing() {
-        const inputs = document.querySelectorAll("#user-info-form input, #user-info-form select");
-        inputs.forEach(input => input.disabled = false); // Enable all input fields
-        document.getElementById("edit-btn").style.display = "none";
-        document.getElementById("save-btn").style.display = "block";
+/* ================================================================
+   manage_admin.php — ERP Gold Theme JS (all CSRF fixed)
+================================================================ */
+(function () {
+    'use strict';
+
+    /* ── CSRF helper ── */
+    function csrfFd() {
+        var fd = new FormData();
+        fd.append(csrfName, csrfToken);
+        return fd;
     }
 
-    function showSection(sectionId) {
-        // Remove active class from all tabs
-        document.querySelectorAll('.nav-tabs a').forEach(tab => {
-            tab.classList.remove('active');
-        });
-
-        // Add active class to clicked tab
-        event.target.classList.add('active');
-
-        // Hide all content sections
-        document.querySelectorAll('.content').forEach(section => {
-            section.classList.remove('active');
-        });
-
-        // Show the selected content section
-        document.getElementById(sectionId).classList.add('active');
+    /* ── Toast ── */
+    function toast(type, msg) {
+        var accent = { success: 'var(--gold)', error: '#e05c6f', warning: '#f59e0b', info: 'var(--t3)' };
+        var el = document.createElement('div');
+        el.textContent = msg;
+        el.style.cssText = 'position:fixed;top:22px;right:22px;z-index:10000;padding:12px 18px;background:var(--bg2);color:var(--t1);border-left:4px solid ' + (accent[type] || accent.info) + ';border-radius:10px;box-shadow:var(--sh);font-size:13px;font-family:var(--font-b);max-width:320px;pointer-events:none;';
+        document.body.appendChild(el);
+        setTimeout(function () { el.remove(); }, 3500);
     }
 
-    function saveChanges() {
-        const modalId = document.getElementById("modal-id").textContent.trim();
-        if (!modalId) {
-            alert("Modal ID is missing. Cannot save data.");
-            return;
-        }
+    /* ══════════════════════════════════════════
+       TABS
+    ══════════════════════════════════════════ */
+    var tabs   = document.querySelectorAll('.ma-tab');
+    var panels = document.querySelectorAll('.ma-panel');
 
-        // Collect form data
-        const adminData = {
-            Name: document.getElementById("modal-name").value || "N/A",
-            Email: document.getElementById("modal-email").value || "N/A",
-            PhoneNumber: document.getElementById("modal-phone").value || "N/A",
-            DOB: document.getElementById("modal-dob").value.split("-").reverse().join("-") || "N/A", // yyyy-mm-dd to dd-mm-yyyy
-            Gender: document.getElementById("modal-gender").value || "N/A",
-            Role: document.getElementById("modal-role").value || "N/A",
-            Status: document.getElementById("modal-status").checked ? "Active" : "Inactive",
+    function activateTab(target) {
+        tabs.forEach(function (t) { t.classList.toggle('active', t.dataset.target === target); });
+        panels.forEach(function (p) { p.style.display = p.id === target ? '' : 'none'; });
+    }
+
+    tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () { activateTab(this.dataset.target); });
+    });
+
+    // Default tab
+    activateTab('ma-listing');
+
+    /* ══════════════════════════════════════════
+       PASSWORD EYE TOGGLE
+    ══════════════════════════════════════════ */
+    document.querySelectorAll('.ma-pwd-eye').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var inp = document.getElementById(this.dataset.target);
+            if (!inp) return;
+            var show = inp.type === 'password';
+            inp.type = show ? 'text' : 'password';
+            this.querySelector('i').className = show ? 'fa fa-eye-slash' : 'fa fa-eye';
+        });
+    });
+
+    /* ══════════════════════════════════════════
+       PASSWORD STRENGTH METER
+    ══════════════════════════════════════════ */
+    var pwdInput   = document.getElementById('newPassword');
+    var pwdStrength = document.getElementById('pwdStrength');
+    var pwdFill    = document.getElementById('pwdFill');
+    var pwdLbl     = document.getElementById('pwdLbl');
+
+    if (pwdInput) {
+        pwdInput.addEventListener('input', function () {
+            var v = this.value;
+            if (!v) { pwdStrength.style.display = 'none'; return; }
+            pwdStrength.style.display = '';
+            var score = 0;
+            if (v.length >= 8)            score++;
+            if (/[A-Z]/.test(v))          score++;
+            if (/[0-9]/.test(v))          score++;
+            if (/[^A-Za-z0-9]/.test(v))   score++;
+            var map = [
+                { w: '25%',  color: '#e05c6f', lbl: 'Weak' },
+                { w: '50%',  color: '#f59e0b', lbl: 'Fair' },
+                { w: '75%',  color: 'var(--gold)', lbl: 'Good' },
+                { w: '100%', color: '#3DD68C', lbl: 'Strong' },
+            ];
+            var s = map[Math.max(0, score - 1)];
+            pwdFill.style.width = s.w;
+            pwdFill.style.background = s.color;
+            pwdLbl.textContent = s.lbl;
+            pwdLbl.style.color = s.color;
+        });
+    }
+
+    /* ══════════════════════════════════════════
+       CREATE ADMIN FORM
+    ══════════════════════════════════════════ */
+    var addForm = document.getElementById('addAdminForm');
+    if (addForm) {
+        addForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            var pwd  = document.getElementById('newPassword').value;
+            var cpwd = document.getElementById('newConfirmPassword').value;
+            if (pwd !== cpwd) { toast('warning', 'Passwords do not match.'); return; }
+
+            var btn = document.getElementById('createAdminBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Creating…';
+
+            var fd = csrfFd();
+            new FormData(addForm).forEach(function (v, k) { fd.append(k, v); });
+
+            fetch(BASE_URL + 'admin/manage_admin', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: fd
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                if (res && res.status === 'success') {
+                    toast('success', 'Admin created successfully.');
+                    setTimeout(function () { location.reload(); }, 1200);
+                } else {
+                    toast('error', (res && res.message) || 'Failed to create admin.');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa fa-user-plus"></i> Create Admin';
+                }
+            })
+            .catch(function () {
+                toast('error', 'Server error. Please try again.');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-user-plus"></i> Create Admin';
+            });
+        });
+    }
+
+    /* ══════════════════════════════════════════
+       UPDATE PASSWORD FORM
+    ══════════════════════════════════════════ */
+    var updForm = document.getElementById('updatePwdForm');
+    if (updForm) {
+        updForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            var newPwd  = document.getElementById('updNewPwd').value;
+            var confPwd = document.getElementById('updConfirmPwd').value;
+            var adminId = document.getElementById('updAdminSel').value;
+
+            if (!adminId) { toast('warning', 'Please select an admin.'); return; }
+            if (newPwd !== confPwd) { toast('warning', 'Passwords do not match.'); return; }
+            if (newPwd.length < 6)  { toast('warning', 'Password must be at least 6 characters.'); return; }
+
+            var btn = document.getElementById('updatePwdBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Updating…';
+
+            var fd = csrfFd();
+            fd.append('admin_id',        adminId);
+            fd.append('newPassword',     newPwd);
+            fd.append('confirmPassword', confPwd);
+
+            fetch(BASE_URL + 'admin/manage_admin', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: fd
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                if (res && res.status === 'success') {
+                    toast('success', 'Password updated successfully.');
+                    updForm.reset();
+                } else {
+                    toast('error', (res && res.message) || 'Failed to update password.');
+                }
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-check"></i> Update Password';
+            })
+            .catch(function () {
+                toast('error', 'Server error.');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-check"></i> Update Password';
+            });
+        });
+    }
+
+    /* ══════════════════════════════════════════
+       VIEW / EDIT MODAL
+    ══════════════════════════════════════════ */
+    var overlay  = document.getElementById('maOverlay');
+    var modalId  = document.getElementById('maModalId');
+    var editBtn  = document.getElementById('maEditBtn');
+    var saveBtn  = document.getElementById('maSaveBtn');
+    var closeBtn = document.getElementById('maModalClose');
+    var mStatus  = document.getElementById('mStatus');
+    var mStatusLbl = document.getElementById('mStatusLbl');
+    var currentAdminId = null;
+
+    // Status toggle label
+    if (mStatus) {
+        mStatus.addEventListener('change', function () {
+            mStatusLbl.textContent = this.checked ? 'Active' : 'Inactive';
+        });
+    }
+
+    // Open modal on View click
+    document.querySelectorAll('.ma-act-view').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var adminId = this.dataset.id;
+            currentAdminId = adminId;
+            modalId.textContent = adminId;
+
+            var fd = csrfFd();
+            fd.append('admin_id', adminId);
+
+            fetch(BASE_URL + 'admin/manage_admin', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: fd
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || data.status === 'error') {
+                    toast('error', (data && data.message) || 'Failed to fetch admin details.');
+                    return;
+                }
+                var d = data.data;
+                document.getElementById('mName').value  = d.Name        || '';
+                document.getElementById('mEmail').value = d.Email       || '';
+                document.getElementById('mPhone').value = d.PhoneNumber || '';
+                // Convert dd-mm-yyyy → yyyy-mm-dd for date input
+                var dob = (d.DOB || '').split('-').reverse().join('-');
+                document.getElementById('mDob').value    = dob;
+                document.getElementById('mGender').value = d.Gender || 'Male';
+                document.getElementById('mRole').value   = d.Role   || '';
+                mStatus.checked = (d.Status === 'Active');
+                mStatusLbl.textContent = mStatus.checked ? 'Active' : 'Inactive';
+
+                // Reset to view mode
+                setModalEditing(false);
+                overlay.classList.add('open');
+            })
+            .catch(function () { toast('error', 'Server error.'); });
+        });
+    });
+
+    // Enable editing
+    editBtn.addEventListener('click', function () { setModalEditing(true); });
+
+    // Save changes
+    saveBtn.addEventListener('click', function () {
+        if (!currentAdminId) return;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving…';
+
+        var adminData = {
+            Name:        document.getElementById('mName').value  || 'N/A',
+            Email:       document.getElementById('mEmail').value || 'N/A',
+            PhoneNumber: document.getElementById('mPhone').value || 'N/A',
+            DOB:         (document.getElementById('mDob').value || '').split('-').reverse().join('-'),
+            Gender:      document.getElementById('mGender').value || 'N/A',
+            Role:        document.getElementById('mRole').value  || 'N/A',
+            Status:      mStatus.checked ? 'Active' : 'Inactive',
         };
 
-        // Send data to server using AJAX
-        $.ajax({
-            url: "<?php echo base_url() . 'admin/updateUserData' ?>", // Replace with your actual controller/method
-            type: "POST",
-            data: {
-                modal_id: modalId,
-                user_data: adminData,
-            },
-            dataType: "json",
-            success: function(response) {
-                if (response.success) {
-                    alert("Data saved successfully!");
-                    window.location.reload(); // Reload the page after successful insertion
-                } else {
-                    alert("Failed to save data: " + response.message);
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error("Error saving data:", error);
-                alert("Failed to save data. Please try again.");
-            },
+        var fd = csrfFd();
+        fd.append('modal_id',  currentAdminId);
+        fd.append('user_data[Name]',        adminData.Name);
+        fd.append('user_data[Email]',       adminData.Email);
+        fd.append('user_data[PhoneNumber]', adminData.PhoneNumber);
+        fd.append('user_data[DOB]',         adminData.DOB);
+        fd.append('user_data[Gender]',      adminData.Gender);
+        fd.append('user_data[Role]',        adminData.Role);
+        fd.append('user_data[Status]',      adminData.Status);
+
+        fetch(BASE_URL + 'admin/updateUserData', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+            if (res && (res.success || res.status === 'success')) {
+                toast('success', 'Admin updated successfully.');
+                overlay.classList.remove('open');
+                setTimeout(function () { location.reload(); }, 1200);
+            } else {
+                toast('error', (res && res.message) || 'Failed to save changes.');
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fa fa-check"></i> Save Changes';
+            }
+        })
+        .catch(function () {
+            toast('error', 'Server error.');
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="fa fa-check"></i> Save Changes';
         });
+    });
+
+    // Close modal
+    closeBtn.addEventListener('click', closeModal);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    function closeModal() {
+        overlay.classList.remove('open');
+        setModalEditing(false);
+        currentAdminId = null;
     }
 
-
-    // jQuery AJAX for form submission
-    $('#add_admin_form').submit(function(e) {
-        e.preventDefault();
-
-        var formData = $(this).serialize();
-
-        // Validation: Check if passwords match
-        var password = $('#password').val();
-        var confirmPassword = $('#confirm_password').val();
-        if (password !== confirmPassword) {
-            alert('Passwords do not match!');
-            return;
-        }
-
-        $.ajax({
-            url: "<?php echo base_url() . 'admin/manage_admin' ?>", // Your controller method URL
-            type: 'POST',
-            data: formData,
-            success: function(response) {
-                try {
-                    var res = JSON.parse(response);
-                    if (res.status === 'success') {
-                        alert('Admin created successfully!');
-                        window.location.reload(); // Reload the page after successful insertion
-                    } else {
-                        alert(res.message || 'Failed to create admin.');
-                    }
-                } catch (err) {
-                    console.error("Invalid response from server:", response);
-                    alert('Unexpected error occurred. Please try again.');
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('AJAX error:', error);
-                alert('Error while creating admin!');
-            }
+    function setModalEditing(on) {
+        document.querySelectorAll('#editAdminForm input, #editAdminForm select').forEach(function (el) {
+            el.disabled = !on;
         });
-    });
+        // Keep status toggle always visible
+        mStatus.disabled = !on;
+        editBtn.style.display = on ? 'none' : '';
+        saveBtn.style.display = on ? '' : 'none';
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="fa fa-check"></i> Save Changes';
+    }
 
-
-    // JavaScript for toggling password visibility
-    document.querySelectorAll(".toggle-password").forEach(function(toggle) {
-        toggle.addEventListener("click", function() {
-            const input = document.querySelector(this.getAttribute("toggle"));
-            if (input.type === "password") {
-                input.type = "text";
-                this.classList.remove("fa-eye");
-                this.classList.add("fa-eye-slash");
-            } else {
-                input.type = "password";
-                this.classList.remove("fa-eye-slash");
-                this.classList.add("fa-eye");
-            }
-        });
-    });
-
-
-    // Form submission Of Update Password (AJAX)
-    $("#updatePasswordForm").submit(function(e) {
-        e.preventDefault(); // Prevent form submission
-
-        var adminId = $("select[name='admin_id']").val(); // Get the admin_id from the <select> dropdown
-        var newPassword = $("#newPassword").val(); // Get the new password
-        var confirmPassword = $("#confirmPassword").val(); // Get the confirm password
-
-
-
-        // Prepare data to send via AJAX
-        $.ajax({
-            url: '<?= base_url("admin/manage_admin") ?>', // Adjust URL as needed
-            method: 'POST',
-            data: {
-                admin_id: adminId,
-                newPassword: newPassword,
-                confirmPassword: confirmPassword
-            },
-            success: function(response) {
-                try {
-                    // Assuming response is in JSON format
-                    var result = JSON.parse(response);
-                    if (result.status === 'success') {
-                        alert(result.message); // Success message
-                        location.reload();
-                    } else {
-                        alert(result.message || 'Error updating password');
-                    }
-                } catch (e) {
-                    alert(
-                        'An error occurred: Invalid response from the server'
-                    ); // Handle invalid JSON response
-                }
-            },
-            error: function(xhr, status, error) {
-                alert('Error updating password');
-            }
-        });
-    });
-
-    document.addEventListener("DOMContentLoaded", function() {
-        const viewButtons = document.querySelectorAll(".view-details");
-        const modal = document.getElementById("viewAdminModal");
-        const closeModalButtons = document.querySelectorAll(".close, .close-modal");
-
-        const adminName = document.getElementById("modal-name");
-        const adminRole = document.getElementById("modal-role");
-        const adminEmail = document.getElementById("modal-email");
-        const adminPhone = document.getElementById("modal-phone");
-        const adminDOB = document.getElementById("modal-dob");
-        const adminGender = document.getElementById("modal-gender");
-        const adminStatus = document.getElementById("modal-status");
-
-
-
-        // Open Modal and Fetch Admin Details
-        viewButtons.forEach((button) => {
-            button.addEventListener("click", function() {
-                const adminId = this.getAttribute("data-id");
-
-                // Fetch admin details via AJAX
-                fetch("<?php echo base_url(); ?>admin/manage_admin", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/x-www-form-urlencoded",
-                        },
-                        body: new URLSearchParams({
-                            admin_id: adminId,
-                        }),
-                    })
-                    .then((response) => response.json())
-                    .then((data) => {
-                        if (data.status === "error") {
-                            alert(data.message);
-                            return;
-                        }
-
-                        const adminData = data.data;
-
-                        // Populate modal fields with admin data
-                        document.getElementById("modal-id").textContent = adminId || "N/A";
-
-                        document.getElementById("modal-name").value = adminData.Name || "N/A";
-                        document.getElementById("modal-email").value = adminData.Email || "N/A";
-                        document.getElementById("modal-phone").value = adminData.PhoneNumber ||
-                            "N/A";
-
-                        // Format DOB for input[type="date"]
-                        const dob = adminData.DOB ? adminData.DOB.split("-").reverse().join(
-                            "-") : ""; // Convert dd-mm-yyyy to yyyy-mm-dd
-                        document.getElementById("modal-dob").value = dob;
-
-                        document.getElementById("modal-gender").value = adminData.Gender ||
-                            "N/A";
-                        document.getElementById("modal-role").value = adminData.Role || "N/A";
-
-                        // Set status toggle
-                        const statusToggle = document.getElementById("modal-status");
-                        statusToggle.checked = adminData.Status === "Active";
-
-                        // Display the modal
-                        modal.style.display = "flex";
-                    })
-                    .catch((error) => {
-                        console.error("Error fetching admin details:", error);
-                        alert("Failed to fetch admin details.");
-                    });
-            });
-        });
-
-
-        // Close Modal
-        closeModalButtons.forEach((button) => {
-            button.addEventListener("click", function() {
-                resetModal();
-                modal.style.display = "none";
-            });
-        });
-
-        // Close Modal on Outside Click
-        window.addEventListener("click", function(event) {
-            if (event.target === modal) {
-                resetModal();
-                modal.style.display = "none";
-            }
-        });
-
-        // Reset Modal Function
-        function resetModal() {
-            // Disable all inputs in the form
-            const inputs = document.querySelectorAll("#user-info-form input, #user-info-form select");
-            inputs.forEach(input => input.disabled = true);
-
-            // Reset buttons
-            document.getElementById("edit-btn").style.display = "block";
-            document.getElementById("save-btn").style.display = "none";
-        }
-
-    });
-    //Form submission of Update Admins
-    $(document).ready(function() {
-
-        // Open modal and fill data
-        $('.edit-details').click(function() {
-            var adminId = $(this).data('id');
-
-            // Get current admin data (you could fetch this from the database or data attributes)
-            $.ajax({
-                url: 'manage_admin', // Adjust URL for getting admin details
-                type: 'GET',
-                data: {
-                    id: adminId
-                },
-                success: function(response) {
-                    if (response.status === 'success') {
-                        // Assuming the response is a JSON object with the admin details
-                        $('#adminId').val(response.data.id);
-                        $('#adminName').val(response.data.name);
-                        $('#adminEmail').val(response.data.email);
-                        $('#adminPhone').val(response.data.phone);
-                        $('#adminRole').val(response.data.role);
-                        $('#adminDOB').val(response.data.dob);
-                        $('#adminGender').val(response.data.gender);
-                        $('#editAdminModal').show(); // Show modal
-                    } else {
-                        alert("Failed to fetch admin details.");
-                    }
-                },
-                error: function(xhr, status, error) {
-                    console.error("Error fetching data: " + error);
-                }
-            });
-        });
-
-        // Close modal
-        $('.close, .close-modal').click(function() {
-            $('#editAdminModal').hide();
-        });
-
-        // AJAX form submission
-        $('#editAdminForm').submit(function(e) {
-            e.preventDefault(); // Prevent the default form submission
-
-            var formData = $(this).serialize(); // Get all form data
-
-            $.ajax({
-                url: 'admin/edit_admin', // Update URL to your edit controller
-                type: 'POST',
-                data: formData,
-                success: function(response) {
-                    // Handle success (e.g., show success message or reload data)
-                    alert("Admin details updated successfully.");
-                    $('#editAdminModal').hide(); // Close the modal
-                    location.reload(); // Reload the page to see updated data
-                },
-                error: function(xhr, status, error) {
-                    // Handle error
-                    alert("An error occurred while updating details.");
-                }
-            });
-        });
-    });
+})();
 </script>
 
+
 <style>
-    .content-wrapper {
-        padding: 20px;
-        background-color: #f8f9fa;
-    }
-
-    /* Container */
-    .container {
-        width: 75%;
-        /* margin: 30px auto; */
-        background-color: #fff;
-        border: 1px solid #ccc;
-        /* padding: 20px; */
-        box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
-    }
-
-    .header {
-        background-color: #1b7fcc;
-        color: white;
-        padding: 15px 20px;
-        font-size: 20px;
-        display: flex;
-        align-items: center;
-
-        justify-content: center;
-        /* Centers the content horizontally */
-        text-align: center;
-    }
-
-    .header i {
-        margin-right: 10px;
-    }
-
-    /* Navigation Tabs */
-    .nav-tabs {
-        background-color: #f9f9f9;
-        padding: 10px 20px;
-        border-bottom: 1px solid #ccc;
-    }
-
-    .nav-tabs a {
-        text-decoration: none;
-        color: #888;
-        margin-right: 20px;
-        font-weight: bold;
-        cursor: pointer;
-    }
-
-    .nav-tabs a.active {
-        color: #1b7fcc;
-        border-bottom: 2px solid #1b7fcc;
-    }
-
-    /* Content Section */
-    .content {
-        display: none;
-        padding: 40px;
-    }
-
-    .content.active {
-        display: flex;
-    }
-
-    .icon {
-        font-size: 120px;
-        color: #555;
-        margin-right: 50px;
-    }
-
-    .form {
-        width: 100%;
-    }
-
-    /* Form Styling */
-    .form-container {
-        display: flex;
-        justify-content: space-between;
-        gap: 20px;
-        /* Space between columns */
-    }
-
-    .form-column {
-        flex: 1;
-        /* Equal width for both columns */
-        padding: 10px;
-        border: 1px solid #ccc;
-        /* Optional: Adds a border for separation */
-        border-radius: 5px;
-        background-color: #f9f9f9;
-        /* Optional: Light background for better visibility */
-    }
-
-    h2 {
-        font-size: 18px;
-        margin-bottom: 15px;
-        color: #333;
-    }
-
-    .form-group {
-        margin-bottom: 20px;
-    }
-
-    .form-group label {
-        display: block;
-        font-weight: bold;
-        margin-bottom: 5px;
-        color: #555;
-    }
-
-    .form-group input,
-    .form-group select {
-        width: 100%;
-        padding: 8px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        box-sizing: border-box;
-    }
-
-    /* User List Styling */
-    .user-list {
-        width: 100%;
-    }
-
-    .user-list table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-
-    .user-list th,
-    .user-list td {
-        padding: 10px;
-        border: 1px solid #ccc;
-        text-align: left;
-    }
-
-    .user-list th {
-        background-color: #1b7fcc;
-        color: white;
-    }
-
-    .form-group {
-        margin-bottom: 20px;
-        position: relative;
-    }
-
-    /* Styling for the password container */
-    .password-container {
-        position: relative;
-        width: 100%;
-    }
-
-    /* Styling for the password input field */
-    .password-input {
-        width: 100%;
-        padding-right: 40px;
-        /* Add padding for the icon */
-        padding-left: 10px;
-        padding-top: 10px;
-        padding-bottom: 10px;
-        font-size: 16px;
-        border: 1px solid #ccc;
-        border-radius: 5px;
-        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
-        transition: border-color 0.3s ease;
-    }
-
-    /* Add focus effect for the input */
-    .password-input:focus {
-        border-color: #007bff;
-        outline: none;
-        box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
-    }
-
-    /* Styling for the toggle icon */
-    .toggle-password {
-        position: absolute;
-        top: 50%;
-        right: 10px;
-        /* Adjust spacing from the right edge */
-        transform: translateY(-50%);
-        font-size: 18px;
-        color: #888;
-        cursor: pointer;
-        transition: color 0.3s ease;
-    }
-
-    /* Hover effect for the toggle icon */
-    .toggle-password:hover {
-        color: #007bff;
-    }
-
-    /* General styling for the action buttons */
-    .btn-action {
-        background: none;
-        border: none;
-        cursor: pointer;
-        font-size: 18px;
-        margin: 0 5px;
-        color: #007bff;
-    }
-
-    .btn-action:hover {
-        color: #0056b3;
-    }
-
-
-    .buttons {
-        display: flex;
-        gap: 10px;
-        margin-top: 20px;
-        text-align: center;
-    }
-
-    .btn {
-        padding: 10px 20px;
-        font-size: 14px;
-        color: #fff;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-    }
-
-    /* .btn.make-user {
-        background-color: #1b7fcc;
-    } */
-
-    .btn.update-password {
-        background-color: #28a745;
-    }
-
-    .btn.close {
-        background-color: #888;
-    }
-
-    button.btn {
-        padding: 10px 15px;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-    }
-
-    button.btn-secondary {
-        background: #6c757d;
-        color: #fff;
-    }
-
-    /* button.btn-secondary:hover {
-    background: #5a6268;
-} */
-
-
-
-
-
-
-    .toggle-switch {
-        position: relative;
-        display: inline-block;
-        width: 50px;
-        height: 25px;
-    }
-
-    .toggle-switch input {
-        opacity: 0;
-        width: 0;
-        height: 0;
-    }
-
-    .switch {
-        position: relative;
-        display: inline-block;
-        width: 54px;
-        height: 28px;
-    }
-
-    .switch input {
-        display: none;
-    }
-
-    .slider {
-        position: absolute;
-        cursor: pointer;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: #ccc;
-        -webkit-transition: .4s;
-        transition: .4s;
-    }
-
-    .slider:before {
-        position: absolute;
-        content: "";
-        height: 20px;
-        width: 20px;
-        left: 4px;
-        bottom: 4px;
-        background-color: white;
-        -webkit-transition: .4s;
-        transition: .4s;
-    }
-
-    input:checked+.slider {
-        background-color: #2196F3;
-    }
-
-    input:focus+.slider {
-        box-shadow: 0 0 1px #2196F3;
-    }
-
-    input:checked+.slider:before {
-        -webkit-transform: translateX(26px);
-        -ms-transform: translateX(26px);
-        transform: translateX(26px);
-    }
-
-    /* Rounded sliders */
-    .slider.round {
-        border-radius: 28px;
-    }
-
-    .slider.round:before {
-        border-radius: 50%;
-    }
-
-
-    .modal-bg {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 1000;
-    }
-
-    .modal {
-        display: none;
-        position: fixed;
-        z-index: 1000;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        justify-content: center;
-        align-items: center;
-        font-family: Arial, sans-serif;
-    }
-
-    .modal-content {
-        background: #fff;
-        padding: 20px;
-        border-radius: 8px;
-        width: 90%;
-        /* Default to a smaller width for mobile */
-        max-width: 600px;
-        /* Limit the width for larger screens */
-        max-height: 80vh;
-        /* Limit the height to 80% of the viewport */
-        position: relative;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        display: flex;
-        flex-direction: column;
-        overflow-y: auto;
-        /* Enable scrolling if content exceeds height */
-    }
-
-    .modal-content .close {
-        position: absolute;
-        top: 10px;
-        right: 15px;
-        font-size: 24px;
-        cursor: pointer;
-        color: #888;
-    }
-
-    .modal-content .close:hover {
-        color: red;
-    }
-
-
-
-    .modal-content h2 {
-        text-align: center;
-        margin-bottom: 20px;
-    }
-
-
-    .modal-content form {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
-
-    .modal-content label {
-        font-weight: bold;
-    }
-
-    .modal-content input,
-    .modal-content select {
-        padding: 8px;
-        border: 1px solid #ccc;
-        border-radius: 5px;
-        width: 100%;
-    }
-
-    .modal-content .button-container {
-        display: flex;
-        justify-content: space-between;
-        margin-top: 20px;
-    }
-
-    .modal-content button {
-        padding: 10px 20px;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-    }
-
-    #edit-btn {
-        background-color: #007bff;
-        color: white;
-    }
-
-    #save-btn {
-        background-color: #28a745;
-        color: white;
-    }
-
-
-    /* Column styles */
-    .table.example th,
-    .table.example td {
-        text-align: center;
-        /* Center-align text */
-        padding: 20px 25px;
-        /* Adjust padding as needed */
-        overflow: hidden;
-        /* Prevent content overflow */
-        text-overflow: ellipsis;
-        /* Add ellipsis for overflowing text */
-        white-space: nowrap;
-        /* Prevent text wrapping */
-    }
+/* ── Manage Admin — ERP Gold Theme ── */
+
+:root, [data-theme="night"], [data-theme="day"] {
+    --ma-bg:     var(--bg);
+    --ma-card:   var(--bg2);
+    --ma-border: var(--border);
+    --ma-t1:     var(--t1);
+    --ma-t2:     var(--t2);
+    --ma-t3:     var(--t3);
+    --ma-gold:   var(--gold);
+    --ma-dim:    var(--gold-dim);
+    --ma-sh:     var(--sh);
+    --ma-r:      14px;
+}
+
+.ma-wrap {
+    font-family: var(--font-b);
+    background: var(--ma-bg);
+    color: var(--ma-t1);
+    padding: 24px 20px 52px;
+    min-height: 100vh;
+}
+
+/* ── Page title ── */
+.ma-page-title {
+    font-family: var(--font-d);
+    font-size: 22px; font-weight: 800;
+    color: var(--ma-t1); margin-bottom: 6px;
+    display: flex; align-items: center; gap: 10px;
+}
+.ma-page-title i { color: var(--ma-gold); }
+
+/* ── Breadcrumb ── */
+.ma-breadcrumb {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--ma-t3);
+    font-family: var(--font-b); margin-bottom: 22px;
+    list-style: none; padding: 0;
+}
+.ma-breadcrumb li:not(:last-child)::after { content: '/'; margin-left: 6px; opacity:.5; }
+.ma-breadcrumb a { color: var(--ma-gold); text-decoration: none; }
+
+/* ── Tab bar ── */
+.ma-tabs {
+    display: flex; gap: 4px;
+    background: var(--ma-card);
+    border: 1px solid var(--ma-border);
+    border-radius: var(--ma-r);
+    padding: 6px; margin-bottom: 16px;
+    box-shadow: var(--ma-sh);
+    overflow-x: auto; scrollbar-width: none;
+}
+.ma-tabs::-webkit-scrollbar { display: none; }
+.ma-tab {
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 18px; border: none;
+    border-radius: 9px; background: transparent;
+    color: var(--ma-t3);
+    font-size: 13px; font-weight: 600;
+    font-family: var(--font-b); cursor: pointer;
+    transition: all .2s; white-space: nowrap;
+}
+.ma-tab:hover { background: var(--ma-dim); color: var(--ma-gold); }
+.ma-tab.active { background: var(--ma-gold); color: #ffffff; }
+.ma-tab i { font-size: 12px; }
+
+/* ── Card ── */
+.ma-card {
+    background: var(--ma-card);
+    border: 1px solid var(--ma-border);
+    border-radius: var(--ma-r);
+    box-shadow: var(--ma-sh);
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+.ma-card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; height: 48px;
+    background: linear-gradient(90deg, var(--ma-gold) 0%, var(--gold2,#0d6b63) 100%);
+    color: #ffffff;
+    font-size: 13px; font-weight: 700; font-family: var(--font-b);
+}
+.ma-count {
+    font-size: 11px; font-family: var(--font-m);
+    background: rgba(255,255,255,.15); padding: 3px 10px; border-radius: 20px;
+}
+.ma-card-body { padding: 24px 28px; }
+.ma-card-body--table { padding: 0; }
+
+/* ── Table ── */
+.ma-tbl-wrap { overflow-x: auto; }
+.ma-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ma-tbl thead th {
+    background: linear-gradient(90deg, var(--ma-gold) 0%, var(--gold2,#0d6b63) 100%);
+    color: #ffffff; padding: 13px 16px;
+    font-size: 12px; font-weight: 700; font-family: var(--font-b);
+    text-align: left; white-space: nowrap;
+}
+.ma-tbl tbody tr { border-bottom: 1px solid var(--ma-border); transition: background .15s; }
+.ma-tbl tbody tr:hover { background: var(--ma-dim); }
+.ma-row--inactive { opacity: .6; }
+.ma-tbl tbody td { padding: 13px 16px; color: var(--ma-t1); vertical-align: middle; }
+.ma-num { color: var(--ma-t3); font-family: var(--font-m); font-size: 12px; width: 40px; }
+.ma-mono { font-family: var(--font-m); font-size: 12px; }
+.ma-empty { text-align: center; padding: 48px; color: var(--ma-t3); font-size: 14px; line-height: 2; }
+
+/* ── Status badges ── */
+.ma-status { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; font-family:var(--font-b); }
+.ma-status i { font-size: 7px; }
+.ma-status--active  { background:rgba(61,214,140,.12); color:#3DD68C; border:1px solid rgba(61,214,140,.3); }
+.ma-status--inactive{ background:rgba(224,92,111,.1); color:#e05c6f; border:1px solid rgba(224,92,111,.25); }
+
+/* ── Role badge ── */
+.ma-role-badge {
+    display: inline-block; padding: 3px 10px;
+    background: var(--ma-dim); color: var(--ma-gold);
+    border: 1px solid rgba(15,118,110,.3);
+    border-radius: 20px; font-size: 11px; font-weight: 700;
+    font-family: var(--font-b);
+}
+
+/* ── Action button ── */
+.ma-act-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 14px; border-radius: 8px;
+    border: 1px solid var(--ma-border);
+    background: transparent; cursor: pointer;
+    font-size: 12px; font-weight: 600;
+    font-family: var(--font-b); transition: all .2s;
+}
+.ma-act-view { color: var(--ma-gold); }
+.ma-act-view:hover { background: var(--ma-dim); border-color: var(--ma-gold); }
+
+/* ── Form layout ── */
+.ma-form-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+}
+.ma-form-section {
+    background: var(--bg3, var(--bg));
+    border: 1px solid var(--ma-border);
+    border-radius: 12px; padding: 20px;
+}
+.ma-section-title {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .7px; color: var(--ma-t2);
+    font-family: var(--font-b);
+    padding-bottom: 12px; margin-bottom: 18px;
+    border-bottom: 1px solid var(--ma-border);
+    display: flex; align-items: center; gap: 7px;
+}
+.ma-section-title i { color: var(--ma-gold); }
+
+/* ── Fields ── */
+.ma-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.ma-field:last-child { margin-bottom: 0; }
+.ma-field label {
+    font-size: 12px; font-weight: 700;
+    color: var(--ma-t2); text-transform: uppercase;
+    letter-spacing: .5px; font-family: var(--font-b);
+}
+.ma-req { color: #e05c6f; }
+.ma-hint { font-size: 11px; color: var(--ma-t3); margin-top: 2px; }
+
+.ma-input, .ma-select {
+    height: 42px; padding: 0 12px;
+    border: 1px solid var(--ma-border);
+    border-radius: 10px;
+    background: var(--ma-card); color: var(--ma-t1);
+    font-size: 13px; font-family: var(--font-b);
+    transition: border-color .2s, box-shadow .2s;
+    width: 100%; box-sizing: border-box;
+}
+.ma-input:focus, .ma-select:focus {
+    outline: none; border-color: var(--ma-gold);
+    box-shadow: 0 0 0 3px var(--ma-dim);
+}
+.ma-input:disabled, .ma-select:disabled { opacity: .5; cursor: not-allowed; }
+.ma-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px;
+}
+
+/* ── Password wrap ── */
+.ma-pwd-wrap { position: relative; }
+.ma-pwd-wrap .ma-input { padding-right: 42px; }
+.ma-pwd-eye {
+    position: absolute; top: 50%; right: 10px; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer;
+    color: var(--ma-t3); font-size: 14px; padding: 4px;
+    transition: color .2s;
+}
+.ma-pwd-eye:hover { color: var(--ma-gold); }
+
+/* ── Password strength ── */
+.ma-pwd-strength { margin-top: 6px; }
+.ma-pwd-bar { height: 4px; background: var(--ma-border); border-radius: 2px; overflow: hidden; margin-bottom: 4px; }
+.ma-pwd-fill { height: 100%; width: 0; border-radius: 2px; transition: all .3s; }
+.ma-pwd-lbl { font-size: 11px; font-family: var(--font-m); }
+
+/* ── Buttons ── */
+.ma-btn {
+    height: 40px; padding: 0 22px; border-radius: 20px; border: none;
+    font-size: 13px; font-weight: 600; font-family: var(--font-b);
+    cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    transition: all .2s;
+}
+.ma-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ma-btn-primary {
+    background: linear-gradient(135deg, var(--ma-gold) 0%, var(--gold2,#0d6b63) 100%);
+    color: #ffffff;
+}
+.ma-btn-primary:not(:disabled):hover { opacity: .9; transform: translateY(-1px); }
+.ma-btn-ghost { background: transparent; color: var(--ma-t3); border: 1px solid var(--ma-border); }
+.ma-btn-ghost:hover { border-color: var(--ma-t2); color: var(--ma-t1); }
+
+.ma-form-actions {
+    display: flex; align-items: center; justify-content: flex-end; gap: 12px;
+    margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--ma-border);
+}
+
+/* ── Toggle switch ── */
+.ma-field--toggle { flex-direction: row; align-items: center; gap: 16px; padding: 16px 0; border-top: 1px solid var(--ma-border); margin-top: 4px; }
+.ma-field--toggle label:first-child { width: auto; margin: 0; }
+.ma-toggle { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
+.ma-toggle input { display: none; }
+.ma-toggle-track {
+    position: relative; width: 44px; height: 24px;
+    background: var(--ma-border); border-radius: 12px;
+    transition: background .25s;
+}
+.ma-toggle input:checked ~ .ma-toggle-track { background: var(--ma-gold); }
+.ma-toggle-thumb {
+    position: absolute; top: 3px; left: 3px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2);
+    transition: transform .25s;
+}
+.ma-toggle input:checked ~ .ma-toggle-track .ma-toggle-thumb { transform: translateX(20px); }
+.ma-toggle-lbl { font-size: 13px; font-weight: 600; color: var(--ma-t2); }
+
+/* ══════════════════════════════════════════
+   MODAL
+══════════════════════════════════════════ */
+.ma-overlay {
+    display: none; position: fixed; inset: 0; z-index: 1050;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(3px);
+    align-items: center; justify-content: center;
+}
+.ma-overlay.open { display: flex; }
+.ma-modal {
+    background: var(--ma-card);
+    border: 1px solid var(--ma-border);
+    border-radius: var(--ma-r);
+    box-shadow: 0 24px 60px rgba(0,0,0,.4);
+    width: 90%; max-width: 580px;
+    max-height: 90vh; overflow-y: auto;
+    display: flex; flex-direction: column;
+}
+.ma-modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px;
+    background: linear-gradient(130deg, #0c1e38 0%, #070f1c 100%);
+    border-bottom: 1px solid rgba(15,118,110,.2);
+    position: sticky; top: 0; z-index: 2;
+}
+.ma-modal-title { font-size: 14px; font-weight: 700; color: #e6f4f1; display: flex; align-items: center; gap: 8px; }
+.ma-modal-id { font-size: 11px; color: rgba(230,244,241,.5); font-family: var(--font-m); margin-top: 2px; }
+.ma-modal-close {
+    background: none; border: none; color: rgba(230,244,241,.5);
+    font-size: 22px; cursor: pointer; padding: 4px 8px; line-height: 1;
+    transition: color .2s;
+}
+.ma-modal-close:hover { color: #e6f4f1; }
+.ma-modal-body { padding: 24px; flex: 1; }
+.ma-modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 4px; }
+.ma-modal-foot {
+    padding: 16px 24px;
+    border-top: 1px solid var(--ma-border);
+    display: flex; justify-content: flex-end; gap: 12px;
+    background: var(--bg3, var(--bg));
+}
+
+@media (max-width: 640px) {
+    .ma-form-grid { grid-template-columns: 1fr; }
+    .ma-modal-grid { grid-template-columns: 1fr; }
+}
 </style>

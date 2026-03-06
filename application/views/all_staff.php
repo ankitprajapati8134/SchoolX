@@ -19,6 +19,10 @@
                 <i class="fa fa-upload"></i> Import Staff
             </a>
 
+            <a href="<?= base_url('staff/teacher_id_card') ?>" class="nsa-btn nsa-btn-ghost">
+                <i class="fa fa-id-card-o"></i> ID Cards
+            </a>
+
             <a href="<?= base_url('staff/new_staff') ?>" class="nsa-btn nsa-btn-primary">
                 <i class="fa fa-plus"></i> Add New Staff
             </a>

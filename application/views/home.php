@@ -8,17 +8,17 @@
            BRAND CONSTANTS
         ══════════════════════════════════════════════ */
         .db-root {
-            --brand:       #F5AF00;
-            --brand2:      #D49700;
-            --brand3:      #FFC93C;
-            --brand-light: #FFD55A;
-            --brand-dim:   rgba(245, 175, 0, 0.10);
-            --brand-glow:  rgba(245, 175, 0, 0.22);
-            --brand-ring:  rgba(245, 175, 0, 0.18);
+            --brand:       #0f766e;
+            --brand2:      #0d6b63;
+            --brand3:      #14b8a6;
+            --brand-light: #6ee7e7;
+            --brand-dim:   rgba(15, 118, 110, 0.10);
+            --brand-glow:  rgba(15, 118, 110, 0.22);
+            --brand-ring:  rgba(15, 118, 110, 0.18);
             --blue:   #4AB5E3;
-            --green:  #3DD68C;
+            --green:  #15803d;
             --rose:   #E05C6F;
-            --amber:  #C9A84C;
+            --amber:  #d97706;
             --r:      16px;
             --r-sm:   10px;
             --ease:   cubic-bezier(.4, 0, .2, 1);
@@ -31,55 +31,55 @@
            DARK THEME
         ══════════════════════════════════════════════ */
         .db-root,
-        .db-root[data-theme="dark"] {
-            --bg:    #0C0A06;
-            --bg2:   #141109;
-            --bg3:   #1C180E;
-            --bg4:   #252013;
-            --card:  rgba(20, 17, 9, 0.96);
-            --border:  rgba(245, 175, 0, 0.07);
-            --border2: rgba(245, 175, 0, 0.16);
-            --text:    #EEE4C8;
-            --text2:   #C2A870;
-            --muted:   #7A6E50;
-            --muted2:  #4E4432;
+        [data-theme="night"] .db-root {
+            --bg:    #070f1c;
+            --bg2:   #0c1e38;
+            --bg3:   #0f2545;
+            --bg4:   #1a3555;
+            --card:  rgba(12, 30, 56, 0.96);
+            --border:  rgba(15, 118, 110, 0.10);
+            --border2: rgba(15, 118, 110, 0.22);
+            --text:    #e6f4f1;
+            --text2:   #94c9c3;
+            --muted:   #5a9e98;
+            --muted2:  #2e6b65;
             --heading: #FFFFFF;
             --shadow:      0 4px 28px rgba(0, 0, 0, 0.55);
-            --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(245, 175, 0, 0.055);
-            --grid-line:   rgba(245, 175, 0, 0.020);
-            --stat-hover:  radial-gradient(ellipse at 50% 0%, rgba(245, 175, 0, .07), transparent 65%);
-            --leave-hover: rgba(245, 175, 0, 0.025);
-            --cal-hover:   rgba(245, 175, 0, 0.09);
-            --chart-grid:  rgba(245, 175, 0, 0.05);
-            --chart-tick:  #7A6E54;
-            --hero-grad:   linear-gradient(135deg, rgba(245, 175, 0, 0.055) 0%, transparent 55%);
+            --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(15, 118, 110, 0.10);
+            --grid-line:   rgba(15, 118, 110, 0.05);
+            --stat-hover:  radial-gradient(ellipse at 50% 0%, rgba(15, 118, 110, .08), transparent 65%);
+            --leave-hover: rgba(15, 118, 110, 0.06);
+            --cal-hover:   rgba(15, 118, 110, 0.10);
+            --chart-grid:  rgba(15, 118, 110, 0.08);
+            --chart-tick:  #5a9e98;
+            --hero-grad:   linear-gradient(135deg, rgba(15, 118, 110, 0.08) 0%, transparent 55%);
         }
 
         /* ══════════════════════════════════════════════
            LIGHT THEME
         ══════════════════════════════════════════════ */
-        .db-root[data-theme="light"] {
-            --bg:    #F9F5EA;
-            --bg2:   #F2E9CC;
-            --bg3:   #ECDFB4;
-            --bg4:   #E4D49A;
+        [data-theme="day"] .db-root {
+            --bg:    #f0f7f5;
+            --bg2:   #ffffff;
+            --bg3:   #e6f4f1;
+            --bg4:   #cce9e4;
             --card:  rgba(255, 255, 255, 0.98);
-            --border:  rgba(180, 140, 0, 0.12);
-            --border2: rgba(180, 140, 0, 0.22);
-            --text:    #2A2004;
-            --text2:   #6B5018;
-            --muted:   #9A7E44;
-            --muted2:  #BFA86A;
-            --heading: #140E00;
+            --border:  rgba(15, 118, 110, 0.15);
+            --border2: rgba(15, 118, 110, 0.28);
+            --text:    #0c1e38;
+            --text2:   #1a5c56;
+            --muted:   #5a9e98;
+            --muted2:  #94c9c3;
+            --heading: #0c1e38;
             --shadow:      0 2px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
-            --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(180, 140, 0, 0.09);
-            --grid-line:   rgba(180, 140, 0, 0.050);
-            --stat-hover:  radial-gradient(ellipse at 50% 0%, rgba(245, 175, 0, .07), transparent 65%);
-            --leave-hover: rgba(245, 175, 0, 0.035);
-            --cal-hover:   rgba(245, 175, 0, 0.10);
-            --chart-grid:  rgba(180, 140, 0, 0.08);
-            --chart-tick:  #9A8050;
-            --hero-grad:   linear-gradient(135deg, rgba(245, 175, 0, 0.06) 0%, transparent 55%);
+            --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(15, 118, 110, 0.12);
+            --grid-line:   rgba(15, 118, 110, 0.06);
+            --stat-hover:  radial-gradient(ellipse at 50% 0%, rgba(15, 118, 110, .07), transparent 65%);
+            --leave-hover: rgba(15, 118, 110, 0.06);
+            --cal-hover:   rgba(15, 118, 110, 0.10);
+            --chart-grid:  rgba(15, 118, 110, 0.08);
+            --chart-tick:  #5a9e98;
+            --hero-grad:   linear-gradient(135deg, rgba(15, 118, 110, 0.06) 0%, transparent 55%);
         }
 
         /* ══════════════════════════════════════════════
@@ -150,7 +150,7 @@
             content: ''; position: absolute;
             top: -80px; left: -80px;
             width: 320px; height: 320px;
-            background: radial-gradient(circle, rgba(245, 175, 0, 0.06) 0%, transparent 68%);
+            background: radial-gradient(circle, rgba(15, 118, 110, 0.06) 0%, transparent 68%);
             pointer-events: none;
         }
 
@@ -462,7 +462,7 @@
         .quick-btn.qb-blue   { background: rgba(74,181,227,.08);           border-color: rgba(74,181,227,.18); }
         .quick-btn.qb-rose   { background: rgba(224,92,111,.08);           border-color: rgba(224,92,111,.18); }
 
-        .quick-btn.qb-brand:hover  { border-color: var(--brand); box-shadow: 0 4px 20px rgba(245,175,0,.14); }
+        .quick-btn.qb-brand:hover  { border-color: var(--brand); box-shadow: 0 4px 20px rgba(15,118,110,.14); }
         .quick-btn.qb-brand2:hover { border-color: var(--amber); box-shadow: 0 4px 20px rgba(201,168,76,.14); }
         .quick-btn.qb-blue:hover   { border-color: var(--blue);  box-shadow: 0 4px 20px rgba(74,181,227,.14); }
         .quick-btn.qb-rose:hover   { border-color: var(--rose);  box-shadow: 0 4px 20px rgba(224,92,111,.14); }
@@ -506,9 +506,9 @@
         .cal-day:hover { background: var(--cal-hover); color: var(--brand); }
         .cal-day.other { color: var(--muted2); }
         .cal-day.today {
-            background: var(--brand); color: #0C0A06;
+            background: var(--brand); color: #ffffff;
             font-weight: 700;
-            box-shadow: 0 0 12px rgba(245, 175, 0, .42);
+            box-shadow: 0 0 12px rgba(15, 118, 110, .42);
         }
         .cal-day.has-event { position: relative; }
         .cal-day.has-event::after {
@@ -666,7 +666,7 @@
             </div>
             <div class="leave-list">
                 <div class="leave-item">
-                    <div class="leave-avatar" style="background:linear-gradient(135deg,#D49700,#C9A84C);color:#0C0A06">R</div>
+                    <div class="leave-avatar" style="background:linear-gradient(135deg,#0d6b63,#d97706);color:#ffffff">R</div>
                     <div class="leave-info">
                         <div class="leave-name">Rahul Sharma</div>
                         <div class="leave-dates">12 Jan &ndash; 14 Jan</div>
@@ -674,7 +674,7 @@
                     <span class="leave-badge pending">Pending</span>
                 </div>
                 <div class="leave-item">
-                    <div class="leave-avatar" style="background:linear-gradient(135deg,#C9A84C,#E05C6F);color:#fff">P</div>
+                    <div class="leave-avatar" style="background:linear-gradient(135deg,#d97706,#E05C6F);color:#fff">P</div>
                     <div class="leave-info">
                         <div class="leave-name">Priya Singh</div>
                         <div class="leave-dates">15 Jan &ndash; 16 Jan</div>
@@ -682,7 +682,7 @@
                     <span class="leave-badge approved">Approved</span>
                 </div>
                 <div class="leave-item">
-                    <div class="leave-avatar" style="background:linear-gradient(135deg,#F5AF00,#D49700);color:#0C0A06">A</div>
+                    <div class="leave-avatar" style="background:linear-gradient(135deg,#0f766e,#0d6b63);color:#ffffff">A</div>
                     <div class="leave-info">
                         <div class="leave-name">Amit Verma</div>
                         <div class="leave-dates">18 Jan &ndash; 19 Jan</div>
@@ -690,7 +690,7 @@
                     <span class="leave-badge pending">Pending</span>
                 </div>
                 <div class="leave-item">
-                    <div class="leave-avatar" style="background:linear-gradient(135deg,#4AB5E3,#D49700);color:#fff">S</div>
+                    <div class="leave-avatar" style="background:linear-gradient(135deg,#4AB5E3,#0d6b63);color:#fff">S</div>
                     <div class="leave-info">
                         <div class="leave-name">Sunita Rawat</div>
                         <div class="leave-dates">20 Jan &ndash; 21 Jan</div>
@@ -746,16 +746,16 @@
                 </div>
             </div>
             <div class="quick-grid">
-                <a href="<?= base_url('student/add_student') ?>" class="quick-btn qb-brand">
+                <a href="<?= base_url('student/studentAdmission') ?>" class="quick-btn qb-brand">
                     <i class="fas fa-user-plus"></i>Add Student
                 </a>
-                <a href="<?= base_url('staff/add_staff') ?>" class="quick-btn qb-brand2">
+                <a href="<?= base_url('staff/new_staff') ?>" class="quick-btn qb-brand2">
                     <i class="fas fa-user-tie"></i>Add Staff
                 </a>
                 <a href="<?= base_url('attendance') ?>" class="quick-btn qb-blue">
                     <i class="fas fa-calendar-check"></i>Attendance
                 </a>
-                <a href="<?= base_url('fees') ?>" class="quick-btn qb-rose">
+                <a href="<?= base_url('fees_counter') ?>" class="quick-btn qb-rose">
                     <i class="fas fa-money-bill-wave"></i>Fees
                 </a>
             </div>
@@ -874,9 +874,9 @@
         function getChartColors() {
             var isDark = root.getAttribute('data-theme') === 'dark';
             return {
-                grid: isDark ? 'rgba(245,175,0,0.05)' : 'rgba(180,140,0,0.08)',
-                tick: isDark ? '#7A6E54' : '#9A8050',
-                legend: isDark ? '#7A6E54' : '#9A8050'
+                grid: isDark ? 'rgba(15,118,110,0.08)' : 'rgba(15,118,110,0.08)',
+                tick: isDark ? '#5a9e98' : '#5a9e98',
+                legend: isDark ? '#5a9e98' : '#5a9e98'
             };
         }
 
@@ -901,7 +901,7 @@
                     labels: ['Present', 'Absent', 'Leave'],
                     datasets: [{
                         data: [85, 12, 3],
-                        backgroundColor: ['#F5AF00', '#E05C6F', '#C9A84C'],
+                        backgroundColor: ['#0f766e', '#E05C6F', '#d97706'],
                         borderWidth: 0,
                         hoverOffset: 4
                     }]
@@ -939,7 +939,7 @@
                     datasets: [{
                             label: 'Collected',
                             data: [18000, 20000, 17000, 22000, 19500, 21000, 16000, 23000, 18500, 12000, 15000, 10000],
-                            backgroundColor: 'rgba(245,175,0,0.72)',
+                            backgroundColor: 'rgba(15,118,110,0.72)',
                             borderRadius: 6,
                             borderSkipped: false
                         },

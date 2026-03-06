@@ -47,11 +47,21 @@ class Admin_login extends CI_Controller
     // Must stay in sync with MY_Controller::SESSION_KEYS.
     // [A-02] 'login_csrf' included so logout clears it cleanly.
     public const SESSION_KEYS = [
-        'admin_id', 'school_id', 'admin_role', 'admin_name',
-        'session', 'current_session', 'session_year',
-        'schoolName', 'school_features', 'available_sessions',
-        'subscription_expiry', 'subscription_grace_end', 'subscription_warning',
-        'sub_check_ts', 'login_csrf',
+        'admin_id',
+        'school_id',
+        'admin_role',
+        'admin_name',
+        'session',
+        'current_session',
+        'session_year',
+        'schoolName',
+        'school_features',
+        'available_sessions',
+        'subscription_expiry',
+        'subscription_grace_end',
+        'subscription_warning',
+        'sub_check_ts',
+        'login_csrf',
     ];
 
     // ─────────────────────────────────────────────────────────────────────
@@ -234,9 +244,10 @@ class Admin_login extends CI_Controller
 
         // Step 1 — Status must be Active
         if ($status !== 'Active') {
-            log_message('error',
+            log_message(
+                'error',
                 'Subscription inactive school=' . $this->_log_safe($schoolName)
-                . ' status=' . $this->_log_safe($status)
+                    . ' status=' . $this->_log_safe($status)
             );
             $this->session->set_flashdata('error', 'Subscription is not active. Please contact support.');
             redirect('admin_login');
@@ -245,9 +256,10 @@ class Admin_login extends CI_Controller
         // Step 2 — End date must not have passed
         if ($endDate === '' || strtotime($endDate) < $now) {
             $firebase->update($subPath, ['status' => 'Expired']);
-            $this->session->set_flashdata('error',
+            $this->session->set_flashdata(
+                'error',
                 'Subscription expired on ' . htmlspecialchars($endDate, ENT_QUOTES, 'UTF-8')
-                . '. Please contact our team to renew.'
+                    . '. Please contact our team to renew.'
             );
             redirect('admin_login');
         }
@@ -324,10 +336,11 @@ class Admin_login extends CI_Controller
             'sub_check_ts'           => 0,  // force MY_Controller to re-check on first load
         ]);
 
-        log_message('info',
+        log_message(
+            'info',
             'Login OK admin=' . $this->_log_safe($adminId)
-            . ' school=' . $this->_log_safe($schoolId)
-            . ' ip=' . $ip
+                . ' school=' . $this->_log_safe($schoolId)
+                . ' ip=' . $ip
         );
 
         redirect('admin/index');

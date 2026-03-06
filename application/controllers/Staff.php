@@ -42,6 +42,129 @@ class Staff extends MY_Controller
         return (bool) preg_match("/^(Class\s+)?[A-Za-z0-9]+\s+'[A-Z]{1,3}'$/", $val);
     }
 
+    /**
+     * Upload a staff file (Photo or Aadhar Card) to Firebase Storage.
+     * Mirrors the uploadStudentFile() pattern from Student.php.
+     *
+     * Returns ['url' => '...', 'thumbnail' => '...'] on success, false on failure.
+     *
+     * Storage layout:
+     *   Photo     → {school}/Staff/{staffId}/Profile_pic/{label}_{ts}_{rnd}.{ext}
+     *   thumbnail → {school}/Staff/{staffId}/Profile_pic/thumbnail/{same filename}
+     *   Others    → {school}/Staff/{staffId}/Documents/{label}_{ts}_{rnd}.{ext}
+     *   thumbnail → {school}/Staff/{staffId}/Documents/thumbnail/{same filename}
+     */
+    private function uploadStaffFile(array $file, string $school_name, string $staffId, string $label)
+    {
+        if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+            return false;
+        }
+
+        $ext       = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $timestamp = time();
+        $random    = substr(md5(uniqid()), 0, 6);
+        $safeLabel = str_replace([' ', '.', '#', '$', '[', ']'], '_', $label);
+        $fileName  = "{$safeLabel}_{$timestamp}_{$random}.{$ext}";
+
+        $basePath = ($label === 'Photo')
+            ? "{$school_name}/Staff/{$staffId}/Profile_pic/"
+            : "{$school_name}/Staff/{$staffId}/Documents/";
+
+        $filePath = $basePath . $fileName;
+
+        if ($this->firebase->uploadFile($file['tmp_name'], $filePath) !== true) {
+            return false;
+        }
+
+        $fileUrl      = $this->firebase->getDownloadUrl($filePath);
+        $thumbnailUrl = '';
+
+        // ── Image thumbnail: re-upload original file ──────────────────────────
+        if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+            $thumbPath = $basePath . "thumbnail/" . $fileName;
+            if ($this->firebase->uploadFile($file['tmp_name'], $thumbPath) === true) {
+                $thumbnailUrl = $this->firebase->getDownloadUrl($thumbPath);
+            }
+        }
+
+        // ── PDF thumbnail: try Imagick, fall back to pdf.png placeholder ──────
+        if ($ext === 'pdf') {
+            $thumbFileName = $safeLabel . '_' . $timestamp . '_' . $random . '_thumb';
+            $thumbPath     = $basePath . 'thumbnail/' . $thumbFileName;
+
+            // Try Imagick (requires Ghostscript on the server)
+            if (extension_loaded('imagick')) {
+                try {
+                    $imagick = new Imagick();
+                    $imagick->setResolution(150, 150);
+                    $imagick->readImage($file['tmp_name'] . '[0]');
+                    $imagick->setImageFormat('jpg');
+                    $imagick->setImageCompressionQuality(85);
+                    $imagick->thumbnailImage(400, 0);
+                    $imagick->flattenImages();
+
+                    $tmp = sys_get_temp_dir() . '/' . $thumbFileName . '.jpg';
+                    $imagick->writeImage($tmp);
+                    $imagick->clear();
+                    $imagick->destroy();
+
+                    $thumbStorePath = $thumbPath . '.jpg';
+                    if ($this->firebase->uploadFile($tmp, $thumbStorePath) === true) {
+                        $thumbnailUrl = $this->firebase->getDownloadUrl($thumbStorePath);
+                    }
+                    @unlink($tmp);
+                } catch (Exception $e) {
+                    log_message('error', 'Staff PDF Imagick thumb failed: ' . $e->getMessage());
+                }
+            }
+
+            // Fallback: upload the static pdf.png placeholder
+            if ($thumbnailUrl === '') {
+                $placeholder = FCPATH . 'tools/image/pdf.png';
+                if (file_exists($placeholder)) {
+                    $thumbStorePath = $thumbPath . '.png';
+                    if ($this->firebase->uploadFile($placeholder, $thumbStorePath) === true) {
+                        $thumbnailUrl = $this->firebase->getDownloadUrl($thumbStorePath);
+                    }
+                }
+            }
+        }
+
+        return ['url' => $fileUrl, 'thumbnail' => $thumbnailUrl];
+    }
+
+    /**
+     * Extract the Firebase Storage object path from a download URL.
+     * e.g. "https://firebasestorage.googleapis.com/v0/b/bucket/o/path%2Ffile.jpg?..."
+     *      → "path/file.jpg"
+     */
+    private function extractStaffStoragePath(string $url): string
+    {
+        if (empty($url)) return '';
+        if (preg_match('#/o/([^?]+)#', $url, $matches)) {
+            return urldecode($matches[1]);
+        }
+        return '';
+    }
+
+    /**
+     * Delete both the main file and its thumbnail from Firebase Storage.
+     * Accepts either an array ['url'=>'...','thumbnail'=>'...'] or a plain URL string.
+     */
+    private function deleteStaffDoc($docEntry): void
+    {
+        if (!is_array($docEntry)) {
+            $docEntry = ['url' => (string)$docEntry, 'thumbnail' => ''];
+        }
+        foreach (['url', 'thumbnail'] as $key) {
+            $url = $docEntry[$key] ?? '';
+            if (!empty($url)) {
+                $path = $this->extractStaffStoragePath($url);
+                if ($path) $this->CM->delete_file_from_firebase($path);
+            }
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
 
     public function all_staff()
@@ -66,6 +189,15 @@ class Staff extends MY_Controller
             $s['_profilePic'] = $s['ProfilePic'] ?? $s['Photo URL'] ?? '';
         }
         unset($s);
+
+        // SESSION ISOLATION: only show teachers who are assigned to this session.
+        $session_year    = $this->session_year;
+        $sessionTeachers = $this->firebase->get("Schools/{$school_name}/{$session_year}/Teachers");
+        if (is_array($sessionTeachers) && !empty($sessionTeachers)) {
+            $data['staff'] = array_intersect_key($data['staff'], $sessionTeachers);
+        } else {
+            $data['staff'] = [];
+        }
 
         $data['school_name'] = $school_name;
 
@@ -96,15 +228,27 @@ class Staff extends MY_Controller
                 return;
             }
 
-            $reader = IOFactory::createReader('Xlsx');
-            $spreadsheet = $reader->load($_FILES['excelFile']['tmp_name']);
+            $file      = $_FILES['excelFile'];
+            $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
+            $reader = ($extension === 'csv')
+                ? IOFactory::createReader('Csv')
+                : IOFactory::createReader('Xlsx');
+
+            $spreadsheet = $reader->load($file['tmp_name']);
             $sheetData   = $spreadsheet->getActiveSheet()->toArray();
+
+            if (count($sheetData) <= 1) {
+                $this->session->set_flashdata('import_result', 'Import failed: file is empty.');
+                redirect('staff/all_staff');
+                return;
+            }
 
             $headers = array_map('trim', $sheetData[0]);
             unset($sheetData[0]);
             $sheetData = array_values($sheetData);
 
-            $count = $this->CM->get_data("Users/Teachers/Count") ?? 1;
+            $count = $this->CM->get_data("Users/Teachers/{$school_id}/Count") ?? 1;
 
             $success = 0;
             $error   = 0;
@@ -205,16 +349,12 @@ class Staff extends MY_Controller
                         "PostalCode" => trim($rowData['Postal Code'])
                     ],
 
-                    // ✅ EMPTY DOC STRUCTURE
+                    "ProfilePic" => "",
+
+                    // ✅ EMPTY DOC STRUCTURE (matches new_staff / edit_staff)
                     "Doc" => [
-                        "Aadhar Card" => [
-                            "thumbnail" => "",
-                            "url" => ""
-                        ],
-                        "Photo" => [
-                            "thumbnail" => "",
-                            "url" => ""
-                        ]
+                        "Photo"       => ["url" => "", "thumbnail" => ""],
+                        "Aadhar Card" => ["url" => "", "thumbnail" => ""],
                     ]
                 ];
 
@@ -231,7 +371,7 @@ class Staff extends MY_Controller
                 $success++;
             }
 
-            $this->CM->addKey_pair_data("Users/Teachers/", ['Count' => $count]);
+            $this->CM->addKey_pair_data("Users/Teachers/{$school_id}/", ['Count' => $count]);
 
             $this->session->set_flashdata('import_result', "Staff Imported: {$success} | Failed: {$error}");
             redirect('staff/all_staff');
@@ -347,53 +487,43 @@ class Staff extends MY_Controller
                 }
             }
 
-            $docUrls = [];
+            // ── Doc structure: Photo + Aadhar Card (mirrors student pattern) ──
+            $docData = [
+                'Photo'       => ['url' => '', 'thumbnail' => ''],
+                'Aadhar Card' => ['url' => '', 'thumbnail' => ''],
+            ];
 
             // Photo upload
             if (!empty($_FILES['Photo']['tmp_name'])) {
-                $photo          = $_FILES['Photo'];
-                $photoExtension = strtolower(pathinfo($photo['name'], PATHINFO_EXTENSION));
-                $allowedPhotoExt = ['jpg', 'jpeg'];
-                $realMime       = mime_content_type($photo['tmp_name']);
+                $photo    = $_FILES['Photo'];
+                $realMime = mime_content_type($photo['tmp_name']);
 
-                if (!in_array($photoExtension, $allowedPhotoExt, true) || !in_array($realMime, ['image/jpeg', 'image/jpg'], true)) {
+                if (!in_array($realMime, ['image/jpeg', 'image/jpg'], true)) {
                     $this->json_error('Only JPG/JPEG files are allowed for photos.', 400);
                 }
 
-                $photoPath = "{$school_name}/Staff/{$staffId}/Documents/photo_{$staffId}.{$photoExtension}";
-                $photoUrl  = $this->CM->handleFileUpload($photo, $school_name, $photoPath, $staffId, true);
-
-                if (empty($photoUrl)) {
+                $result = $this->uploadStaffFile($photo, $school_name, $staffId, 'Photo');
+                if (!$result) {
                     $this->json_error('Photo upload failed.', 500);
                 }
-                $docUrls['ProfilePic'] = $photoUrl;
+                $docData['Photo'] = $result;
             }
 
-            // Aadhar upload
+            // Aadhar Card upload
             if (!empty($_FILES['Aadhar']['tmp_name'])) {
-                $aadhar          = $_FILES['Aadhar'];
-                $aadharExtension = strtolower(pathinfo($aadhar['name'], PATHINFO_EXTENSION));
-                $allowedAadharExt = ['jpg', 'jpeg', 'png', 'pdf'];
-                $fileMimeType    = mime_content_type($aadhar['tmp_name']);
-                $allowedMimes    = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+                $aadhar   = $_FILES['Aadhar'];
+                $realMime = mime_content_type($aadhar['tmp_name']);
 
-                if (!in_array($aadharExtension, $allowedAadharExt, true) || !in_array($fileMimeType, $allowedMimes, true)) {
+                if (!in_array($realMime, ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'], true)) {
                     $this->json_error('Only PDF, JPG, JPEG, or PNG files are allowed for Aadhar.', 400);
                 }
 
-                $aadharPath = "{$school_name}/Staff/{$staffId}/Documents/aadhar_{$staffId}.{$aadharExtension}";
-                $aadharUrl  = $this->CM->handleFileUpload($aadhar, $school_name, $aadharPath, $staffId, true);
-
-                if (empty($aadharUrl)) {
+                $result = $this->uploadStaffFile($aadhar, $school_name, $staffId, 'Aadhar Card');
+                if (!$result) {
                     $this->json_error('Aadhar upload failed.', 500);
                 }
-                $docUrls['Aadhar'] = $aadharUrl;
+                $docData['Aadhar Card'] = $result;
             }
-
-            $docDataurl = [
-                'ProfilePic' => $docUrls['ProfilePic'] ?? '',
-                'Aadhar'     => $docUrls['Aadhar']     ?? '',
-            ];
 
             $addressData = [
                 'City'       => $normalizedPostData['city']        ?? '',
@@ -456,8 +586,8 @@ class Staff extends MY_Controller
                 'salaryDetails'   => $salaryDetailsData,
                 'Blood Group'     => $normalizedPostData['blood_group']    ?? '',
                 'Religion'        => $normalizedPostData['religion']       ?? '',
-                'ProfilePic'      => $docUrls['ProfilePic']                ?? '',
-                'Doc'             => $docDataurl,
+                'ProfilePic'      => $docData['Photo']['url'],
+                'Doc'             => $docData,
                 'lastUpdated'     => date('Y-m-d'),
                 // [FIX-2] Hashed password stored under Credentials
                 'Credentials'     => ['Password' => password_hash($rawPassword, PASSWORD_DEFAULT)],
@@ -493,7 +623,7 @@ class Staff extends MY_Controller
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
-        if (!$id || !preg_match('/^\d+$/', $id)) {
+        if (!$id || !preg_match('/^[A-Za-z0-9]+$/', $id)) {
             redirect(base_url() . 'staff/all_staff/');
             return;
         }
@@ -526,35 +656,47 @@ class Staff extends MY_Controller
             $postData = $this->input->post();
             unset($postData['user_id'], $postData['User ID']);
 
-            // File uploads
-            $uploadPaths = [];
-            foreach (['photo', 'aadhar_card'] as $field) {
-                if (!empty($_FILES[$field]['name'])) {
-                    $filePath    = $_FILES[$field]['tmp_name'];
-                    $extension   = pathinfo($_FILES[$field]['name'], PATHINFO_EXTENSION);
-                    $realMime    = mime_content_type($filePath);
+            // Fetch existing record once — used for old-file deletion and Doc merge
+            $existingData   = $this->firebase->get("Users/Teachers/{$school_id}/{$user_id}");
+            $existingDoc    = is_array($existingData['Doc'] ?? null) ? $existingData['Doc'] : [];
+            $docUpdates     = [];
 
-                    $allowedMimes = [
-                        'photo'      => ['image/jpeg', 'image/jpg'],
-                        'aadhar_card' => ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'],
-                    ];
+            // ── Photo upload ──────────────────────────────────────────────────
+            if (!empty($_FILES['Photo']['tmp_name'])) {
+                $photo    = $_FILES['Photo'];
+                $realMime = mime_content_type($photo['tmp_name']);
 
-                    if (!in_array($realMime, $allowedMimes[$field], true)) {
-                        $this->json_error("Invalid file type for {$field}.", 400);
-                    }
+                if (!in_array($realMime, ['image/jpeg', 'image/jpg'], true)) {
+                    $this->json_error('Only JPG/JPEG files are allowed for photos.', 400);
+                }
 
-                    $fileName     = $user_id . '_' . $field . '.' . $extension;
-                    $firebasePath = "staff/{$user_id}/{$fileName}";
-                    $uploadResult = $this->CM->upload_to_firebase_storage($filePath, $firebasePath);
+                // Delete old photo + thumbnail from Storage
+                $this->deleteStaffDoc($existingDoc['Photo'] ?? ($existingData['Photo URL'] ?? ''));
 
-                    if (!empty($uploadResult['mediaLink'])) {
-                        $uploadPaths[$field] = $uploadResult['mediaLink'];
-                    }
+                $result = $this->uploadStaffFile($photo, $school_name, $user_id, 'Photo');
+                if ($result) {
+                    $docUpdates['Photo']    = $result;
+                    $postData['ProfilePic'] = $result['url'];
                 }
             }
 
-            if (!empty($uploadPaths['photo']))       $postData['Photo URL']   = $uploadPaths['photo'];
-            if (!empty($uploadPaths['aadhar_card'])) $postData['Aadhar URL']  = $uploadPaths['aadhar_card'];
+            // ── Aadhar Card upload ────────────────────────────────────────────
+            if (!empty($_FILES['Aadhar']['tmp_name'])) {
+                $aadhar   = $_FILES['Aadhar'];
+                $realMime = mime_content_type($aadhar['tmp_name']);
+
+                if (!in_array($realMime, ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'], true)) {
+                    $this->json_error('Only PDF, JPG, JPEG, or PNG files are allowed for Aadhar.', 400);
+                }
+
+                // Delete old Aadhar + thumbnail from Storage
+                $this->deleteStaffDoc($existingDoc['Aadhar Card'] ?? ($existingData['Aadhar URL'] ?? ''));
+
+                $result = $this->uploadStaffFile($aadhar, $school_name, $user_id, 'Aadhar Card');
+                if ($result) {
+                    $docUpdates['Aadhar Card'] = $result;
+                }
+            }
 
             // Structured fields
             $structuredFields = [
@@ -608,7 +750,12 @@ class Staff extends MY_Controller
             // Prevent Credentials from being overwritten via edit
             unset($formattedData['Credentials']);
 
-            $existingData   = $this->firebase->get("Users/Teachers/{$school_id}/{$user_id}");
+            // Merge updated Doc entries (if any files were uploaded) into the
+            // existing Doc node so unchanged documents are preserved.
+            if (!empty($docUpdates)) {
+                $formattedData['Doc'] = array_merge($existingDoc, $docUpdates);
+            }
+
             $oldPhoneNumber = $existingData['Phone Number'] ?? null;
             $oldName        = $existingData['Name']         ?? null;
 
@@ -656,15 +803,15 @@ class Staff extends MY_Controller
     {
         $school_id = $this->school_id;
 
-        if (!$id || !preg_match('/^\d+$/', $id)) {
+        if (!$id || !preg_match('/^[A-Za-z0-9]+$/', $id)) {
             show_404();
             return;
         }
 
-        $studentData = $this->firebase->get("Users/Teachers/{$school_id}/{$id}");
+        $teacherData = $this->firebase->get("Users/Teachers/{$school_id}/{$id}");
 
         $this->load->view('include/header');
-        $this->load->view('teacher_profile', ['teacher' => $studentData]);
+        $this->load->view('teacher_profile', ['teacher' => $teacherData]);
         $this->load->view('include/footer');
     }
 
@@ -724,11 +871,9 @@ class Staff extends MY_Controller
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
-        $classesPath      = "Schools/{$school_name}/{$session_year}/Classes";
-        $teachersPath     = "Schools/{$school_name}/{$session_year}/Teachers";
+        $teachersPath       = "Schools/{$school_name}/{$session_year}/Teachers";
         $teacherDetailsPath = "Users/Teachers/{$school_id}";
 
-        $classesData = $this->CM->get_data($classesPath);
         $teacherIds  = $this->CM->get_data($teachersPath);
 
         $data['teachers'] = [];
@@ -746,12 +891,19 @@ class Staff extends MY_Controller
                     foreach ($dutiesData as $dutyType => $classes) {
                         foreach ((array) $classes as $className => $subjects) {
                             foreach ((array) $subjects as $subject => $time) {
+                                // Parse "Class 9th 'A'" → class="Class 9th", section="A"
+                                preg_match("/^(.+?)\s*'([^']*)'\s*$/", $className, $parts);
+                                $classOnly   = isset($parts[1]) ? trim($parts[1]) : $className;
+                                $sectionOnly = isset($parts[2]) ? trim($parts[2]) : '';
+
                                 $data['duties'][] = [
-                                    'class'        => $className,
-                                    'subject'      => $subject,
-                                    'teacher_name' => "{$teacherId} - {$teacherName}",
-                                    'duty_type'    => $dutyType,
-                                    'duty_time'    => $time,
+                                    'class_section' => $className,
+                                    'class'         => $classOnly,
+                                    'section'       => $sectionOnly,
+                                    'subject'       => $subject,
+                                    'teacher_name'  => "{$teacherId} - {$teacherName}",
+                                    'duty_type'     => $dutyType,
+                                    'duty_time'     => is_string($time) ? $time : '',
                                 ];
                             }
                         }
@@ -760,16 +912,18 @@ class Staff extends MY_Controller
             }
         }
 
-        if (is_array($classesData)) {
-            foreach ($classesData as $className => $classInfo) {
-                if (!isset($classInfo['Section']) || !is_array($classInfo['Section'])) continue;
-                if (empty($classInfo['Section'])) $classInfo['Section']['A'] = '';
-                foreach ($classInfo['Section'] as $sectionName => $_) {
-                    $ClassesData[] = [
-                        'class_name' => $className,
-                        'section'    => $sectionName,
-                    ];
-                }
+        // Build class/section list from the correct Firebase structure:
+        // Schools/{school}/{session}/Class 9th/Section A/...
+        $sessionClassKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}");
+        foreach ($sessionClassKeys as $classKey) {
+            if (strpos($classKey, 'Class ') !== 0) continue;
+            $sectionKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}/{$classKey}");
+            foreach ($sectionKeys as $sectionKey) {
+                if (strpos($sectionKey, 'Section ') !== 0) continue;
+                $ClassesData[] = [
+                    'class_name' => $classKey,
+                    'section'    => str_replace('Section ', '', $sectionKey),
+                ];
             }
         }
 
@@ -789,15 +943,19 @@ class Staff extends MY_Controller
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
-        $postData = json_decode(file_get_contents('php://input'), true);
+        // Read from $_POST so CI CSRF filter can validate the token
+        $className = trim((string) $this->input->post('class_name'));
+        $section   = trim((string) $this->input->post('section'));
 
-        if (!isset($postData['classSection'])) {
+        if (!$className || !$section) {
             echo json_encode([]);
             return;
         }
 
+        // Build combined key: "Class 9th 'A'"
+        $classSection = $className . " '" . $section . "'";
+
         // [FIX-8] Validate classSection before use in path
-        $classSection = trim((string) $postData['classSection']);
         if (!$this->valid_class_section($classSection)) {
             $this->json_error('Invalid class section.', 400);
         }
@@ -930,5 +1088,37 @@ class Staff extends MY_Controller
         }
 
         $this->json_success(['message' => 'Teacher removed and duty marked inactive.']);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function teacher_id_card()
+    {
+        $school_id    = $this->school_id;
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        // Fetch all staff records for this school
+        $allStaff = $this->CM->select_data("Users/Teachers/{$school_id}");
+        if (!is_array($allStaff)) $allStaff = [];
+
+        // Keep only array entries (drop 'Count' and other non-staff nodes)
+        $allStaff = array_filter($allStaff, 'is_array');
+
+        // SESSION ISOLATION: only show teachers assigned to this session
+        $sessionTeachers = $this->firebase->get("Schools/{$school_name}/{$session_year}/Teachers");
+        if (is_array($sessionTeachers) && !empty($sessionTeachers)) {
+            $allStaff = array_intersect_key($allStaff, $sessionTeachers);
+        } else {
+            $allStaff = [];
+        }
+
+        $data['staff']        = array_values($allStaff);
+        $data['session_year'] = $session_year;
+        $data['school_name']  = $school_name;
+
+        $this->load->view('include/header');
+        $this->load->view('teacher_id_card', $data);
+        $this->load->view('include/footer');
     }
 }

@@ -207,7 +207,7 @@
         --fm-teal: #0d7377;
         --fm-teal2: #14a085;
         --fm-sky: #e6f4f1;
-        --fm-gold: #f5a623;
+        --fm-gold: #d97706;
         --fm-red: #e53e3e;
         --fm-green: #27ae60;
         --fm-text: #1a2940;

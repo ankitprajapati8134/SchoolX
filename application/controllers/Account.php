@@ -1,5 +1,5 @@
 <?php
-defined('BASEPATH') OR exit('No direct script access allowed');
+defined('BASEPATH') or exit('No direct script access allowed');
 
 /**
  * Account controller
@@ -36,11 +36,10 @@ class Account extends MY_Controller
     {
         $accounts = $this->firebase->get($this->base_path() . '/Accounts/Account_book');
 
-        $currentYear    = (int) date('Y');
-        $currentMonth   = (int) date('m');
-        $current_session = ($currentMonth < 4)
-            ? ($currentYear - 1) . '-' . $currentYear
-            : $currentYear . '-' . ($currentYear + 1);
+        // SESSION ISOLATION FIX: use the active session selected by the admin,
+        // not a date-computed year (which ignored session switching and used the
+        // wrong YYYY-YYYY format instead of the stored YYYY-YY format).
+        $current_session = $this->session_year;
 
         if ($this->input->is_ajax_request()) {
             // [FIX-2] Sanitise the account name from POST
@@ -78,7 +77,7 @@ class Account extends MY_Controller
 
         $accountData = $this->firebase->get($this->base_path() . "/Accounts/Account_book/{$accountName}");
 
-        $months = ['April','May','June','July','August','September','October','November','December','January','February','March'];
+        $months = ['April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March'];
         $matrix = array_fill(0, 12, ['Opening' => 0.00, 'Received' => 0.00, 'Payments' => 0.00, 'Balance' => 0.00]);
         $previousMonthBalance = 0.00;
 
@@ -156,7 +155,7 @@ class Account extends MY_Controller
         ];
 
         // Optional fields
-        foreach (['branchName','accountHolder','accountNumber','ifscCode'] as $field) {
+        foreach (['branchName', 'accountHolder', 'accountNumber', 'ifscCode'] as $field) {
             $val = trim((string) $this->input->post($field));
             if ($val) $accountData[$field] = $val;
         }
@@ -313,7 +312,7 @@ class Account extends MY_Controller
         $account_path = "Schools/{$school_name}/{$session_year}/Accounts/Account_book/{$account_name}/{$month}/{$day}";
         $modepath     = "Schools/{$school_name}/{$session_year}/Accounts/Account_book/{$mode}/{$month}/{$day}";
 
-        $update_node = function($path, $key, $amount) {
+        $update_node = function ($path, $key, $amount) {
             $node_path       = "{$path}/{$key}";
             $current         = (float) ($this->firebase->get($node_path) ?? 0);
             $this->firebase->set($node_path, $current + (float) $amount);
@@ -474,7 +473,7 @@ class Account extends MY_Controller
                         $filteredVouchers[] = [
                             'Date'       => $voucherDate,
                             'Type'       => $typeKey,
-                            'Particulars'=> htmlspecialchars($details['Acc'] ?? '', ENT_QUOTES, 'UTF-8'),
+                            'Particulars' => htmlspecialchars($details['Acc'] ?? '', ENT_QUOTES, 'UTF-8'),
                             'Cr Amt'     => $typeKey === 'Payment' ? '' : $details[$typeKey],
                             'Dr Amt'     => $typeKey === 'Payment' ? $details[$typeKey] : '',
                             'Mode'       => $details['Mode'] ?? '',
@@ -490,7 +489,6 @@ class Account extends MY_Controller
             });
 
             $this->json_success(['data' => $filteredVouchers]);
-
         } else {
             $path       = "Schools/{$school_name}/{$session_year}/Accounts/Account_book";
             $accountKeys = $this->CM->get_data($path);
@@ -578,10 +576,10 @@ class Account extends MY_Controller
 
             $result[] = [
                 'Account Name'   => $accountName,
-                'Opening Balance'=> number_format($openingBalance, 2),
+                'Opening Balance' => number_format($openingBalance, 2),
                 'Total Received' => number_format($totalReceived, 2),
                 'Total Payment'  => number_format($totalPayment, 2),
-                'Current Balance'=> number_format($balance, 2),
+                'Current Balance' => number_format($balance, 2),
             ];
         }
 
@@ -605,7 +603,7 @@ class Account extends MY_Controller
             $this->json_error('No data found for selected account.', 404);
         }
 
-        $months        = ['April','May','June','July','August','September','October','November','December','January','February','March'];
+        $months        = ['April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March'];
         $cashBookData  = [];
         $previousBalance = 0;
 
@@ -649,19 +647,34 @@ class Account extends MY_Controller
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
-        $selectedAccount = trim((string) $this->input->get_post('account_name'));
-        $selectedMonth   = trim((string) $this->input->post('month'));
-        $opening         = (float) str_replace(',', '', (string) ($this->input->post('opening') ?? 0));
+        $selectedAccount = trim((string)$this->input->get_post('account_name'));
+        $selectedMonth   = trim((string)$this->input->post('month'));
+        $opening         = (float)str_replace(',', '', (string)($this->input->post('opening') ?? 0));
 
         if (!$selectedAccount || !$selectedMonth) {
             $this->json_error('Invalid account or month.', 400);
         }
 
-        $sessionData  = $this->firebase->get("Schools/{$school_name}/{$session_year}/Session");
-        [$startYear]  = explode('-', (string) $sessionData);
+        $sessionData = $this->firebase->get("Schools/{$school_name}/{$session_year}/Session");
 
-        $monthsAfterApril = ['April','May','June','July','August','September','October','November','December'];
-        $currentYear = in_array($selectedMonth, $monthsAfterApril) ? $startYear : ($startYear + 1);
+        $sessionParts = explode('-', $session_year);
+        $startYear = (int)$sessionParts[0];
+
+        $monthsAfterApril = [
+            'April',
+            'May',
+            'June',
+            'July',
+            'August',
+            'September',
+            'October',
+            'November',
+            'December'
+        ];
+
+        $currentYear = in_array($selectedMonth, $monthsAfterApril)
+            ? $startYear
+            : ($startYear + 1);
 
         $accountPath = "Schools/{$school_name}/{$session_year}/Accounts/Account_book/{$selectedAccount}/{$selectedMonth}";
         $monthData   = $this->firebase->get($accountPath);
@@ -671,26 +684,97 @@ class Account extends MY_Controller
         }
 
         $dateRecords = [];
+
         foreach ($monthData as $key => $dateData) {
-            $payments = (float) ($dateData['P'] ?? 0);
-            $received = (float) ($dateData['R'] ?? 0);
-            $date     = str_pad($key, 2, '0', STR_PAD_LEFT) . '-' . date('m', strtotime($selectedMonth)) . '-' . $currentYear;
-            $dateRecords[$date] = ['date' => $date, 'opening' => 0, 'payments' => $payments, 'received' => $received, 'balance' => 0];
+
+            $payments = (float)($dateData['P'] ?? 0);
+            $received = (float)($dateData['R'] ?? 0);
+
+            $monthNumber = date('m', strtotime($selectedMonth));
+
+            $date = str_pad($key, 2, '0', STR_PAD_LEFT)
+                . '-' . $monthNumber
+                . '-' . $currentYear;
+
+            $dateRecords[$date] = [
+                'date'     => $date,
+                'opening'  => 0,
+                'payments' => $payments,
+                'received' => $received,
+                'balance'  => 0
+            ];
         }
 
         ksort($dateRecords);
 
         $balance = $opening;
         $output  = [];
+
         foreach ($dateRecords as &$data) {
+
             $data['opening'] = $balance;
-            $data['balance'] = $balance + $data['received'] - $data['payments'];
-            $balance         = $data['balance'];
-            $output[]        = $data;
+
+            $data['balance'] = $balance
+                + $data['received']
+                - $data['payments'];
+
+            $balance = $data['balance'];
+
+            $output[] = $data;
         }
 
         $this->json_success(['data' => $output]);
     }
+
+    // public function cash_book_dates()
+    // {
+    //     header('Content-Type: application/json');
+
+    //     $school_name  = $this->school_name;
+    //     $session_year = $this->session_year;
+
+    //     $selectedAccount = trim((string) $this->input->get_post('account_name'));
+    //     $selectedMonth   = trim((string) $this->input->post('month'));
+    //     $opening         = (float) str_replace(',', '', (string) ($this->input->post('opening') ?? 0));
+
+    //     if (!$selectedAccount || !$selectedMonth) {
+    //         $this->json_error('Invalid account or month.', 400);
+    //     }
+
+    //     $sessionData  = $this->firebase->get("Schools/{$school_name}/{$session_year}/Session");
+    //     [$startYear]  = explode('-', (string) $sessionData);
+
+    //     $monthsAfterApril = ['April','May','June','July','August','September','October','November','December'];
+    //     $currentYear = in_array($selectedMonth, $monthsAfterApril) ? $startYear : ($startYear + 1);
+
+    //     $accountPath = "Schools/{$school_name}/{$session_year}/Accounts/Account_book/{$selectedAccount}/{$selectedMonth}";
+    //     $monthData   = $this->firebase->get($accountPath);
+
+    //     if (!$monthData) {
+    //         $this->json_error('No data found for this account in the selected month.', 404);
+    //     }
+
+    //     $dateRecords = [];
+    //     foreach ($monthData as $key => $dateData) {
+    //         $payments = (float) ($dateData['P'] ?? 0);
+    //         $received = (float) ($dateData['R'] ?? 0);
+    //         $date     = str_pad($key, 2, '0', STR_PAD_LEFT) . '-' . date('m', strtotime($selectedMonth)) . '-' . $currentYear;
+    //         $dateRecords[$date] = ['date' => $date, 'opening' => 0, 'payments' => $payments, 'received' => $received, 'balance' => 0];
+    //     }
+
+    //     ksort($dateRecords);
+
+    //     $balance = $opening;
+    //     $output  = [];
+    //     foreach ($dateRecords as &$data) {
+    //         $data['opening'] = $balance;
+    //         $data['balance'] = $balance + $data['received'] - $data['payments'];
+    //         $balance         = $data['balance'];
+    //         $output[]        = $data;
+    //     }
+
+    //     $this->json_success(['data' => $output]);
+    // }
 
     public function cash_book_details()
     {

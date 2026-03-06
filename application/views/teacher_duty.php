@@ -1,849 +1,844 @@
+<?php defined('BASEPATH') or exit('No direct script access allowed'); ?>
+
 <div class="content-wrapper">
-    <div class="page_container">
+<div class="td-wrap">
 
-        <div class="erp-card">
+    <!-- ── Page title + breadcrumb ── -->
+    <div class="td-page-title">
+        <i class="fa fa-user-circle-o"></i> Teacher Duty Assignment
+    </div>
+    <ol class="td-breadcrumb">
+        <li><a href="<?= base_url('admin') ?>">Dashboard</a></li>
+        <li>Teacher Duty</li>
+    </ol>
 
-            <!-- ================= HEADER ================= -->
-            <div class="erp-header">
-                <div class="erp-title">
-                    Assign / Update Teacher Duties
-                    <span class="erp-subtitle">Manage Class & Subject Responsibilities</span>
-                </div>
-            </div>
+    <!-- ══════════════════════════════════════════════════
+         ASSIGNMENT FORM CARD
+    ══════════════════════════════════════════════════ -->
+    <div class="td-card" id="formCard">
+        <div class="td-card-head">
+            <span><i class="fa fa-pencil-square-o"></i> Duty Assignment Form</span>
+        </div>
+        <div class="td-card-body">
+            <form id="duty-form" autocomplete="off">
 
-            <!-- ================= FORM SECTION ================= -->
-            <div class="erp-section">
-                <div class="section-title">Duty Assignment Form</div>
+                <div class="td-form-grid">
 
-                <form id="duty-form">
-                    <div class="form-grid">
+                    <!-- Class -->
+                    <div class="td-field">
+                        <label for="tdClass">Class <span class="td-req">*</span></label>
+                        <select id="tdClass" class="td-select" required>
+                            <option value="" disabled selected>Select Class</option>
+                            <?php
+                            $uniqueClasses = [];
+                            foreach ($Classes as $c) {
+                                $uniqueClasses[$c['class_name']] = true;
+                            }
+                            ksort($uniqueClasses);
+                            foreach ($uniqueClasses as $cn => $_):
+                            ?>
+                            <option value="<?= htmlspecialchars($cn, ENT_QUOTES, 'UTF-8') ?>">
+                                <?= htmlspecialchars($cn, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                        <div class="form-group">
-                            <label for="class">Class <span class="req">*</span></label>
-                            <select id="class" name="class" class="form-select" required>
-                                <option value="" disabled selected>Select Class</option>
-                                <?php
-                                $uniqueClasses = [];
-                                foreach ($Classes as $class) {
-                                    $uniqueClasses[$class['class_name']] = true;
-                                }
-                                ksort($uniqueClasses);
-                                foreach ($uniqueClasses as $className => $_) :
-                                ?>
-                                    <option value="<?= htmlspecialchars($className) ?>">
-                                        <?= htmlspecialchars($className) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
+                    <!-- Section -->
+                    <div class="td-field">
+                        <label for="tdSection">Section <span class="td-req">*</span></label>
+                        <select id="tdSection" class="td-select" required disabled>
+                            <option value="" disabled selected>Select Class first</option>
+                        </select>
+                    </div>
 
-                        <div class="form-group">
-                            <label for="section">Section <span class="req">*</span></label>
-                            <select id="section" name="section" class="form-select" required>
-                                <option value="" disabled selected>Select Section</option>
-                            </select>
-                        </div>
+                    <!-- Subject -->
+                    <div class="td-field">
+                        <label for="tdSubject">Subject <span class="td-req">*</span></label>
+                        <select id="tdSubject" class="td-select" required disabled>
+                            <option value="" disabled selected>Select Section first</option>
+                        </select>
+                    </div>
 
-                        <div class="form-group">
-                            <label for="subject">Subject <span class="req">*</span></label>
-                            <select id="subject" name="subject" class="form-select" required disabled>
-                                <option value="" disabled selected>Select Subject</option>
-                            </select>
-                        </div>
+                    <!-- Teacher -->
+                    <div class="td-field">
+                        <label for="tdTeacher">Teacher <span class="td-req">*</span></label>
+                        <select id="tdTeacher" class="td-select" required>
+                            <option value="" disabled selected>Select Teacher</option>
+                            <?php foreach ($teachers as $t): ?>
+                            <option value="<?= htmlspecialchars($t, ENT_QUOTES, 'UTF-8') ?>">
+                                <?= htmlspecialchars($t, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                        <div class="form-group">
-                            <label for="teacher-name">Teacher <span class="req">*</span></label>
-                            <select id="teacher-name" name="teacher-name" class="form-select" required>
-                                <option value="" disabled selected>Select Teacher</option>
-                            </select>
-                        </div>
+                    <!-- Duty Type -->
+                    <div class="td-field">
+                        <label for="tdDutyType">Duty Type <span class="td-req">*</span></label>
+                        <select id="tdDutyType" class="td-select" required>
+                            <option value="" disabled selected>Select Duty Type</option>
+                            <option value="SubjectTeacher">Subject Teacher</option>
+                            <option value="ClassTeacher">Class Teacher</option>
+                        </select>
+                    </div>
 
-                        <div class="form-group">
-                            <label for="duty-type">Duty Type <span class="req">*</span></label>
-                            <select id="duty-type" name="duty-type" class="form-select" required>
-                                <option value="" disabled selected>Select Duty Type</option>
-                                <option value="SubjectTeacher">Subject Teacher</option>
-                                <option value="ClassTeacher">Class Teacher</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group time-wrapper">
-                            <label>Duty Time</label>
-                            <div class="time-flex">
-                                <div>
-                                    <label for="start-time">Start Time</label>
-                                    <input type="time" id="start-time" name="start-time" class="time-input" />
-                                </div>
-                                <div>
-                                    <label for="end-time">End Time</label>
-                                    <input type="time" id="end-time" name="end-time" class="time-input" />
-                                </div>
+                    <!-- Time -->
+                    <div class="td-field td-time-field">
+                        <label>Duty Time <span class="td-muted">(optional)</span></label>
+                        <div class="td-time-row">
+                            <div class="td-time-group">
+                                <span class="td-time-lbl">From</span>
+                                <input type="time" id="tdStart" class="td-input-time">
+                            </div>
+                            <div class="td-time-sep">—</div>
+                            <div class="td-time-group">
+                                <span class="td-time-lbl">To</span>
+                                <input type="time" id="tdEnd" class="td-input-time">
                             </div>
                         </div>
-
                     </div>
 
-                    <div class="buttons">
-                        <button type="button" class="btn btn-success assign" id="assign" disabled>Assign</button>
-                        <button type="button" class="btn btn-warning update" onclick="updateDuty()" style="display:none;">Update</button>
-                    </div>
-                </form>
-            </div>
+                </div><!-- /.td-form-grid -->
 
-            <!-- ================= TABLE SECTION ================= -->
-            <div class="erp-section">
-                <div class="section-title">Assigned Duties List</div>
-
-                <div class="table-container">
-                    <table id="teacher-table" class="table example">
-                        <thead>
-                            <tr>
-                                <th>Class</th>
-                                <th>Section</th>
-                                <th>Subject</th>
-                                <th>Teacher</th>
-                                <th>Duty Type</th>
-                                <th>Time</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (!empty($duties)) : ?>
-                                <?php foreach ($duties as $duty) : ?>
-                                    <tr>
-                                        <td><?= htmlspecialchars($duty['class'] ?? 'Unassigned') ?></td>
-                                        <td><?= htmlspecialchars($duty['section'] ?? 'Unassigned') ?></td>
-                                        <td><?= htmlspecialchars($duty['subject'] ?? 'Unassigned') ?></td>
-                                        <td><?= htmlspecialchars($duty['teacher_name'] ?? '') ?></td>
-                                        <td>
-                                            <span class="badge-duty">
-                                                <?= htmlspecialchars($duty['duty_type'] ?? 'Unassigned') ?>
-                                            </span>
-                                        </td>
-                                        <td><?= htmlspecialchars($duty['duty_time'] ?? 'Unassigned') ?></td>
-                                        <td>
-                                            <button class="btn btn-warning btn-sm" onclick="fillForm(this)">Update Duty</button>
-                                            <button class="btn btn-danger btn-sm" onclick="markInactive(this)">Inactive Duty</button>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php else : ?>
-                                <tr>
-                                    <td colspan="7" class="text-center">No duties assigned</td>
-                                </tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
+                <div class="td-form-actions">
+                    <button type="button" class="td-btn td-btn-ghost" id="tdResetBtn">
+                        <i class="fa fa-times"></i> Reset
+                    </button>
+                    <button type="button" class="td-btn td-btn-primary" id="tdAssignBtn" disabled>
+                        <i class="fa fa-check"></i> Assign Duty
+                    </button>
+                    <button type="button" class="td-btn td-btn-warn" id="tdUpdateBtn" style="display:none;">
+                        <i class="fa fa-refresh"></i> Update Duty
+                    </button>
                 </div>
-            </div>
 
+            </form>
         </div>
     </div>
-</div>
 
+    <!-- ══════════════════════════════════════════════════
+         ASSIGNED DUTIES TABLE CARD
+    ══════════════════════════════════════════════════ -->
+    <div class="td-card">
+        <div class="td-card-head">
+            <span><i class="fa fa-list-ul"></i> Assigned Duties</span>
+            <span class="td-count"><?= count($duties ?? []) ?> record<?= count($duties ?? []) !== 1 ? 's' : '' ?></span>
+        </div>
+        <div class="td-card-body td-card-body--table">
+            <div class="td-tbl-wrap">
+                <table class="td-tbl" id="dutyTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Class</th>
+                            <th>Section</th>
+                            <th>Subject</th>
+                            <th>Teacher</th>
+                            <th>Duty Type</th>
+                            <th>Time</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php if (!empty($duties)): ?>
+                        <?php foreach ($duties as $i => $duty): ?>
+                        <tr data-class-section="<?= htmlspecialchars($duty['class_section'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                            <td class="td-num"><?= $i + 1 ?></td>
+                            <td><?= htmlspecialchars((string)($duty['class'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($duty['section'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($duty['subject'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td class="td-teacher"><?= htmlspecialchars((string)($duty['teacher_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td>
+                                <span class="td-badge <?= ($duty['duty_type'] ?? '') === 'ClassTeacher' ? 'td-badge--class' : 'td-badge--subject' ?>">
+                                    <?= htmlspecialchars((string)($duty['duty_type'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                </span>
+                            </td>
+                            <td class="td-time-cell"><?= htmlspecialchars((string)($duty['duty_time'] ?? '') ?: '—', ENT_QUOTES, 'UTF-8') ?></td>
+                            <td class="td-actions">
+                                <button class="td-act-btn td-act-edit" onclick="tdFillForm(this)" title="Edit">
+                                    <i class="fa fa-pencil"></i>
+                                </button>
+                                <button class="td-act-btn td-act-del" onclick="tdMarkInactive(this)" title="Remove">
+                                    <i class="fa fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="8" class="td-empty">
+                                <i class="fa fa-inbox"></i><br>No duties assigned yet
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
+</div><!-- /.td-wrap -->
+</div><!-- /.content-wrapper -->
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
 <script>
-    function showAlert(type, message) {
+/* ================================================================
+   teacher_duty.php — complete JS (all bugs fixed)
+================================================================ */
+(function () {
+    'use strict';
 
-        const colors = {
-            success: "#28a745",
-            error: "#dc3545",
-            warning: "#ffc107",
-            info: "#17a2b8"
-        };
+    /* ── Element refs ── */
+    var selClass   = document.getElementById('tdClass');
+    var selSection = document.getElementById('tdSection');
+    var selSubject = document.getElementById('tdSubject');
+    var selTeacher = document.getElementById('tdTeacher');
+    var selDuty    = document.getElementById('tdDutyType');
+    var inpStart   = document.getElementById('tdStart');
+    var inpEnd     = document.getElementById('tdEnd');
+    var btnAssign  = document.getElementById('tdAssignBtn');
+    var btnUpdate  = document.getElementById('tdUpdateBtn');
+    var btnReset   = document.getElementById('tdResetBtn');
 
-        const alertBox = document.createElement("div");
-        alertBox.innerText = message;
-        alertBox.style.position = "fixed";
-        alertBox.style.top = "20px";
-        alertBox.style.right = "20px";
-        alertBox.style.padding = "12px 18px";
-        alertBox.style.background = colors[type] || "#333";
-        alertBox.style.color = "#fff";
-        alertBox.style.borderRadius = "6px";
-        alertBox.style.boxShadow = "0 4px 10px rgba(0,0,0,0.2)";
-        alertBox.style.zIndex = "9999";
-        alertBox.style.fontSize = "13px";
+    /* ── State ── */
+    var isUpdating  = false;
+    var selectedRow = null;
+    var originalData = {};
 
-        document.body.appendChild(alertBox);
-
-        setTimeout(() => {
-            alertBox.remove();
-        }, 3000);
+    /* ── CSRF: build FormData with token already appended ── */
+    function csrfFd() {
+        var fd = new FormData();
+        fd.append(csrfName, csrfToken);
+        return fd;
     }
 
+    /* ── Toast notification ── */
+    function toast(type, msg) {
+        var accent = { success: 'var(--gold)', error: '#e05c6f', warning: '#f59e0b', info: 'var(--t3)' };
+        var el = document.createElement('div');
+        el.textContent = msg;
+        el.style.cssText = [
+            'position:fixed;top:22px;right:22px;z-index:9999',
+            'padding:12px 18px',
+            'background:var(--bg2)',
+            'color:var(--t1)',
+            'border-left:4px solid ' + (accent[type] || accent.info),
+            'border-radius:10px',
+            'box-shadow:var(--sh)',
+            'font-size:13px',
+            'font-family:var(--font-b)',
+            'max-width:320px',
+            'pointer-events:none'
+        ].join(';');
+        document.body.appendChild(el);
+        setTimeout(function () { el.remove(); }, 3500);
+    }
 
+    /* ── Enable/disable Assign button ── */
+    function checkForm() {
+        var ok = selClass.value && selSection.value && selSubject.value &&
+                 selTeacher.value && selDuty.value;
+        btnAssign.disabled = !ok;
+    }
 
-    document.addEventListener('DOMContentLoaded', function() {
+    /* ════════════════════════════════════════════════════
+       STEP 1 — CLASS CHANGE → LOAD SECTIONS
+    ════════════════════════════════════════════════════ */
+    selClass.addEventListener('change', function () {
+        selSection.innerHTML = '<option value="" disabled selected>Loading…</option>';
+        selSection.disabled  = true;
+        selSubject.innerHTML = '<option value="" disabled selected>Select Section first</option>';
+        selSubject.disabled  = true;
+        checkForm();
 
-        const classSelect = document.getElementById('class');
-        const sectionSelect = document.getElementById('section');
-        const teacherSelect = document.getElementById('teacher-name');
-        const subjectSelect = document.getElementById('subject');
-        const dutyTypeSelect = document.getElementById('duty-type');
-
-        const assignButton = document.querySelector(".assign");
-        const updateButton = document.querySelector(".update");
-
-        const teachers = <?php echo json_encode($teachers); ?>;
-
-        /* ===========================
-           LOAD TEACHERS
-        =========================== */
-
-        teacherSelect.innerHTML =
-            '<option value="" disabled selected>Select Teacher</option>';
-
-        teachers.forEach(teacher => {
-            const option = document.createElement('option');
-            option.value = teacher;
-            option.textContent = teacher;
-            teacherSelect.appendChild(option);
-        });
-
-        /* ===========================
-           CLASS CHANGE → LOAD SECTIONS
-        =========================== */
-
-        classSelect.addEventListener('change', function() {
-
-            const selectedClass = this.value;
-
-            // Reset subject dropdown
-            subjectSelect.innerHTML =
-                '<option value="" disabled selected>Select Subject</option>';
-            subjectSelect.disabled = true;
-
-            if (!selectedClass) {
-                sectionSelect.innerHTML =
-                    '<option value="" disabled selected>Select Section</option>';
+        var fd = csrfFd();
+        fd.append('class_name', this.value);
+        fetch(BASE_URL + 'student/get_sections_by_class', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (sections) {
+            selSection.innerHTML = '<option value="" disabled selected>Select Section</option>';
+            if (!Array.isArray(sections) || !sections.length) {
+                selSection.innerHTML = '<option value="" disabled selected>No sections found</option>';
                 return;
             }
-
-            sectionSelect.innerHTML =
-                '<option value="" disabled selected>Loading...</option>';
-
-            fetch('get_sections_by_class', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: new URLSearchParams({
-                        class_name: selectedClass
-                    })
-                })
-                .then(response => response.json())
-                .then(sections => {
-
-                    sectionSelect.innerHTML =
-                        '<option value="" disabled selected>Select Section</option>';
-
-                    if (!sections || sections.length === 0) {
-                        sectionSelect.innerHTML =
-                            '<option value="" disabled selected>No Sections Found</option>';
-                        return;
-                    }
-
-                    sections.forEach(section => {
-                        const option = document.createElement('option');
-                        option.value = section;
-                        option.textContent = section;
-                        sectionSelect.appendChild(option);
-                    });
-
-                })
-                .catch(error => {
-                    console.error('Error loading sections:', error);
-                    sectionSelect.innerHTML =
-                        '<option value="" disabled selected>Select Section</option>';
-                });
-        });
-
-        /* ===========================
-           SECTION CHANGE → LOAD SUBJECTS
-        =========================== */
-
-        if (!isUpdating) {
-            subjectSelect.selectedIndex = 0;
-        }
-    });
-
-    let selectedRow = null;
-
-    let originalData = {};
-    let isUpdating = false;
-
-    function fillForm(button) {
-        isUpdating = true;
-
-        selectedRow = $(button).closest('tr');
-        const data = selectedRow.find("td");
-
-        let className = data.eq(0).text().trim();
-        let section = data.eq(1).text().trim();
-        let subject = data.eq(2).text().trim();
-        let teacherName = data.eq(3).text().trim();
-        let dutyType = data.eq(4).text().trim();
-        let dutyTime = data.eq(5).text().trim();
-
-        // ✅ STORE ORIGINAL DATA FOR UPDATE
-        originalData = {
-            class_name: className,
-            section: section,
-            subject: subject,
-            teacher_name: teacherName,
-            duty_type: dutyType
-        };
-
-        $("#class").val(className);
-
-        fetch('get_sections_by_class', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: new URLSearchParams({
-                    class_name: className
-                })
-            })
-            .then(response => response.json())
-            .then(sections => {
-
-                let sectionSelect = $("#section");
-                sectionSelect.empty().append('<option value="">Select Section</option>');
-
-                if (sections && sections.length > 0) {
-                    sections.forEach(sec => {
-                        sectionSelect.append(new Option(sec, sec));
-                    });
-                    sectionSelect.val(section);
-                }
-
-                return fetch('fetch_subjects', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: new URLSearchParams({
-                        class_name: className,
-                        section: section
-                    })
-                });
-
-            })
-            .then(response => response.json())
-            .then(subjects => {
-
-                let subjectSelect = $("#subject");
-                subjectSelect.empty().append('<option value="">Select Subject</option>');
-
-                if (subjects && subjects.length > 0) {
-
-                    subjects.forEach(sub => {
-                        subjectSelect.append(new Option(sub, sub));
-                    });
-
-                    subjectSelect.prop("disabled", false);
-
-                    subjectSelect.val(subject);
-                }
-            })
-            .catch(error => console.error("Update load error:", error));
-
-        $("#teacher-name").val(teacherName);
-        $("#duty-type").val(dutyType);
-
-        let timeMatch = dutyTime.match(/(\d{1,2}:\d{2}\s*[APMapm]+)\s*-\s*(\d{1,2}:\d{2}\s*[APMapm]+)/);
-
-        if (timeMatch) {
-            $("#start-time").val(convertTo24HourFormat(timeMatch[1].trim()));
-            $("#end-time").val(convertTo24HourFormat(timeMatch[2].trim()));
-        } else {
-            $("#start-time, #end-time").val('');
-        }
-
-        $(".assign").hide();
-        $(".update").show().prop("disabled", false).text("Update");
-    }
-
-
-    function convertTo24HourFormat(timeStr) {
-        let time = timeStr.match(/(\d{1,2}):(\d{2})\s*([APMapm]+)/);
-        if (!time) {
-            console.warn("Invalid time format:", timeStr);
-            return ''; // Return an empty string if the format is incorrect
-        }
-
-        let hours = parseInt(time[1], 10);
-        let minutes = time[2];
-        let meridian = time[3].toUpperCase();
-
-        if (meridian === "PM" && hours < 12) {
-            hours += 12;
-        } else if (meridian === "AM" && hours === 12) {
-            hours = 0;
-        }
-
-        let convertedTime = `${hours.toString().padStart(2, '0')}:${minutes}`;
-        console.log(`Converted Time (${timeStr} → 24H):`, convertedTime); // Debug log
-        return convertedTime;
-    }
-
-
-
-    function updateDuty() {
-
-        if (!selectedRow) {
-            showAlert("error", "No duty selected.");
-            return;
-        }
-
-        const btn = $(".update");
-        btn.prop("disabled", true).text("Updating...");
-
-        let classValue = $("#class").val();
-        let subjectValue = $("#subject").val();
-        let teacherName = $("#teacher-name").val();
-        let dutyType = $("#duty-type").val();
-
-        if (!classValue || !subjectValue || !teacherName || !dutyType) {
-            showAlert("warning", "Please fill all required fields.");
-            btn.prop("disabled", false).text("Update");
-            return;
-        }
-
-        let startTime = $("#start-time").val();
-        let endTime = $("#end-time").val();
-        let timeSlot = (startTime && endTime) ?
-            `${formatTime(startTime)}-${formatTime(endTime)}` :
-            "";
-
-        $.ajax({
-            url: "assign_duty",
-            type: "POST",
-            dataType: "json",
-            data: {
-                class_name: classValue,
-                section: $("#section").val(),
-                subject: subjectValue,
-                teacher_name: teacherName,
-                duty_type: dutyType,
-                time_slot: timeSlot,
-
-                is_update: true,
-
-                original_class: originalData.class_name,
-                original_section: originalData.section,
-                original_subject: originalData.subject,
-                original_teacher: originalData.teacher_name,
-                original_duty_type: originalData.duty_type
-            },
-            success: function(response) {
-
-                if (response.status === "success") {
-                    showAlert("success", "Duty updated successfully.");
-                    setTimeout(() => location.reload(), 1500);
-                } else {
-                    showAlert("error", response.message || "Update failed.");
-                    btn.prop("disabled", false).text("Update");
-                }
-            },
-            error: function() {
-                showAlert("error", "Server error while updating.");
-                btn.prop("disabled", false).text("Update");
-            }
-        });
-    }
-
-
-    function formatTime(time) {
-        let [hours, minutes] = time.split(":");
-        let ampm = hours >= 12 ? "PM" : "AM";
-        hours = hours % 12 || 12;
-        return `${hours}:${minutes} ${ampm}`;
-    }
-
-
-    function resetForm() {
-
-        document.getElementById('duty-form').reset();
-
-        $("#subject").prop("disabled", true);
-
-        $(".update").hide();
-        $(".assign")
-            .show()
-            .prop("disabled", true)
-            .text("Assign");
-
-        selectedRow = null;
-    }
-
-
-
-    function markInactive(button) {
-
-        if (!confirm("Are you sure you want to mark this duty as inactive?")) {
-            return;
-        }
-
-        let row = button.closest('tr');
-
-        let className = row.cells[0].textContent.trim();
-        let section = row.cells[1].textContent.trim();
-        let subject = row.cells[2].textContent.trim();
-        let teacherName = row.cells[3].textContent.trim();
-
-        $.ajax({
-            url: 'markInactive_duty',
-            type: 'POST',
-            dataType: 'json',
-            data: {
-                class_name: className,
-                section: section,
-                subject: subject,
-                teacher_name: teacherName
-            },
-            success: function(response) {
-
-                if (response.status === "success") {
-                    showAlert("success", "Duty marked inactive.");
-                    setTimeout(() => location.reload(), 1500);
-                } else {
-                    showAlert("error", response.message || "Failed to mark inactive.");
-                }
-            },
-            error: function() {
-                showAlert("error", "Server error while marking inactive.");
-            }
-        });
-    }
-
-
-    $(document).ready(function() {
-        function checkFormFields() {
-            let classValue = $("#class").val();
-            let sectionValue = $("#section").val();
-            let subjectValue = $("#subject").val();
-            let teacherName = $("#teacher-name").val();
-            let dutyType = $("#duty-type").val();
-
-            if (classValue && subjectValue && teacherName && dutyType) {
-                $("#assign").prop("disabled", false);
-            } else {
-                $("#assign").prop("disabled", true);
-            }
-        }
-
-        $("#class, #section, #subject, #teacher-name, #duty-type").on("change", checkFormFields);
-
-        $("#assign").click(function() {
-
-            let classValue = $("#class").val();
-            let subjectValue = $("#subject").val();
-            let teacherName = $("#teacher-name").val();
-            let dutyType = $("#duty-type").val();
-
-            if (!classValue || !subjectValue || !teacherName || !dutyType) {
-                showAlert("warning", "Please fill required fields");
-                return;
-            }
-
-            const btn = $(this);
-            btn.prop("disabled", true).text("Assigning...");
-
-            let startTime = $("#start-time").val();
-            let endTime = $("#end-time").val();
-
-            let timeSlot = (startTime && endTime) ?
-                `${formatTime(startTime)}-${formatTime(endTime)}` :
-                "";
-
-            $.ajax({
-                url: "assign_duty",
-                type: "POST",
-                dataType: "json",
-                data: {
-                    class_name: classValue,
-                    section: $("#section").val(),
-                    subject: subjectValue,
-                    teacher_name: teacherName,
-                    duty_type: dutyType,
-                    time_slot: timeSlot
-                },
-                success: function(response) {
-
-                    if (response.status === "success") {
-
-                        showAlert("success", "Duty assigned successfully");
-                        resetForm();
-                        setTimeout(() => location.reload(), 1500);
-
-                    } else {
-
-                        showAlert("error", response.message || "Something went wrong");
-                        btn.prop("disabled", false).text("Assign");
-                    }
-                },
-                error: function() {
-
-                    showAlert("error", "Something went wrong");
-                    btn.prop("disabled", false).text("Assign");
-                }
+            sections.forEach(function (s) {
+                var o = document.createElement('option');
+                o.value = o.textContent = s;
+                selSection.appendChild(o);
             });
+            selSection.disabled = false;
+        })
+        .catch(function () {
+            selSection.innerHTML = '<option value="" disabled selected>Error loading</option>';
         });
-
-
-
-        function formatTime(time) {
-            let [hours, minutes] = time.split(":");
-            let ampm = hours >= 12 ? "PM" : "AM";
-            hours = hours % 12 || 12;
-            return `${hours}:${minutes} ${ampm}`;
-        }
     });
+
+    /* ════════════════════════════════════════════════════
+       STEP 2 — SECTION CHANGE → LOAD SUBJECTS
+    ════════════════════════════════════════════════════ */
+    selSection.addEventListener('change', function () {
+        selSubject.innerHTML = '<option value="" disabled selected>Loading…</option>';
+        selSubject.disabled  = true;
+        checkForm();
+        loadSubjects(selClass.value, this.value, null);
+    });
+
+    function loadSubjects(className, section, callback) {
+        var fd = csrfFd();
+        fd.append('class_name', className);
+        fd.append('section', section);
+        fetch(BASE_URL + 'staff/fetch_subjects', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (subjects) {
+            selSubject.innerHTML = '<option value="" disabled selected>Select Subject</option>';
+            if (!Array.isArray(subjects) || !subjects.length) {
+                selSubject.innerHTML = '<option value="" disabled selected>No subjects found</option>';
+            } else {
+                subjects.forEach(function (sub) {
+                    var o = document.createElement('option');
+                    o.value = o.textContent = sub;
+                    selSubject.appendChild(o);
+                });
+                selSubject.disabled = false;
+            }
+            checkForm();
+            if (typeof callback === 'function') callback(subjects);
+        })
+        .catch(function () {
+            selSubject.innerHTML = '<option value="" disabled selected>Error loading</option>';
+        });
+    }
+
+    /* Watch other dropdowns for form validation */
+    [selTeacher, selDuty].forEach(function (el) {
+        el.addEventListener('change', checkForm);
+    });
+
+    /* ════════════════════════════════════════════════════
+       STEP 3 — ASSIGN DUTY
+    ════════════════════════════════════════════════════ */
+    btnAssign.addEventListener('click', function () {
+        if (!selClass.value || !selSection.value || !selSubject.value || !selTeacher.value || !selDuty.value) {
+            toast('warning', 'Please fill all required fields.');
+            return;
+        }
+
+        var timeSlot = '';
+        if (inpStart.value && inpEnd.value) {
+            timeSlot = fmtTime(inpStart.value) + '-' + fmtTime(inpEnd.value);
+        }
+
+        btnAssign.disabled     = true;
+        btnAssign.innerHTML    = '<i class="fa fa-spinner fa-spin"></i> Assigning…';
+
+        var fd = csrfFd();
+        fd.append('class_section', selClass.value + " '" + selSection.value + "'");
+        fd.append('subject',       selSubject.value);
+        fd.append('teacher_name',  selTeacher.value);
+        fd.append('duty_type',     selDuty.value);
+        fd.append('time_slot',     timeSlot);
+
+        fetch(BASE_URL + 'staff/assign_duty', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+            if (res && res.status === 'success') {
+                toast('success', 'Duty assigned successfully.');
+                setTimeout(function () { location.reload(); }, 1200);
+            } else {
+                toast('error', (res && res.message) || 'Assignment failed.');
+                btnAssign.disabled  = false;
+                btnAssign.innerHTML = '<i class="fa fa-check"></i> Assign Duty';
+            }
+        })
+        .catch(function () {
+            toast('error', 'Server error. Please try again.');
+            btnAssign.disabled  = false;
+            btnAssign.innerHTML = '<i class="fa fa-check"></i> Assign Duty';
+        });
+    });
+
+    /* ════════════════════════════════════════════════════
+       STEP 4 — FILL FORM FOR UPDATE (called from table)
+    ════════════════════════════════════════════════════ */
+    window.tdFillForm = function (btn) {
+        isUpdating  = true;
+        selectedRow = btn.closest('tr');
+
+        var cells        = selectedRow.cells;
+        var classSection = selectedRow.dataset.classSection;   // "Class 9th 'A'"
+        var className    = cells[1].textContent.trim();         // "Class 9th"
+        var section      = cells[2].textContent.trim();         // "A"
+        var subject      = cells[3].textContent.trim();
+        var teacher      = cells[4].textContent.trim();
+        var dutyType     = cells[5].querySelector('.td-badge') ? cells[5].querySelector('.td-badge').textContent.trim() : cells[5].textContent.trim();
+        var dutyTime     = cells[6].textContent.trim();
+
+        originalData = {
+            class_section: classSection,
+            subject:       subject,
+            teacher_name:  teacher,
+            duty_type:     dutyType
+        };
+
+        /* Populate class */
+        selClass.value = className;
+
+        /* Load sections → then load subjects → then set values */
+        var fd = csrfFd();
+        fd.append('class_name', className);
+        fetch(BASE_URL + 'student/get_sections_by_class', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (sections) {
+            selSection.innerHTML = '<option value="" disabled selected>Select Section</option>';
+            sections.forEach(function (s) {
+                var o = document.createElement('option');
+                o.value = o.textContent = s;
+                selSection.appendChild(o);
+            });
+            selSection.disabled = false;
+            selSection.value    = section;
+
+            loadSubjects(className, section, function () {
+                selSubject.value = subject;
+                checkForm();
+            });
+        })
+        .catch(function (e) { console.error('fillForm error', e); });
+
+        /* Set teacher + duty type */
+        selTeacher.value = teacher;
+        selDuty.value    = dutyType;
+
+        /* Set time fields */
+        var tm = dutyTime.match(/(\d{1,2}:\d{2}\s*[APMapm]+)\s*-\s*(\d{1,2}:\d{2}\s*[APMapm]+)/);
+        if (tm) {
+            inpStart.value = to24h(tm[1].trim());
+            inpEnd.value   = to24h(tm[2].trim());
+        } else {
+            inpStart.value = inpEnd.value = '';
+        }
+
+        /* Toggle buttons */
+        btnAssign.style.display = 'none';
+        btnUpdate.style.display = '';
+        btnUpdate.disabled      = false;
+        btnUpdate.innerHTML     = '<i class="fa fa-refresh"></i> Update Duty';
+
+        /* Scroll form into view */
+        document.getElementById('formCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    /* ════════════════════════════════════════════════════
+       STEP 5 — UPDATE DUTY
+    ════════════════════════════════════════════════════ */
+    btnUpdate.addEventListener('click', function () {
+        if (!selectedRow) { toast('error', 'No duty selected.'); return; }
+        if (!selClass.value || !selSection.value || !selSubject.value || !selTeacher.value || !selDuty.value) {
+            toast('warning', 'Please fill all required fields.');
+            return;
+        }
+
+        var timeSlot = '';
+        if (inpStart.value && inpEnd.value) {
+            timeSlot = fmtTime(inpStart.value) + '-' + fmtTime(inpEnd.value);
+        }
+
+        btnUpdate.disabled  = true;
+        btnUpdate.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Updating…';
+
+        var fd = csrfFd();
+        fd.append('class_section', selClass.value + " '" + selSection.value + "'");
+        fd.append('subject',       selSubject.value);
+        fd.append('teacher_name',  selTeacher.value);
+        fd.append('duty_type',     selDuty.value);
+        fd.append('time_slot',     timeSlot);
+
+        fetch(BASE_URL + 'staff/assign_duty', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+            if (res && res.status === 'success') {
+                toast('success', 'Duty updated successfully.');
+                setTimeout(function () { location.reload(); }, 1200);
+            } else {
+                toast('error', (res && res.message) || 'Update failed.');
+                btnUpdate.disabled  = false;
+                btnUpdate.innerHTML = '<i class="fa fa-refresh"></i> Update Duty';
+            }
+        })
+        .catch(function () {
+            toast('error', 'Server error.');
+            btnUpdate.disabled  = false;
+            btnUpdate.innerHTML = '<i class="fa fa-refresh"></i> Update Duty';
+        });
+    });
+
+    /* ════════════════════════════════════════════════════
+       STEP 6 — MARK INACTIVE / REMOVE DUTY
+    ════════════════════════════════════════════════════ */
+    window.tdMarkInactive = function (btn) {
+        if (!confirm('Remove this duty assignment? This cannot be undone.')) return;
+
+        var row          = btn.closest('tr');
+        var classSection = row.dataset.classSection;   // full "Class 9th 'A'"
+        var subject      = row.cells[3].textContent.trim();
+        var teacher      = row.cells[4].textContent.trim();
+
+        var fd = csrfFd();
+        fd.append('class_name',   classSection);
+        fd.append('subject',      subject);
+        fd.append('teacher_name', teacher);
+
+        fetch(BASE_URL + 'staff/markInactive_duty', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+            if (res && res.status === 'success') {
+                toast('success', 'Duty removed successfully.');
+                row.style.transition = 'opacity .3s';
+                row.style.opacity    = '0';
+                setTimeout(function () { row.remove(); }, 300);
+            } else {
+                toast('error', (res && res.message) || 'Failed to remove duty.');
+            }
+        })
+        .catch(function () { toast('error', 'Server error.'); });
+    };
+
+    /* ════════════════════════════════════════════════════
+       STEP 7 — RESET FORM
+    ════════════════════════════════════════════════════ */
+    btnReset.addEventListener('click', function () {
+        document.getElementById('duty-form').reset();
+        selSection.innerHTML = '<option value="" disabled selected>Select Class first</option>';
+        selSection.disabled  = true;
+        selSubject.innerHTML = '<option value="" disabled selected>Select Section first</option>';
+        selSubject.disabled  = true;
+        btnAssign.disabled      = true;
+        btnAssign.style.display = '';
+        btnAssign.innerHTML     = '<i class="fa fa-check"></i> Assign Duty';
+        btnUpdate.style.display = 'none';
+        isUpdating  = false;
+        selectedRow = null;
+    });
+
+    /* ── Helpers ── */
+    function fmtTime(t) {
+        var p = t.split(':'), h = parseInt(p[0], 10), m = p[1];
+        var ap = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        return h + ':' + m + ' ' + ap;
+    }
+    function to24h(str) {
+        var mt = str.match(/(\d{1,2}):(\d{2})\s*([APMapm]+)/);
+        if (!mt) return '';
+        var h = parseInt(mt[1], 10), mn = mt[2], mer = mt[3].toUpperCase();
+        if (mer === 'PM' && h < 12) h += 12;
+        else if (mer === 'AM' && h === 12) h = 0;
+        return h.toString().padStart(2, '0') + ':' + mn;
+    }
+
+})();
 </script>
 
 
-
 <style>
-    /* ===============================
-   GLOBAL LAYOUT
-================================ */
-    .content-wrapper {
-        background: #f4f6f9;
-        padding: 35px;
-        min-height: 100vh;
-        font-family: 'Inter', sans-serif;
-    }
+/* ── Teacher Duty — ERP Gold Theme (day/night aware) ── */
 
-    /* ===============================
-   MAIN ERP CARD
-================================ */
-    .erp-card {
-        background: #ffffff;
-        border-radius: 18px;
-        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.06);
-        overflow: hidden;
-        border: 1px solid #f1f1f1;
-    }
+:root, [data-theme="night"], [data-theme="day"] {
+    --td-bg:     var(--bg);
+    --td-card:   var(--bg2);
+    --td-border: var(--border);
+    --td-t1:     var(--t1);
+    --td-t2:     var(--t2);
+    --td-t3:     var(--t3);
+    --td-gold:   var(--gold);
+    --td-dim:    var(--gold-dim);
+    --td-sh:     var(--sh);
+    --td-r:      14px;
+}
 
-    /* ===============================
-   HEADER
-================================ */
-    .erp-header {
-        background: linear-gradient(90deg, #ffc107, #ffb300);
-        padding: 22px 35px;
-        color: #fff;
-    }
+/* ── Wrapper ── */
+.td-wrap {
+    font-family: var(--font-b);
+    background: var(--td-bg);
+    color: var(--td-t1);
+    padding: 24px 20px 52px;
+    min-height: 100vh;
+}
 
-    .erp-title {
-        font-size: 22px;
-        font-weight: 600;
-        letter-spacing: 0.3px;
-    }
+/* ── Page title ── */
+.td-page-title {
+    font-family: var(--font-d);
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--td-t1);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.td-page-title i { color: var(--td-gold); }
 
-    .erp-subtitle {
-        font-size: 13px;
-        opacity: 0.9;
-        margin-top: 5px;
-    }
+/* ── Breadcrumb ── */
+.td-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--td-t3);
+    font-family: var(--font-b);
+    margin-bottom: 22px;
+    list-style: none;
+    padding: 0;
+}
+.td-breadcrumb li:not(:last-child)::after { content: '/'; margin-left: 6px; opacity: .5; }
+.td-breadcrumb a { color: var(--td-gold); text-decoration: none; }
 
-    /* ===============================
-   SECTION
-================================ */
-    .erp-section {
-        padding: 30px 35px;
-        border-bottom: 1px solid #f2f2f2;
-    }
+/* ── Card ── */
+.td-card {
+    background: var(--td-card);
+    border: 1px solid var(--td-border);
+    border-radius: var(--td-r);
+    box-shadow: var(--td-sh);
+    overflow: hidden;
+    margin-bottom: 22px;
+}
+.td-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 48px;
+    background: linear-gradient(90deg, var(--td-gold) 0%, var(--gold2, #0d6b63) 100%);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: var(--font-b);
+}
+.td-count {
+    font-size: 11px;
+    font-family: var(--font-m);
+    background: rgba(255,255,255,.15);
+    padding: 3px 10px;
+    border-radius: 20px;
+}
+.td-card-body { padding: 26px 24px; }
+.td-card-body--table { padding: 0; }
 
-    .section-title {
-        font-size: 15px;
-        font-weight: 600;
-        margin-bottom: 22px;
-        color: #222;
-    }
+/* ── Form grid ── */
+.td-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+}
+.td-field { display: flex; flex-direction: column; gap: 6px; }
+.td-field label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--td-t2);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    font-family: var(--font-b);
+}
+.td-req { color: #e05c6f; }
+.td-muted { color: var(--td-t3); font-weight: 400; text-transform: none; letter-spacing: 0; }
 
-    /* ===============================
-   FORM GRID
-================================ */
-    .form-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 24px;
-    }
+/* ── Selects ── */
+.td-select {
+    height: 42px;
+    padding: 0 12px;
+    border: 1px solid var(--td-border);
+    border-radius: 10px;
+    background: var(--bg3, var(--bg));
+    color: var(--td-t1);
+    font-size: 13px;
+    font-family: var(--font-b);
+    transition: border-color .2s, box-shadow .2s;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+    width: 100%;
+}
+.td-select:focus {
+    outline: none;
+    border-color: var(--td-gold);
+    box-shadow: 0 0 0 3px var(--td-dim);
+}
+.td-select:disabled { opacity: .5; cursor: not-allowed; }
 
-    .form-group label {
-        font-size: 13px;
-        font-weight: 600;
-        margin-bottom: 7px;
-        color: #333;
-    }
+/* ── Time field ── */
+.td-time-field { grid-column: span 2; }
+.td-time-row { display: flex; align-items: center; gap: 12px; }
+.td-time-group { display: flex; align-items: center; gap: 8px; }
+.td-time-lbl { font-size: 12px; color: var(--td-t3); font-family: var(--font-m); }
+.td-input-time {
+    height: 42px;
+    padding: 0 12px;
+    border: 1px solid var(--td-border);
+    border-radius: 10px;
+    background: var(--bg3, var(--bg));
+    color: var(--td-t1);
+    font-size: 13px;
+    font-family: var(--font-m);
+    transition: border-color .2s, box-shadow .2s;
+}
+.td-input-time:focus {
+    outline: none;
+    border-color: var(--td-gold);
+    box-shadow: 0 0 0 3px var(--td-dim);
+}
+.td-time-sep { font-size: 16px; color: var(--td-t3); }
 
-    .req {
-        color: #e53935;
-    }
+/* ── Form actions ── */
+.td-form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--td-border);
+}
 
-    /* ===============================
-   INPUTS
-================================ */
-    .form-select,
-    .time-input {
-        height: 48px;
-        padding: 0 16px;
-        border: 1px solid #e4e6eb;
-        border-radius: 12px;
-        background: #fcfcfd;
-        font-size: 13px;
-        transition: all 0.25s ease;
-    }
+/* ── Buttons ── */
+.td-btn {
+    height: 40px;
+    padding: 0 22px;
+    border-radius: 20px;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--font-b);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    transition: all .2s;
+}
+.td-btn:disabled { opacity: .5; cursor: not-allowed; }
+.td-btn-primary {
+    background: linear-gradient(135deg, var(--td-gold) 0%, var(--gold2, #0d6b63) 100%);
+    color: #ffffff;
+}
+.td-btn-primary:not(:disabled):hover { opacity: .9; transform: translateY(-1px); }
+.td-btn-warn {
+    background: var(--td-dim);
+    color: var(--td-gold);
+    border: 1px solid var(--td-gold);
+}
+.td-btn-warn:not(:disabled):hover { background: var(--td-gold); color: #ffffff; }
+.td-btn-ghost {
+    background: transparent;
+    color: var(--td-t3);
+    border: 1px solid var(--td-border);
+}
+.td-btn-ghost:hover { border-color: var(--td-t2); color: var(--td-t1); }
 
-    .form-select:hover,
-    .time-input:hover {
-        border-color: #ffc107;
-    }
+/* ── Table ── */
+.td-tbl-wrap { overflow-x: auto; }
+.td-tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.td-tbl thead th {
+    background: linear-gradient(90deg, var(--td-gold) 0%, var(--gold2, #0d6b63) 100%);
+    color: #ffffff;
+    padding: 13px 16px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: var(--font-b);
+    text-align: left;
+    white-space: nowrap;
+}
+.td-tbl tbody tr { border-bottom: 1px solid var(--td-border); transition: background .15s; }
+.td-tbl tbody tr:hover { background: var(--td-dim); }
+.td-tbl tbody td {
+    padding: 13px 16px;
+    color: var(--td-t1);
+    vertical-align: middle;
+}
+.td-num { color: var(--td-t3); font-family: var(--font-m); font-size: 12px; width: 40px; }
+.td-teacher { font-size: 12px; color: var(--td-t2); }
+.td-time-cell { font-family: var(--font-m); font-size: 12px; color: var(--td-t2); }
+.td-empty {
+    text-align: center;
+    padding: 48px 16px;
+    color: var(--td-t3);
+    font-size: 14px;
+    line-height: 2;
+}
 
-    .form-select:focus,
-    .time-input:focus {
-        border-color: #ffc107;
-        box-shadow: 0 0 0 4px rgba(255, 193, 7, 0.15);
-        background: #fff;
-        outline: none;
-    }
+/* ── Badges ── */
+.td-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--font-b);
+    white-space: nowrap;
+}
+.td-badge--subject {
+    background: var(--td-dim);
+    color: var(--td-gold);
+    border: 1px solid rgba(15,118,110,.3);
+}
+.td-badge--class {
+    background: rgba(61,214,140,.1);
+    color: #3DD68C;
+    border: 1px solid rgba(61,214,140,.3);
+}
 
-    /* Disabled */
-    .form-select:disabled {
-        background: #f5f5f5;
-        cursor: not-allowed;
-        opacity: 0.7;
-    }
+/* ── Action buttons ── */
+.td-actions { white-space: nowrap; }
+.td-act-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--td-border);
+    background: transparent;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all .2s;
+    margin-right: 4px;
+}
+.td-act-edit { color: var(--td-gold); }
+.td-act-edit:hover { background: var(--td-dim); border-color: var(--td-gold); }
+.td-act-del { color: #e05c6f; }
+.td-act-del:hover { background: rgba(224,92,111,.1); border-color: #e05c6f; }
 
-    /* ===============================
-   DUTY TIME BLOCK
-================================ */
-    .time-wrapper {
-        grid-column: span 2;
-        background: #fafafa;
-        padding: 22px;
-        border-radius: 14px;
-        border: 1px solid #ececec;
-    }
-
-    .time-flex {
-        display: flex;
-        gap: 25px;
-    }
-
-    .time-flex div {
-        flex: 1;
-    }
-
-    /* ===============================
-   BUTTONS
-================================ */
-    .buttons {
-        margin-top: 35px;
-        display: flex;
-        justify-content: flex-end;
-        gap: 18px;
-    }
-
-    .btn {
-        font-size: 13px;
-        font-weight: 600;
-        border-radius: 30px;
-        padding: 10px 30px;
-        transition: all 0.25s ease;
-    }
-
-    .btn-success {
-        background: linear-gradient(135deg, #28a745, #218838);
-        border: none;
-        color: #fff;
-        box-shadow: 0 5px 15px rgba(40, 167, 69, 0.25);
-    }
-
-    .btn-success:hover {
-        transform: translateY(-2px);
-    }
-
-    .btn-warning {
-        background: #ffc107;
-        border: none;
-        color: #000;
-    }
-
-    .btn-danger {
-        background: #e74c3c;
-        border: none;
-        color: #fff;
-    }
-
-    /* ===============================
-   TABLE
-================================ */
-    .table-container {
-        margin-top: 10px;
-    }
-
-    #teacher-table {
-        width: 100%;
-        border-collapse: separate;
-        border-spacing: 0;
-    }
-
-    #teacher-table thead th {
-        background: #ffc107;
-        color: #fff;
-        padding: 16px;
-        font-size: 13px;
-        font-weight: 600;
-        text-align: left;
-    }
-
-    #teacher-table tbody tr {
-        transition: all 0.2s ease;
-    }
-
-    #teacher-table tbody tr:nth-child(even) {
-        background: #fafafa;
-    }
-
-    #teacher-table tbody tr:hover {
-        background: #fff8e1;
-    }
-
-    #teacher-table tbody td {
-        padding: 16px;
-        font-size: 13px;
-        color: #333;
-        border-bottom: 1px solid #f2f2f2;
-    }
-
-    /* Table Buttons */
-    #teacher-table .btn-warning,
-    #teacher-table .btn-danger {
-        border-radius: 20px;
-        padding: 6px 16px;
-        font-size: 12px;
-        font-weight: 500;
-    }
-
-    #teacher-table .btn-warning:hover,
-    #teacher-table .btn-danger:hover {
-        opacity: 0.9;
-    }
-
-    /* Badge */
-    .badge-duty {
-        background: rgba(255, 193, 7, 0.18);
-        color: #000;
-        padding: 6px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 500;
-    }
+@media (max-width: 600px) {
+    .td-time-field { grid-column: span 1; }
+    .td-time-row { flex-direction: column; align-items: flex-start; }
+}
 </style>

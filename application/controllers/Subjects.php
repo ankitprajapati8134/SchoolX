@@ -134,22 +134,24 @@ class Subjects extends MY_Controller
             return;
         } else {
             // ---------------- GET: LOAD PAGE ----------------
-            $classes = $this->CM->select_data(
-                'Schools/' . $school_name . '/' . $session_year . '/Classes'
+            // Build class/section list from the correct Firebase structure:
+            // Schools/{school}/{session}/Class 9th/Section A/...
+            $classesData     = [];
+            $sessionClassKeys = $this->firebase->shallow_get(
+                'Schools/' . $school_name . '/' . $session_year
             );
-
-            $classesData = [];
-            if (is_array($classes)) {
-                foreach ($classes as $classNameKey => $classInfo) {
-                    if (!empty($classInfo['Section']) && is_array($classInfo['Section'])) {
-                        foreach ($classInfo['Section'] as $sectionName => $_) {
-                            $classesData[] = [
-                                'school_name' => $school_name,
-                                'class_name'  => $classNameKey,
-                                'section'     => $sectionName,
-                            ];
-                        }
-                    }
+            foreach ($sessionClassKeys as $classKey) {
+                if (strpos($classKey, 'Class ') !== 0) continue;
+                $sectionKeys = $this->firebase->shallow_get(
+                    'Schools/' . $school_name . '/' . $session_year . '/' . $classKey
+                );
+                foreach ($sectionKeys as $sectionKey) {
+                    if (strpos($sectionKey, 'Section ') !== 0) continue;
+                    $classesData[] = [
+                        'school_name' => $school_name,
+                        'class_name'  => $classKey,
+                        'section'     => str_replace('Section ', '', $sectionKey),
+                    ];
                 }
             }
 

@@ -16,7 +16,9 @@ class NoticeAnnouncement extends MY_Controller
         $notices = $this->firebase->get($path);
 
         $data['notices'] = is_array($notices) ? $notices : [];
+        $this->load->view('include/header');
         $this->load->view('notice_announcement/list', $data);
+        $this->load->view('include/footer');
     }
 
     // ── Fetch recent notices (called by header bell via AJAX) ─────
@@ -138,42 +140,19 @@ class NoticeAnnouncement extends MY_Controller
         $session_year = $this->session_year;
         $admin_id     = $this->admin_id;
 
-        $base_path   = "Schools/{$school_name}/{$session_year}/All Notices";
-        $classesPath = "Schools/{$school_name}/{$session_year}/Classes";
-        $classesData = $this->firebase->get($classesPath);
+        $base_path = "Schools/{$school_name}/{$session_year}/All Notices";
 
         // ── Build class list for dropdown ─────────────────────────
-        // FIX: guard against null return from Firebase
+        // Read class/section keys directly from the session root (correct path).
         $data['classes'] = [];
-        if (is_array($classesData)) {
-            foreach ($classesData as $className => $classDetails) {
-                if (!is_array($classDetails)) continue;
-
-                // New structure: sections are separate keys under class
-                // Firebase: Classes / 8th / Section / A  (old)
-                // OR:       Class 8th / Section A / ...  (new)
-                // Support BOTH so the dropdown always populates.
-
-                if (isset($classDetails['Section']) && is_array($classDetails['Section'])) {
-                    // OLD structure — Classes/8th/Section/A
-                    foreach ($classDetails['Section'] as $sectionName => $sectionDetails) {
-                        $classNode    = "Class $className";
-                        $sectionNode  = "Section $sectionName";
-                        $displayLabel = "$classNode / $sectionNode";
-                        $data['classes']["$classNode|$sectionNode"] = $displayLabel;
-                    }
-                } else {
-                    // NEW structure — classes stored with full names like "Class 8th"
-                    // and sections as child keys "Section A"
-                    foreach ($classDetails as $subKey => $subVal) {
-                        if (stripos($subKey, 'Section ') === 0 && is_array($subVal)) {
-                            $classNode    = $className;   // already "Class 8th"
-                            $sectionNode  = $subKey;      // "Section A"
-                            $displayLabel = "$classNode / $sectionNode";
-                            $data['classes']["$classNode|$sectionNode"] = $displayLabel;
-                        }
-                    }
-                }
+        $sessionClassKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}");
+        foreach ($sessionClassKeys as $classKey) {
+            if (strpos($classKey, 'Class ') !== 0) continue;
+            $sectionKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}/{$classKey}");
+            foreach ($sectionKeys as $sectionKey) {
+                if (strpos($sectionKey, 'Section ') !== 0) continue;
+                // Key uses "/" separator: "Class 8th/Section A"
+                $data['classes']["{$classKey}/{$sectionKey}"] = "{$classKey} / {$sectionKey}";
             }
         }
 
@@ -182,6 +161,13 @@ class NoticeAnnouncement extends MY_Controller
             $title       = trim($_POST['title']       ?? '');
             $description = trim($_POST['description'] ?? '');
             $to_ids      = [];
+
+            $allowedPriorities  = ['High', 'Normal', 'Low'];
+            $allowedCategories  = ['General', 'Academic', 'Administrative', 'Holiday', 'Exam', 'Event'];
+            $priority = in_array($this->input->post('priority'), $allowedPriorities, true)
+                ? $this->input->post('priority') : 'Normal';
+            $category = in_array($this->input->post('category'), $allowedCategories, true)
+                ? $this->input->post('category') : 'General';
 
             if (!empty($this->input->post('to_id_json'))) {
                 $to_ids = json_decode($this->input->post('to_id_json'), true) ?? [];
@@ -205,6 +191,8 @@ class NoticeAnnouncement extends MY_Controller
                 'Description' => $description,
                 'From Id'     => $admin_id,
                 'From Type'   => 'Admin',
+                'Priority'    => $priority,
+                'Category'    => $category,
                 'Timestamp'   => [".sv" => "timestamp"],
                 'To Id'       => [],
             ];
@@ -224,32 +212,17 @@ class NoticeAnnouncement extends MY_Controller
             foreach ($to_ids as $key => $label) {
                 log_message('debug', "create_notice: key=$key label=$label");
 
-                // ── Class|Section format (new dropdown) ───────────
-                // Key like: "Class 8th|Section A"
-                if (strpos($key, '|') !== false && !preg_match('/^(STU|TEA|ADM)/', $key)) {
-                    $parts      = explode('|', $key, 2);
-                    $classNode  = trim($parts[0]);   // "Class 8th"
-                    $sectionNode = trim($parts[1]);  // "Section A"
+                // ── Class/Section format: "Class 8th/Section A" ───
+                if (!preg_match('/^(STU|TEA|ADM|All)/', $key) && strpos($key, '/Section ') !== false) {
+                    $parts       = explode('/', $key, 2);
+                    $classNode   = trim($parts[0]);   // "Class 8th"
+                    $sectionNode = trim($parts[1]);   // "Section A"
 
-                    // New Firebase path: Class 8th / Section A / Notification / NOT0000
                     $classPath = "Schools/{$school_name}/{$session_year}/{$classNode}/{$sectionNode}/Notification/{$notice_id}";
                     $this->firebase->set($classPath, $actualTimestamp);
-                    $sanitized_to_ids[$key] = "";
+                    // Store in To Id with pipe separator (Firebase-safe: no slashes in keys)
+                    $sanitized_to_ids["{$classNode}|{$sectionNode}"] = "";
                     log_message('debug', "create_notice: class path=$classPath");
-                }
-
-                // ── Old merged class format (legacy fallback) ─────
-                // Key like: "Class 8th 'A'"  (kept in case old data flows through)
-                elseif (preg_match("/^Class\s+.+\s+'.+'$/", $key)) {
-                    $parts         = explode(" '", $key);
-                    $classOnlyRaw  = trim($parts[0]);
-                    $sectionOnly   = rtrim($parts[1] ?? '', "'");
-                    $classNode     = $classOnlyRaw;           // "Class 8th"
-                    $sectionNode   = "Section $sectionOnly";  // "Section A"
-
-                    $classPath = "Schools/{$school_name}/{$session_year}/{$classNode}/{$sectionNode}/Notification/{$notice_id}";
-                    $this->firebase->set($classPath, $actualTimestamp);
-                    $sanitized_to_ids[$key] = "";
                 }
 
                 // ── Student ───────────────────────────────────────
@@ -267,14 +240,12 @@ class NoticeAnnouncement extends MY_Controller
                     $sanitized_to_ids[$key] = "";
                 }
 
-                // ── Teacher ───────────────────────────────────────
-                elseif (preg_match('/^TEA[0-9]+$/', $key)) {
-                    if ($key !== $admin_id) {
-                        $this->firebase->set(
-                            "Schools/{$school_name}/{$session_year}/Teachers/{$key}/Received/{$notice_id}",
-                            $actualTimestamp
-                        );
-                    }
+                // ── Individual Teacher (STA prefix) ──────────────
+                elseif (preg_match('/^STA[A-Za-z0-9]+$/', $key)) {
+                    $this->firebase->set(
+                        "Schools/{$school_name}/{$session_year}/Teachers/{$key}/Received/{$notice_id}",
+                        $actualTimestamp
+                    );
                     $sanitized_to_ids[$key] = "";
                 }
 
@@ -289,13 +260,119 @@ class NoticeAnnouncement extends MY_Controller
                     $sanitized_to_ids[$key] = "";
                 }
 
-                // ── Bulk / Announcement ───────────────────────────
+                // ── All Students ──────────────────────────────────
+                elseif ($key === 'All Students') {
+                    // 1. Announcements node (app reads this for bulk push)
+                    $this->firebase->set(
+                        "Schools/{$school_name}/{$session_year}/Announcements/All Students/{$notice_id}",
+                        $actualTimestamp
+                    );
+                    // 2. Each class → section Notification node
+                    $sessionKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}");
+                    foreach ((array)$sessionKeys as $classKey) {
+                        if (strpos($classKey, 'Class ') !== 0) continue;
+                        $sectionKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}/{$classKey}");
+                        foreach ((array)$sectionKeys as $sectionKey) {
+                            if (strpos($sectionKey, 'Section ') !== 0) continue;
+                            $this->firebase->set(
+                                "Schools/{$school_name}/{$session_year}/{$classKey}/{$sectionKey}/Notification/{$notice_id}",
+                                $actualTimestamp
+                            );
+                        }
+                    }
+                    $sanitized_to_ids[$key] = "";
+                }
+
+                // ── All Teachers ──────────────────────────────────
+                elseif ($key === 'All Teachers') {
+                    // 1. Announcements node
+                    $this->firebase->set(
+                        "Schools/{$school_name}/{$session_year}/Announcements/All Teachers/{$notice_id}",
+                        $actualTimestamp
+                    );
+                    // 2. Each teacher's Received node
+                    $allTeachers = $this->firebase->get("Schools/{$school_name}/{$session_year}/Teachers");
+                    if (is_array($allTeachers)) {
+                        foreach ($allTeachers as $tid => $tData) {
+                            if (!is_array($tData)) continue;
+                            $this->firebase->set(
+                                "Schools/{$school_name}/{$session_year}/Teachers/{$tid}/Received/{$notice_id}",
+                                $actualTimestamp
+                            );
+                        }
+                    }
+                    $sanitized_to_ids[$key] = "";
+                }
+
+                // ── All Admins ────────────────────────────────────
+                elseif ($key === 'All Admins') {
+                    // 1. Announcements node
+                    $this->firebase->set(
+                        "Schools/{$school_name}/{$session_year}/Announcements/All Admins/{$notice_id}",
+                        $actualTimestamp
+                    );
+                    // 2. Each admin's Received node (skip sender)
+                    $allAdmins = $this->firebase->get("Schools/{$school_name}/{$session_year}/Admins");
+                    if (is_array($allAdmins)) {
+                        foreach ($allAdmins as $aid => $aData) {
+                            if (!is_array($aData) || $aid === $admin_id) continue;
+                            $this->firebase->set(
+                                "Schools/{$school_name}/{$session_year}/Admins/{$aid}/Received/{$notice_id}",
+                                $actualTimestamp
+                            );
+                        }
+                    }
+                    $sanitized_to_ids[$key] = "";
+                }
+
+                // ── All School ────────────────────────────────────
+                elseif ($key === 'All School') {
+                    // 1. Announcements node
+                    $this->firebase->set(
+                        "Schools/{$school_name}/{$session_year}/Announcements/All School/{$notice_id}",
+                        $actualTimestamp
+                    );
+                    // 2. All class/section Notification nodes
+                    $sessionKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}");
+                    foreach ((array)$sessionKeys as $classKey) {
+                        if (strpos($classKey, 'Class ') !== 0) continue;
+                        $sectionKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}/{$classKey}");
+                        foreach ((array)$sectionKeys as $sectionKey) {
+                            if (strpos($sectionKey, 'Section ') !== 0) continue;
+                            $this->firebase->set(
+                                "Schools/{$school_name}/{$session_year}/{$classKey}/{$sectionKey}/Notification/{$notice_id}",
+                                $actualTimestamp
+                            );
+                        }
+                    }
+                    // 3. All teachers' Received nodes
+                    $allTeachers = $this->firebase->get("Schools/{$school_name}/{$session_year}/Teachers");
+                    if (is_array($allTeachers)) {
+                        foreach ($allTeachers as $tid => $tData) {
+                            if (!is_array($tData)) continue;
+                            $this->firebase->set(
+                                "Schools/{$school_name}/{$session_year}/Teachers/{$tid}/Received/{$notice_id}",
+                                $actualTimestamp
+                            );
+                        }
+                    }
+                    // 4. All admins' Received nodes (skip sender)
+                    $allAdmins = $this->firebase->get("Schools/{$school_name}/{$session_year}/Admins");
+                    if (is_array($allAdmins)) {
+                        foreach ($allAdmins as $aid => $aData) {
+                            if (!is_array($aData) || $aid === $admin_id) continue;
+                            $this->firebase->set(
+                                "Schools/{$school_name}/{$session_year}/Admins/{$aid}/Received/{$notice_id}",
+                                $actualTimestamp
+                            );
+                        }
+                    }
+                    $sanitized_to_ids[$key] = "";
+                }
+
+                // ── Fallback (unknown key) ────────────────────────
                 else {
-                    $safe_key         = str_replace(['.','#','$','[',']','/','\''], '_', $key);
-                    $announcementPath = "Schools/{$school_name}/{$session_year}/Announcements/{$safe_key}/{$notice_id}";
-                    $this->firebase->set($announcementPath, $actualTimestamp);
-                    $sanitized_to_ids[$safe_key] = "";
-                    log_message('debug', "create_notice: announcement path=$announcementPath");
+                    log_message('error', "create_notice: unhandled recipient key=$key");
                 }
             }
 

@@ -262,11 +262,11 @@
 
 <style>
     :root {
-        --brand: #F5AF00;
-        --brand-dark: #D49700;
-        --brand-light: #FFC93C;
-        --brand-dim: rgba(245, 175, 0, 0.10);
-        --brand-ring: rgba(245, 175, 0, 0.22);
+        --brand: #0f766e;
+        --brand-dark: #0d6b63;
+        --brand-light: #14b8a6;
+        --brand-dim: rgba(15, 118, 110, 0.10);
+        --brand-ring: rgba(15, 118, 110, 0.22);
         --font: 'Plus Jakarta Sans', sans-serif;
         --mono: 'JetBrains Mono', monospace;
     }
@@ -516,7 +516,7 @@
         right: -60px;
         width: 240px;
         height: 240px;
-        background: radial-gradient(circle, rgba(245, 175, 0, 0.08) 0%, transparent 70%);
+        background: radial-gradient(circle, rgba(15, 118, 110, 0.08) 0%, transparent 70%);
         pointer-events: none;
     }
 
@@ -538,7 +538,7 @@
         justify-content: center;
         font-size: 20px;
         flex-shrink: 0;
-        box-shadow: 0 4px 16px rgba(245, 175, 0, 0.3);
+        box-shadow: 0 4px 16px rgba(15, 118, 110, 0.3);
     }
 
     .brand-name {
@@ -725,7 +725,7 @@
 
     [data-theme="light"] .mode-dot {
         background: var(--brand);
-        box-shadow: 0 0 6px rgba(245, 175, 0, .5);
+        box-shadow: 0 0 6px rgba(15, 118, 110, .5);
     }
 
     [data-theme="dark"] .mode-dot {
@@ -865,13 +865,13 @@
         background: var(--brand);
         border: none;
         border-radius: 10px;
-        color: #111520;
+        color: #ffffff;
         font-family: var(--font);
         font-size: 14px;
         font-weight: 800;
         letter-spacing: .2px;
         cursor: pointer;
-        box-shadow: 0 4px 16px rgba(245, 175, 0, 0.28);
+        box-shadow: 0 4px 16px rgba(15, 118, 110, 0.28);
         margin-top: 4px;
         position: relative;
         overflow: hidden;
@@ -879,7 +879,7 @@
 
     .btn-submit:hover {
         background: var(--brand-light);
-        box-shadow: 0 6px 22px rgba(245, 175, 0, 0.38);
+        box-shadow: 0 6px 22px rgba(15, 118, 110, 0.38);
         transform: translateY(-1px);
     }
 
@@ -905,8 +905,8 @@
         display: none;
         width: 17px;
         height: 17px;
-        border: 2px solid rgba(17, 21, 32, 0.25);
-        border-top-color: #111520;
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        border-top-color: #ffffff;
         border-radius: 50%;
         animation: spin .65s linear infinite;
     }
