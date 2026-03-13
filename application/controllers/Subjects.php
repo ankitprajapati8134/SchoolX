@@ -12,7 +12,7 @@ class Subjects extends MY_Controller
 
     public function manage_subjects()
     {
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -27,7 +27,7 @@ class Subjects extends MY_Controller
             $additionalsRaw   = json_decode($this->input->post('additionalsubjects') ?? '[]', true) ?: [];
             $patternTypeInput = (int) $this->input->post('pattern_type');
 
-            log_message('debug', 'manage_subjects POST RAW: ' . json_encode($_POST));
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) log_message('debug', 'manage_subjects POST RAW: ' . json_encode($_POST));
 
             // ------------------ CLASS NORMALIZATION ------------------
             $raw = strtolower($rawClassName);
@@ -118,10 +118,7 @@ class Subjects extends MY_Controller
                     ];
                 }
 
-                log_message(
-                    'debug',
-                    "manage_subjects WRITE {$classKey}/{$code}: " . json_encode($payload)
-                );
+                if (defined('GRADER_DEBUG') && GRADER_DEBUG) log_message('debug', "manage_subjects WRITE {$classKey}/{$code}: " . json_encode($payload));
 
                 // ------------------ SAVE TO FIREBASE ------------------
                 $this->firebase->set(
@@ -166,11 +163,16 @@ class Subjects extends MY_Controller
 
     public function fetch_subjects()
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
-        $classRaw = trim(strtolower($this->input->post('class')));
+        $classRaw = trim(strtolower($this->input->post('class') ?? ''));
+        if (empty($classRaw)) {
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Class name required']);
+            return;
+        }
 
         $foundationalClasses = [
             'playgroup' => 'Playgroup',
@@ -289,14 +291,14 @@ class Subjects extends MY_Controller
 
     public function get_class_details()
     {
-        // $school_id = $this->school_id;
+        header('Content-Type: application/json');
+
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
-
         $schoolName = $this->input->post('school_name');
-        $className = $this->input->post('class_name');
-        $section = $this->input->post('section');
+        $className = trim((string) $this->input->post('class_name'));
+        $section = trim((string) $this->input->post('section'));
         $classIsNumeric = is_numeric($className);
 
         if (is_string($className) && strpos($className, 'Class') === false) {
@@ -320,24 +322,60 @@ class Subjects extends MY_Controller
 
 
         $classSection = $className . " '" . trim($section) . "'";
-        // $path = "Schools/$schoolName/$session_year/$classSection";
-        $path = "Schools/$school_name/$session_year/$classSection";
+        $classSection = $this->safe_path_segment($classSection, 'class_section');
+        $path = "Schools/{$school_name}/{$session_year}/{$classSection}";
 
         $classData = $this->CM->select_data($path);
 
         if ($classData) {
             // Extract subjects and additional subjects
             // Convert Subjects & AdditionalSubjects to arrays if they are associative
-            $subjects = isset($classData['Subjects']) ? array_keys($classData['Subjects']) : [];
-            $additionalSubjects = isset($classData['AdditionalSubjects']) ? array_keys($classData['AdditionalSubjects']) : [];
+            $subjectCodes = isset($classData['Subjects']) ? array_keys($classData['Subjects']) : [];
+            $additionalCodes = isset($classData['AdditionalSubjects']) ? array_keys($classData['AdditionalSubjects']) : [];
 
             // Remove additional subjects from subjects list
-            $filteredSubjects = array_diff($subjects, $additionalSubjects);
+            $filteredCodes = array_values(array_diff($subjectCodes, $additionalCodes));
+
+            // Look up subject names from Subject_list
+            $raw = strtolower(trim($className));
+            if (strpos($raw, 'nursery') !== false) { $numKey = 'Nursery'; }
+            elseif (strpos($raw, 'lkg') !== false) { $numKey = 'LKG'; }
+            elseif (strpos($raw, 'ukg') !== false) { $numKey = 'UKG'; }
+            elseif (strpos($raw, 'playgroup') !== false || strpos($raw, 'play') !== false) { $numKey = 'Playgroup'; }
+            elseif (preg_match('/\d+/', $className, $m)) { $numKey = (int) $m[0]; }
+            else { $numKey = null; }
+
+            $nameMap = [];
+            if ($numKey !== null) {
+                $subjectListData = $this->firebase->get("Schools/{$school_name}/Subject_list/{$numKey}") ?? [];
+                if (is_array($subjectListData)) {
+                    foreach ($subjectListData as $code => $sub) {
+                        if (!is_array($sub)) continue;
+                        $nameMap[$code] = $sub['subject_name'] ?? $sub['name'] ?? (string) $code;
+                    }
+                }
+            }
+
+            // Build enriched arrays: each item has code + name
+            $subjects = [];
+            foreach ($filteredCodes as $code) {
+                $subjects[] = [
+                    'code' => (string) $code,
+                    'name' => $nameMap[$code] ?? (string) $code,
+                ];
+            }
+            $optionalSubjects = [];
+            foreach ($additionalCodes as $code) {
+                $optionalSubjects[] = [
+                    'code' => (string) $code,
+                    'name' => $nameMap[$code] ?? (string) $code,
+                ];
+            }
 
             $response = [
-                "subjects" => array_values($filteredSubjects), // Re-index array
-                "optionalSubjects" => $additionalSubjects,
-                "timetable" => $classData['Time_table'] ?? ""
+                "subjects"         => $subjects,
+                "optionalSubjects" => $optionalSubjects,
+                "timetable"        => $classData['Time_table'] ?? ""
             ];
 
             echo json_encode($response);
@@ -350,13 +388,14 @@ class Subjects extends MY_Controller
     public function update_class_details()
     {
         $session_year = $this->session_year;
+        $school_name  = $this->school_name;
 
         if ($this->input->method() == 'post') {
-            $schoolName = $this->input->post('edit_school_name');
-            $prevClassName = $this->input->post('prev_class_name');
-            $prevSection = $this->input->post('prev_section');
-            $className = $this->input->post('edit_class_name');
-            $section = $this->input->post('edit_section');
+            $schoolName = $school_name; // use session school, not POST
+            $prevClassName = trim((string) $this->input->post('prev_class_name'));
+            $prevSection = trim((string) $this->input->post('prev_section'));
+            $className = trim((string) $this->input->post('edit_class_name'));
+            $section = trim((string) $this->input->post('edit_section'));
             $subjects = json_decode($this->input->post('subjects'), true) ?: [];
             $optionalSubjects = json_decode($this->input->post('optional_subjects'), true) ?: [];
 
@@ -371,9 +410,11 @@ class Subjects extends MY_Controller
             $sections = explode(',', $section);
             $prevClassSection = "$prevClassName '$prevSection'";
             $newClassSection = "$className '$section'";
+            $prevClassSection = $this->safe_path_segment($prevClassSection, 'prev_class_section');
+            $newClassSection  = $this->safe_path_segment($newClassSection, 'new_class_section');
 
-            $prevPath = "Schools/$schoolName/$session_year/$prevClassSection";
-            $newPath = "Schools/$schoolName/$session_year/$newClassSection";
+            $prevPath = "Schools/{$schoolName}/{$session_year}/{$prevClassSection}";
+            $newPath = "Schools/{$schoolName}/{$session_year}/{$newClassSection}";
 
             // Step 1: Copy previous class data
             $prevData = $this->CM->get_data($prevPath);
@@ -382,24 +423,8 @@ class Subjects extends MY_Controller
                 return;
             }
 
-            // Step 2: Remove previous class and section
-            $this->CM->delete_data("Schools/$schoolName/$session_year/Classes/$prevClassName/Section/", $prevSection);
+            // Step 2: Remove previous class-section node (classes live at session root, NOT /Classes/)
             $this->CM->delete_data("Schools/$schoolName/$session_year/$prevClassSection", null);
-
-            // Step 2: Check if any sections are left
-            $remainingSections = $this->CM->get_data("Schools/$schoolName/$session_year/Classes/$prevClassName/Section");
-
-            // Step 3: If no sections remain, delete the entire class node
-            if (empty($remainingSections)) {
-                $this->CM->delete_data("Schools/$schoolName/$session_year/Classes/$prevClassName", null);
-            }
-
-            // Step 3: Add new classSection entry
-            $classData = [
-                'Section' => [$section => ''],
-                'Time_stamp' => is_numeric($className) ? (int) filter_var($className, FILTER_SANITIZE_NUMBER_INT) : $className
-            ];
-            $this->CM->addKey_pair_data("Schools/$schoolName/$session_year/Classes/$className/", $classData);
 
             // Copy previous data to the new location
             $this->CM->addKey_pair_data($newPath, $prevData);
@@ -473,15 +498,16 @@ class Subjects extends MY_Controller
     public function upload_timetable()
     {
         $session_year = $this->session_year;
+        $school_name  = $this->school_name;
 
         if ($this->input->server('REQUEST_METHOD') === 'POST') {
-            $schoolName = $this->input->post('school_name');
-            $className = $this->input->post('class_name');
-            $section = $this->input->post('section');
+            $schoolName = $school_name; // use session school, not POST
+            $className  = trim((string) $this->input->post('class_name'));
+            $section    = trim((string) $this->input->post('section'));
 
-            // Check if the school name, class name, and section are provided
-            if (empty($schoolName) || empty($className) || empty($section)) {
-                echo "School name, class name, or section is missing.";
+            // Check if the class name and section are provided
+            if (empty($className) || empty($section)) {
+                echo "Class name or section is missing.";
                 return;
             }
 
@@ -521,28 +547,35 @@ class Subjects extends MY_Controller
     public function delete_class()
     {
         $session_year = $this->session_year;
+        $school_name  = $this->school_name;
 
         if ($this->input->method() == 'post') {
-            // Get the class details from the POST request
-            $schoolName = $this->input->post('school_name');
-            $className = $this->input->post('class_name');
-            $section = $this->input->post('section');
+            $className = trim((string) $this->input->post('class_name'));
+            $section   = trim((string) $this->input->post('section'));
 
-            // Construct the paths
-            $classesPath = 'Schools/' . $schoolName  . '/' . $session_year . '/Classes/' . $className . '/section/';
-            $specificSectionPath = 'Schools/' . $schoolName;
+            if (!$className || !$section) {
+                echo '0';
+                return;
+            }
 
-            // Delete the class and section from Firebase
-            $result1 = $this->CM->delete_data($classesPath, $section);
-            $result2 = $this->CM->delete_data($specificSectionPath, $className . " '" . trim($section) . "'");
+            // Classes live at session root as "Class 9th 'A'" nodes, NOT under /Classes/
+            $classSection = $className . " '" . trim($section) . "'";
+            $classSection = $this->safe_path_segment($classSection, 'class_section');
+            $sectionPath = "Schools/{$school_name}/{$session_year}/{$classSection}";
 
+            // Check for enrolled students before deleting
+            $students = $this->firebase->get("{$sectionPath}/Students/List");
+            if (!empty($students) && is_array($students)) {
+                echo 'Cannot delete: section has ' . count($students) . ' enrolled student(s). Transfer them first.';
+                return;
+            }
 
-            if ($result1 && $result2) {
-                // Redirect after successful deletion
+            $result = $this->CM->delete_data("Schools/{$school_name}/{$session_year}", $classSection);
+
+            if ($result) {
                 redirect(base_url() . 'classes/manage_classes/');
             } else {
-                // Handle failure scenario
-                echo '0'; // Failure indicator
+                echo '0';
             }
         } else {
             echo 'Invalid request method.';
@@ -552,7 +585,7 @@ class Subjects extends MY_Controller
 
     public function class_profile()
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -630,8 +663,6 @@ class Subjects extends MY_Controller
             'additionalSubjectStudents' => $additionalSubjectStudents, // User IDs grouped by optional subject
             'time_table_url' => $timeTableUrl
         ];
-        log_message('error', 'Class Profile Data: ' . print_r($data, true));
-
         $this->load->view('include/header');
         $this->load->view('class_profile', $data);
         $this->load->view('include/footer');
@@ -640,7 +671,7 @@ class Subjects extends MY_Controller
 
     public function get_class_data($class_name)
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -652,53 +683,28 @@ class Subjects extends MY_Controller
 
         // Fetch class data from Firebase
         $class_data = $this->firebase->get($class_path);
-        echo '<pre>' . print_r($class_data, true) . '</pre>';
 
-        if ($class_data) {
-            $students = [];
-            echo '<pre>' . print_r($students, true) . '</pre>';
-
-
-            // Check if Students data exists and process it
-            if (isset($class_data['Students']['List']) && is_array($class_data['Students']['List'])) {
-                foreach ($class_data['Students']['List'] as $user_id => $student_name) {
-                    // Fetch father name for each student
-                    $father_name_path = "Users/Parents/$school_id/{$user_id}/Father Name";
-                    $father_name = $this->firebase->get($father_name_path);
-
-                    // Handle cases where father name is not found
-                    $father_name = $father_name ?? 'N/A';
-
-                    $students[] = [
-                        'user_id' => $user_id,
-                        'student_name' => $student_name,
-                        'father_name' => $father_name
-                    ];
-                }
-            }
-
-            // Extract class teacher and total students
-            $class_teacher = $class_data['Class Teacher'] ?? 'N/A';
-            echo '<pre>' . print_r($class_teacher, true) . '</pre>';
-
-            $total_students = count($students);
-            echo '<pre>' . print_r($total_students, true) . '</pre>';
-
-
-            // Prepare and return the response
-            $response = [
-                'class_teacher' => $class_teacher,
-                'total_students' => $total_students,
-                'students' => $students
-            ];
-
-            echo '<pre>' . print_r($response, true) . '</pre>';
-
-            echo json_encode($response);
-        } else {
-            // Handle cases where no class data is found
-            echo json_encode(['error' => 'No data found']);
+        if (!$class_data || !is_array($class_data)) {
+            return $this->json_error('No data found for this class');
         }
+
+        $students = [];
+        if (isset($class_data['Students']['List']) && is_array($class_data['Students']['List'])) {
+            foreach ($class_data['Students']['List'] as $user_id => $student_name) {
+                $father_name = $this->firebase->get("Users/Parents/$school_id/{$user_id}/Father Name") ?? 'N/A';
+                $students[] = [
+                    'user_id' => $user_id,
+                    'student_name' => $student_name,
+                    'father_name' => $father_name
+                ];
+            }
+        }
+
+        return $this->json_success([
+            'class_teacher'  => $class_data['Class Teacher'] ?? 'N/A',
+            'total_students' => count($students),
+            'students'       => $students
+        ]);
     }
 
 

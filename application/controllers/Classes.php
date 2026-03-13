@@ -37,7 +37,7 @@ class Classes extends MY_Controller
 
     public function manage_classes()
     {
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -74,25 +74,15 @@ class Classes extends MY_Controller
 {
     header('Content-Type: application/json');
 
-    log_message('error', '==== fetch_classes_grid START ====');
-
     $school_name  = $this->school_name;
     $session_year = $this->session_year;
 
-    log_message('error', "school_name = {$school_name}");
-    log_message('error', "session_year = {$session_year}");
-
     $path = "Schools/{$school_name}/{$session_year}";
-    log_message('error', "Firebase path = {$path}");
-
     $data = $this->firebase->get($path);
-
-    log_message('error', 'Firebase raw response: ' . print_r($data, true));
 
     if (is_object($data)) $data = (array)$data;
 
     if (!is_array($data)) {
-        log_message('error', 'Firebase data is not array');
         echo json_encode([]);
         return;
     }
@@ -100,31 +90,14 @@ class Classes extends MY_Controller
     $result = [];
 
     foreach ($data as $key => $value) {
-
-        log_message('error', "Checking node: {$key}");
-
         $name = trim((string)$key);
 
-        if (is_numeric($name)) {
-            log_message('error', "Skipped numeric: {$name}");
-            continue;
-        }
-
+        if (is_numeric($name)) continue;
         if (is_object($value)) $value = (array)$value;
-
-        if (!is_array($value)) {
-            log_message('error', "Not array: {$name}");
-            continue;
-        }
+        if (!is_array($value)) continue;
 
         foreach ($value as $childKey => $childVal) {
-
-            log_message('error', "   Child key: {$childKey}");
-
             if (preg_match('/^Section\s+[A-Z]$/', $childKey)) {
-
-                log_message('error', "   ✅ CLASS CONFIRMED: {$name}");
-
                 if (preg_match('/^Class\s+(Nursery|LKG|UKG)$/i', $name, $m)) {
                     $label = ucfirst(strtolower($m[1]));
                 } else {
@@ -135,13 +108,10 @@ class Classes extends MY_Controller
                     'key'   => $name,
                     'label' => $label
                 ];
-
                 break;
             }
         }
     }
-
-    log_message('error', 'Final result: ' . print_r($result, true));
 
     echo json_encode(array_values($result));
 }
@@ -154,13 +124,14 @@ class Classes extends MY_Controller
 
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
-        $class_name   = $this->input->post('class_name');
+        $class_name   = trim((string) $this->input->post('class_name'));
 
         if (!$class_name) {
             echo json_encode([]);
             return;
         }
 
+        $class_name = $this->safe_path_segment($class_name, 'class_name');
         $path = "Schools/{$school_name}/{$session_year}/{$class_name}";
         $classData = $this->firebase->get($path);
 
@@ -230,8 +201,8 @@ class Classes extends MY_Controller
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
-        $class_name   = $this->input->post('class_name');
-        $section_name = trim($this->input->post('section_name'));
+        $class_name   = trim((string) $this->input->post('class_name'));
+        $section_name = trim((string) $this->input->post('section_name'));
         $max_strength = (int) $this->input->post('max_strength');
 
         if (!$class_name || !$section_name || $max_strength <= 0) {
@@ -247,6 +218,8 @@ class Classes extends MY_Controller
             $section_name = 'Section ' . strtoupper($section_name);
         }
 
+        $class_name   = $this->safe_path_segment($class_name, 'class_name');
+        $section_name = $this->safe_path_segment($section_name, 'section_name');
         $path = "Schools/{$school_name}/{$session_year}/{$class_name}/{$section_name}";
 
         // Prevent overwrite
@@ -277,8 +250,14 @@ class Classes extends MY_Controller
 
         $school = $this->school_name;
         $year   = $this->session_year;
-        $class  = $this->input->post('class_name');
+        $class  = trim((string) $this->input->post('class_name'));
 
+        if (!$class) {
+            echo json_encode([]);
+            return;
+        }
+
+        $class = $this->safe_path_segment($class, 'class_name');
         $path = "Schools/{$school}/{$year}/{$class}";
         $data = $this->firebase->get($path);
 
@@ -333,6 +312,8 @@ class Classes extends MY_Controller
 
     public function get_class_details()
     {
+        header('Content-Type: application/json');
+
         $school_name = $this->school_name;
 
         $path = "Schools/{$school_name}/Subject_list";
@@ -421,24 +402,24 @@ class Classes extends MY_Controller
 
     public function fetch_section_students()
     {
-
         header('Content-Type: application/json');
 
-        $class   = $this->input->post('class_name');
-        $section = $this->input->post('section_name');
-
+        $class   = trim((string) $this->input->post('class_name'));
+        $section = trim((string) $this->input->post('section_name'));
 
         if (!$class || !$section) {
-            log_message('error', 'Missing class or section');
             echo json_encode([]);
             return;
         }
 
+        $class   = $this->safe_path_segment($class, 'class_name');
+        $section = $this->safe_path_segment($section, 'section_name');
+
         $school_name  = $this->school_name;
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $session_year = $this->session_year;
 
-        $sectionPath = "Schools/$school_name/$session_year/{$class}/{$section}/Students/List";
+        $sectionPath = "Schools/{$school_name}/{$session_year}/{$class}/{$section}/Students/List";
 
         $studentList = $this->firebase->get($sectionPath);
 
@@ -447,7 +428,6 @@ class Classes extends MY_Controller
         }
 
         if (!is_array($studentList) || empty($studentList)) {
-            log_message('error', 'Student list empty or invalid');
             echo json_encode([]);
             return;
         }
@@ -490,15 +470,17 @@ class Classes extends MY_Controller
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
-        $class   = $this->input->post('class_name');
-        $section = $this->input->post('section_name');
+        $class   = trim((string) $this->input->post('class_name'));
+        $section = trim((string) $this->input->post('section_name'));
 
         if (!$class || !$section) {
             echo json_encode(['max_strength' => 0]);
             return;
         }
 
-        $path = "Schools/$school_name/$session_year/{$class}/{$section}";
+        $class   = $this->safe_path_segment($class, 'class_name');
+        $section = $this->safe_path_segment($section, 'section_name');
+        $path = "Schools/{$school_name}/{$session_year}/{$class}/{$section}";
         $data = $this->firebase->get($path);
 
         // Normalize Firebase response
@@ -530,11 +512,11 @@ class Classes extends MY_Controller
     public function save_section_settings()
     {
         header('Content-Type: application/json');
-        $school_name = $this->school_name;
-        $session_year   = $this->session_year;
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
 
-        $class        = $this->input->post('class_name');
-        $section      = $this->input->post('section_name');
+        $class        = trim((string) $this->input->post('class_name'));
+        $section      = trim((string) $this->input->post('section_name'));
         $max_strength = (int) $this->input->post('max_strength');
 
         if (!$class || !$section || $max_strength <= 0) {
@@ -545,7 +527,9 @@ class Classes extends MY_Controller
             return;
         }
 
-        $path = "Schools/$school_name/$session_year/{$class}/{$section}/max_strength";
+        $class   = $this->safe_path_segment($class, 'class_name');
+        $section = $this->safe_path_segment($section, 'section_name');
+        $path = "Schools/{$school_name}/{$session_year}/{$class}/{$section}/max_strength";
 
         // 🔑 CREATE or UPDATE safely
         $this->firebase->set($path, $max_strength);
@@ -561,8 +545,8 @@ class Classes extends MY_Controller
     {
         $data = [];
 
-        $data['class_name']   = $this->input->post('class_name');
-        $data['section_name'] = $this->input->post('section_name');
+        $data['class_name']   = trim((string) $this->input->post('class_name'));
+        $data['section_name'] = trim((string) $this->input->post('section_name'));
         $data['session_year'] = $this->session_year;
         $data['school_name']  = $this->school_name;
 
@@ -610,7 +594,7 @@ class Classes extends MY_Controller
     private function get_section_students_array($class, $section)
     {
         $school_name  = $this->school_name;
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $session_year = $this->session_year;
 
         $path = "Schools/$school_name/$session_year/$class/$section/Students/List";
@@ -776,14 +760,16 @@ class Classes extends MY_Controller
     {
         header('Content-Type: application/json');
 
-        $class   = $this->input->post('class_name');
-        $section = $this->input->post('section_name');
+        $class   = trim((string) $this->input->post('class_name'));
+        $section = trim((string) $this->input->post('section_name'));
 
         if (!$class || !$section) {
             echo json_encode([]);
             return;
         }
 
+        $class   = $this->safe_path_segment($class, 'class_name');
+        $section = $this->safe_path_segment($section, 'section_name');
         $path = "Schools/{$this->school_name}/{$this->session_year}/{$class}/{$section}/Time_table";
 
         $data = $this->firebase->get($path);
@@ -924,22 +910,23 @@ class Classes extends MY_Controller
             if (is_object($subjects)) $subjects = (array)$subjects;
             if (!is_array($subjects) || empty($subjects)) continue;
 
-            foreach ($subjects as $subject) {
+            foreach ($subjects as $code => $subject) {
 
                 if (is_object($subject)) $subject = (array)$subject;
-                if (empty($subject['subject_name'])) continue;
-
-                $name = trim($subject['subject_name']);
+                $name = trim($subject['subject_name'] ?? $subject['name'] ?? '');
+                if (empty($name)) continue;
 
                 // 🔹 ALL SUBJECTS (unique by name)
                 $allSubjects[$name] = [
-                    'name' => $name
+                    'name' => $name,
+                    'code' => (string) $code,
                 ];
 
                 // 🔹 SUBJECTS FOR SELECTED CLASS
                 if ((int)$classNum === $requestedClassNum) {
                     $classSubjects[$name] = [
-                        'name' => $name
+                        'name' => $name,
+                        'code' => (string) $code,
                     ];
                 }
             }
@@ -958,9 +945,17 @@ class Classes extends MY_Controller
     {
         header('Content-Type: application/json');
 
-        $class   = $this->input->post('class_name');
-        $section = $this->input->post('section_name');
+        $class   = trim((string) $this->input->post('class_name'));
+        $section = trim((string) $this->input->post('section_name'));
         $raw     = $this->input->post('timetable');
+
+        if (!$class || !$section) {
+            echo json_encode(['status' => 'error', 'message' => 'Missing class or section']);
+            return;
+        }
+
+        $class   = $this->safe_path_segment($class, 'class_name');
+        $section = $this->safe_path_segment($section, 'section_name');
 
         $timetable = json_decode($raw, true);
 
@@ -980,7 +975,7 @@ class Classes extends MY_Controller
 
     public function class_profile()
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -1058,8 +1053,6 @@ class Classes extends MY_Controller
             'additionalSubjectStudents' => $additionalSubjectStudents, // User IDs grouped by optional subject
             'time_table_url' => $timeTableUrl
         ];
-        log_message('error', 'Class Profile Data: ' . print_r($data, true));
-
         $this->load->view('include/header');
         $this->load->view('class_profile', $data);
         $this->load->view('include/footer');
@@ -1125,12 +1118,12 @@ class Classes extends MY_Controller
         header('Content-Type: application/json');
 
         $studentIds  = $this->input->post('student_ids');
-        $fromClass   = $this->input->post('from_class');
-        $fromSection = $this->input->post('from_section');
-        $toClass     = $this->input->post('to_class');
-        $toSection   = $this->input->post('to_section');
+        $fromClass   = trim((string) $this->input->post('from_class'));
+        $fromSection = trim((string) $this->input->post('from_section'));
+        $toClass     = trim((string) $this->input->post('to_class'));
+        $toSection   = trim((string) $this->input->post('to_section'));
 
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school    = $this->school_name;
         $session   = $this->session_year;
 
@@ -1143,6 +1136,11 @@ class Classes extends MY_Controller
             return;
         }
 
+        $fromClass   = $this->safe_path_segment($fromClass, 'from_class');
+        $fromSection = $this->safe_path_segment($fromSection, 'from_section');
+        $toClass     = $this->safe_path_segment($toClass, 'to_class');
+        $toSection   = $this->safe_path_segment($toSection, 'to_section');
+
         if ($fromClass === $toClass && $fromSection === $toSection) {
             echo json_encode(['status' => 'error', 'message' => 'Same section selected']);
             return;
@@ -1150,6 +1148,16 @@ class Classes extends MY_Controller
 
         $fromPath = "Schools/{$school}/{$session}/{$fromClass}/{$fromSection}/Students";
         $toPath   = "Schools/{$school}/{$session}/{$toClass}/{$toSection}/Students";
+
+        // Check target section capacity before transfer
+        $maxStrength = $this->firebase->get("Schools/{$school}/{$session}/{$toClass}/{$toSection}/max_strength");
+        $toStudentsCheck = $this->firebase->get("{$toPath}/List") ?? [];
+        $currentCount = is_array($toStudentsCheck) ? count($toStudentsCheck) : 0;
+        $transferCount = count($studentIds);
+        if ($maxStrength && ($currentCount + $transferCount) > (int)$maxStrength) {
+            echo json_encode(['status' => 'error', 'message' => "Target section capacity exceeded ({$currentCount}/{$maxStrength}). Cannot add {$transferCount} more student(s)."]);
+            return;
+        }
 
         $fromStudents = (array) $this->CM->get_data($fromPath);
         $toStudents   = (array) $this->CM->get_data($toPath);

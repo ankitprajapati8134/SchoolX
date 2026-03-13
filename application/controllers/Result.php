@@ -24,12 +24,22 @@ defined('BASEPATH') or exit('No direct script access allowed');
  * sectionKey= "Section A"   (full prefix)
  *
  * NOTE: compute_grade() thresholds must stay in sync with JS in marks_sheet.php
+ *
+ * RBAC:
+ *   Super Admin / Admin — full access (templates, marks, compute, cumulative)
+ *   Teacher             — save_marks (own assigned classes/subjects only),
+ *                          view marks_sheet, marks_entry, class_result, student_result
  */
 class Result extends MY_Controller
 {
+    /** Roles allowed to design templates, compute results, configure cumulative. */
+    const ADMIN_ROLES = ['Super Admin', 'Admin'];
+
     public function __construct()
     {
         parent::__construct();
+        $this->load->library('exam_engine');
+        $this->exam_engine->init($this->firebase, $this->school_name, $this->session_year);
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -63,10 +73,12 @@ class Result extends MY_Controller
      */
     public function template_designer($examId = null)
     {
+        $this->_require_role(self::ADMIN_ROLES, 'design exam template');
+
         $school    = $this->school_name;
         $year      = $this->session_year;
-        $structure = $this->get_class_structure();
-        $exams     = $this->_get_active_exams();
+        $structure = $this->exam_engine->get_class_structure();
+        $exams     = $this->exam_engine->get_active_exams();
 
         $data = [
             'structure' => $structure,
@@ -95,8 +107,8 @@ class Result extends MY_Controller
     {
         $school    = $this->school_name;
         $year      = $this->session_year;
-        $structure = $this->get_class_structure();
-        $exams     = $this->_get_active_exams();
+        $structure = $this->exam_engine->get_class_structure();
+        $exams     = $this->exam_engine->get_active_exams();
 
         $data = [
             'structure' => $structure,
@@ -193,8 +205,8 @@ class Result extends MY_Controller
     {
         $school    = $this->school_name;
         $year      = $this->session_year;
-        $structure = $this->get_class_structure();
-        $exams     = $this->_get_active_exams();
+        $structure = $this->exam_engine->get_class_structure();
+        $exams     = $this->exam_engine->get_active_exams();
 
         $data = [
             'structure' => $structure,
@@ -228,7 +240,7 @@ class Result extends MY_Controller
         }
 
         // Load student profile
-        $profile = $this->firebase->get("Users/Parents/{$this->school_id}/{$userId}") ?? [];
+        $profile = $this->firebase->get("Users/Parents/{$this->parent_db_key}/{$userId}") ?? [];
         if (!is_array($profile)) $profile = [];
 
         $studentName = $profile['Name'] ?? $profile['name'] ?? 'Unknown Student';
@@ -238,7 +250,7 @@ class Result extends MY_Controller
         $sectionKey  = $section   ? "Section {$section}" : '';
 
         // Load all active exams
-        $exams = $this->_get_active_exams();
+        $exams = $this->exam_engine->get_active_exams();
 
         // Load computed results for this student across all exams
         $results = [];
@@ -370,7 +382,7 @@ class Result extends MY_Controller
         // ─────────────────────────────
         // Load student profile
         // ─────────────────────────────
-        $school_id  = $this->school_id;
+        $school_id  = $this->parent_db_key;
         $profile    = $this->firebase->get("Users/Parents/{$school_id}/{$userId}") ?? [];
         if (!is_array($profile)) $profile = [];
 
@@ -459,10 +471,12 @@ class Result extends MY_Controller
 
     public function cumulative()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'cumulative results');
+
         $school    = $this->school_name;
         $year      = $this->session_year;
-        $structure = $this->get_class_structure();
-        $exams     = $this->_get_active_exams();
+        $structure = $this->exam_engine->get_class_structure();
+        $exams     = $this->exam_engine->get_active_exams();
 
         $config = $this->firebase->get(
             "Schools/{$school}/{$year}/Results/CumulativeConfig"
@@ -489,6 +503,7 @@ class Result extends MY_Controller
      */
     public function save_template()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'save exam template');
         header('Content-Type: application/json');
 
         $school = $this->school_name;
@@ -594,6 +609,11 @@ class Result extends MY_Controller
         $classKey   = trim((string) ($payload['classKey']   ?? ''));
         $sectionKey = trim((string) ($payload['sectionKey'] ?? ''));
         $subject    = trim((string) ($payload['subject']    ?? ''));
+
+        // RBAC: Teachers can only save marks for their assigned classes/subjects
+        if (!$this->_teacher_can_access($classKey, $sectionKey, $subject)) {
+            $this->json_error('You are not assigned to this class/subject.', 403);
+        }
         $students   = $payload['students'] ?? [];
 
         if (!$examId || !$classKey || !$sectionKey || !$subject) {
@@ -669,6 +689,7 @@ class Result extends MY_Controller
      */
     public function compute_results()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'compute results');
         header('Content-Type: application/json');
 
         $school     = $this->school_name;
@@ -733,8 +754,8 @@ class Result extends MY_Controller
                 $absent     = !empty($stuMarks['Absent']);
                 $subjTotal  = $absent ? 0 : (int) ($stuMarks['Total'] ?? 0);
                 $subjPct    = $subjMax > 0 ? ($subjTotal / $subjMax * 100) : 0;
-                $subjGrade  = $absent ? 'AB' : $this->compute_grade($subjPct, $scale);
-                $subjPass   = $absent ? 'Fail' : $this->compute_pass_fail($subjPct, $passingPct);
+                $subjGrade  = $absent ? 'AB' : $this->exam_engine->compute_grade($subjPct, $scale);
+                $subjPass   = $absent ? 'Fail' : $this->exam_engine->compute_pass_fail($subjPct, $passingPct);
 
                 if ($subjPass === 'Fail') $allPass = false;
 
@@ -752,8 +773,8 @@ class Result extends MY_Controller
             }
 
             $overallPct   = $maxMarks > 0 ? ($totalMarks / $maxMarks * 100) : 0;
-            $overallGrade = $this->compute_grade($overallPct, $scale);
-            $overallPass  = $allPass ? $this->compute_pass_fail($overallPct, $passingPct) : 'Fail';
+            $overallGrade = $this->exam_engine->compute_grade($overallPct, $scale);
+            $overallPass  = $allPass ? $this->exam_engine->compute_pass_fail($overallPct, $passingPct) : 'Fail';
 
             $studentResults[$uid] = [
                 'TotalMarks' => $totalMarks,
@@ -768,20 +789,7 @@ class Result extends MY_Controller
 
         // Sort by Percentage desc → assign competition ranks
         uasort($studentResults, fn($a, $b) => $b['Percentage'] <=> $a['Percentage']);
-        $rank     = 0;
-        $prevPct  = null;
-        $prevRank = 0;
-        foreach ($studentResults as $uid => &$res) {
-            $rank++;
-            if ($res['Percentage'] === $prevPct) {
-                $res['Rank'] = $prevRank; // tie → same rank
-            } else {
-                $res['Rank'] = $rank;
-                $prevRank    = $rank;
-            }
-            $prevPct = $res['Percentage'];
-        }
-        unset($res);
+        $this->exam_engine->assign_ranks_assoc($studentResults, 'Percentage');
 
         // Write to Computed node (one set() per student)
         $basePath = "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}";
@@ -800,6 +808,7 @@ class Result extends MY_Controller
      */
     public function save_cumulative_config()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'save cumulative config');
         header('Content-Type: application/json');
 
         $school    = $this->school_name;
@@ -844,6 +853,7 @@ class Result extends MY_Controller
      */
     public function compute_cumulative()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'compute cumulative');
         header('Content-Type: application/json');
 
         $school     = $this->school_name;
@@ -925,15 +935,15 @@ class Result extends MY_Controller
                 }
             }
 
-            $overallGrade = $this->compute_grade($weightedTotal, $scale);
-            $overallPass  = $anyFail ? 'Fail' : $this->compute_pass_fail($weightedTotal, $passingPct);
+            $overallGrade = $this->exam_engine->compute_grade($weightedTotal, $scale);
+            $overallPass  = $anyFail ? 'Fail' : $this->exam_engine->compute_pass_fail($weightedTotal, $passingPct);
 
             $subjResults = [];
             foreach ($subjectWeighted as $subj => $ws) {
                 $subjResults[$subj] = [
                     'WeightedScore' => round($ws, 2),
-                    'Grade'         => $this->compute_grade($ws, $scale),
-                    'PassFail'      => $this->compute_pass_fail($ws, $passingPct),
+                    'Grade'         => $this->exam_engine->compute_grade($ws, $scale),
+                    'PassFail'      => $this->exam_engine->compute_pass_fail($ws, $passingPct),
                 ];
             }
 
@@ -948,20 +958,7 @@ class Result extends MY_Controller
 
         // Sort and assign ranks
         uasort($studentCumulative, fn($a, $b) => $b['WeightedTotal'] <=> $a['WeightedTotal']);
-        $rank = 0;
-        $prevWt = null;
-        $prevRank = 0;
-        foreach ($studentCumulative as $uid => &$res) {
-            $rank++;
-            if ($res['WeightedTotal'] === $prevWt) {
-                $res['Rank'] = $prevRank;
-            } else {
-                $res['Rank'] = $rank;
-                $prevRank    = $rank;
-            }
-            $prevWt = $res['WeightedTotal'];
-        }
-        unset($res);
+        $this->exam_engine->assign_ranks_assoc($studentCumulative, 'WeightedTotal');
 
         // Write
         $basePath = "Schools/{$school}/{$year}/Results/Cumulative/{$classKey}/{$sectionKey}";
@@ -1147,144 +1144,4 @@ class Result extends MY_Controller
         ]);
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // PRIVATE HELPERS
-    // ══════════════════════════════════════════════════════════════════
-
-    /**
-     * Build [classKey => [sectionLetters]] from the session root using shallow_get.
-     * Mirror of Exam.php::get_class_structure().
-     */
-    private function get_class_structure(): array
-    {
-        $school    = $this->school_name;
-        $year      = $this->session_year;
-        $structure = [];
-
-        $sessionKeys = $this->firebase->shallow_get("Schools/{$school}/{$year}");
-        foreach ($sessionKeys as $classKey) {
-            if (strpos($classKey, 'Class ') !== 0) continue;
-            $sectionKeys    = $this->firebase->shallow_get("Schools/{$school}/{$year}/{$classKey}");
-            $sectionLetters = [];
-            foreach ($sectionKeys as $sk) {
-                if (strpos($sk, 'Section ') !== 0) continue;
-                $sectionLetters[] = str_replace('Section ', '', $sk);
-            }
-            $structure[$classKey] = $sectionLetters;
-        }
-
-        return $structure;
-    }
-
-    /**
-     * Get active (non-Draft) exams.
-     */
-    private function _get_active_exams(): array
-    {
-        $school = $this->school_name;
-        $year   = $this->session_year;
-
-        $raw   = $this->firebase->get("Schools/{$school}/{$year}/Exams") ?? [];
-        $exams = [];
-        foreach ($raw as $id => $e) {
-            if ($id === 'Count' || !is_array($e)) continue;
-            if (($e['Status'] ?? '') === 'Draft') continue;
-            $exams[] = array_merge(['id' => $id], $e);
-        }
-        usort($exams, fn($a, $b) => ($a['StartDate'] ?? '') <=> ($b['StartDate'] ?? ''));
-        return $exams;
-    }
-
-    /**
-     * Get subject list for a class.
-     * NOTE: must stay in sync with Exam.php::get_subjects() logic.
-     */
-    private function get_subject_list(string $classKey): array
-    {
-        $school = $this->school_name;
-        $raw    = strtolower($classKey);
-
-        if (strpos($raw, 'nursery') !== false)         $listKey = 'Nursery';
-        elseif (strpos($raw, 'lkg') !== false)         $listKey = 'LKG';
-        elseif (strpos($raw, 'ukg') !== false)         $listKey = 'UKG';
-        elseif (strpos($raw, 'playgroup') !== false || strpos($raw, 'play') !== false) $listKey = 'Playgroup';
-        elseif (preg_match('/\d+/', $classKey, $m))   $listKey = (int) $m[0];
-        else return [];
-
-        $node  = $this->firebase->get("Schools/{$school}/Subject_list/{$listKey}") ?? [];
-        $names = [];
-        if (is_array($node)) {
-            foreach ($node as $code => $data) {
-                if ($code === 'pattern_type') continue;
-                if (is_array($data) && !empty($data['subject_name'])) {
-                    $names[] = $data['subject_name'];
-                }
-            }
-        }
-        return $names;
-    }
-
-    /**
-     * Compute letter grade from percentage.
-     * NOTE: thresholds must stay in sync with computeGrade() JS in marks_sheet.php.
-     *
-     * @param float  $pct   0–100
-     * @param string $scale one of ALLOWED_SCALES
-     */
-    private function compute_grade(float $pct, string $scale): string
-    {
-        switch ($scale) {
-            case 'Percentage':
-                if ($pct >= 90) return 'A+';
-                if ($pct >= 80) return 'A';
-                if ($pct >= 70) return 'B+';
-                if ($pct >= 60) return 'B';
-                if ($pct >= 50) return 'C';
-                if ($pct >= 33) return 'D';
-                return 'F';
-
-            case 'A-F Grades':
-                if ($pct >= 90) return 'A';
-                if ($pct >= 80) return 'B';
-                if ($pct >= 70) return 'C';
-                if ($pct >= 60) return 'D';
-                if ($pct >= 50) return 'E';
-                return 'F';
-
-            case 'O-E Grades':
-                if ($pct >= 91) return 'O';
-                if ($pct >= 81) return 'E1';
-                if ($pct >= 71) return 'E2';
-                if ($pct >= 61) return 'B1';
-                if ($pct >= 51) return 'B2';
-                if ($pct >= 41) return 'C1';
-                if ($pct >= 33) return 'C2';
-                return 'D';
-
-            case '10-Point':
-                if ($pct >= 91) return '10';
-                if ($pct >= 81) return '9';
-                if ($pct >= 71) return '8';
-                if ($pct >= 61) return '7';
-                if ($pct >= 51) return '6';
-                if ($pct >= 41) return '5';
-                if ($pct >= 33) return '4';
-                return 'F';
-
-            case 'Pass/Fail':
-                return ''; // grade display not applicable
-
-            default:
-                return '';
-        }
-    }
-
-    /**
-     * Determine Pass or Fail.
-     * NOTE: thresholds must stay in sync with computePassFail() JS in marks_sheet.php.
-     */
-    private function compute_pass_fail(float $pct, int $passingPct): string
-    {
-        return $pct >= $passingPct ? 'Pass' : 'Fail';
-    }
 }

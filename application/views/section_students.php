@@ -235,6 +235,10 @@
     var CSRF_NAME = '<?php echo $this->security->get_csrf_token_name(); ?>';
     var CSRF_HASH = '<?php echo $this->security->get_csrf_hash(); ?>';
 
+    function esc(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
     $.ajaxSetup({
         beforeSend: function (xhr) {
             xhr.setRequestHeader('X-CSRF-Token', CSRF_HASH);
@@ -421,10 +425,10 @@
                 <img src="${s.photo || '<?= base_url("assets/avatar.png") ?>'}"
                      class="student-avatar">
             </td>
-            <td>${s.name}</td>
-            <td>${s.id}</td>
-            <td>${s.last_result}</td>
-            <td>${s.phone}</td>
+            <td>${esc(s.name)}</td>
+            <td>${esc(s.id)}</td>
+            <td>${esc(s.last_result)}</td>
+            <td>${esc(s.phone)}</td>
             <td>
                 <button class="btn btn-info btn-sm view-student"
                         data-id="${s.id}">
@@ -1120,10 +1124,12 @@
 
         if (Array.isArray(data.class_subjects) && data.class_subjects.length) {
             data.class_subjects.forEach(sub => {
+                var label = esc(sub.name) + (sub.code && sub.code !== sub.name ? ' (' + esc(sub.code) + ')' : '');
                 $classBox.append(`
                 <button type="button"
-                        class="subject-item outline class-subject">
-                    ${sub.name}
+                        class="subject-item outline class-subject"
+                        data-name="${esc(sub.name)}">
+                    ${label}
                 </button>
             `);
             });
@@ -1175,11 +1181,13 @@
 
         subjects.forEach(sub => {
             const isSelected = window.SELECTED_SUBJECTS_SET.has(sub.name);
+            var label = esc(sub.name) + (sub.code && sub.code !== sub.name ? ' (' + esc(sub.code) + ')' : '');
 
             $grid.append(`
             <button type="button"
-                class="subject-item outline ${isSelected ? 'selected' : ''}">
-                ${sub.name}
+                class="subject-item outline ${isSelected ? 'selected' : ''}"
+                data-name="${esc(sub.name)}">
+                ${label}
             </button>
         `);
         });

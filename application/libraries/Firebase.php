@@ -60,9 +60,17 @@ class Firebase
      */
     public function get(string $path)
     {
+        $t = microtime(true);
         try {
-            return $this->database->getReference($path)->getValue();
+            $result = $this->database->getReference($path)->getValue();
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                $this->_dbg('READ', $path, $t, $result);
+            }
+            return $result;
         } catch (\Exception $e) {
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                $this->_dbg('READ', $path, $t, null, $e->getMessage());
+            }
             log_message('error', 'Firebase::get() failed for path [' . $path . ']: ' . $e->getMessage());
             return null;
         }
@@ -73,10 +81,17 @@ class Firebase
      */
     public function set(string $path, $data)
     {
+        $t = microtime(true);
         try {
             $this->database->getReference($path)->set($data);
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                $this->_dbg('WRITE', $path, $t, $data);
+            }
             return true;
         } catch (\Exception $e) {
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                $this->_dbg('WRITE', $path, $t, null, $e->getMessage());
+            }
             log_message('error', 'Firebase::set() failed for path [' . $path . ']: ' . $e->getMessage());
             return false;
         }
@@ -87,10 +102,17 @@ class Firebase
      */
     public function update(string $path, array $data)
     {
+        $t = microtime(true);
         try {
             $this->database->getReference($path)->update($data);
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                $this->_dbg('WRITE', $path, $t, $data);
+            }
             return true;
         } catch (\Exception $e) {
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                $this->_dbg('WRITE', $path, $t, null, $e->getMessage());
+            }
             log_message('error', 'Firebase::update() failed for path [' . $path . ']: ' . $e->getMessage());
             return false;
         }
@@ -98,14 +120,31 @@ class Firebase
 
     /**
      * Delete a node at a path.
+     *
+     * Two calling conventions are supported:
+     *   delete("Full/Path/To/Node")           — deletes that exact node
+     *   delete("Parent/Path", "child_key")    — deletes Parent/Path/child_key
+     *
+     * The two-argument form exists because many SA controllers pass the parent
+     * path and child key separately.  PHP silently ignores extra arguments to
+     * single-parameter functions, so without the $key parameter those callers
+     * were incorrectly deleting the entire parent node instead of the child.
      */
-    public function delete(string $path)
+    public function delete(string $path, string $key = '')
     {
+        $fullPath = ($key !== '') ? "{$path}/{$key}" : $path;
+        $t = microtime(true);
         try {
-            $this->database->getReference($path)->remove();
+            $this->database->getReference($fullPath)->remove();
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                $this->_dbg('DELETE', $fullPath, $t, null);
+            }
             return true;
         } catch (\Exception $e) {
-            log_message('error', 'Firebase::delete() failed for path [' . $path . ']: ' . $e->getMessage());
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                $this->_dbg('DELETE', $fullPath, $t, null, $e->getMessage());
+            }
+            log_message('error', 'Firebase::delete() failed for path [' . $fullPath . ']: ' . $e->getMessage());
             return false;
         }
     }
@@ -115,9 +154,17 @@ class Firebase
      */
     public function push(string $path, $data): ?string
     {
+        $t = microtime(true);
         try {
-            return $this->database->getReference($path)->push($data)->getKey();
+            $key = $this->database->getReference($path)->push($data)->getKey();
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                $this->_dbg('PUSH', $path, $t, $data);
+            }
+            return $key;
         } catch (\Exception $e) {
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                $this->_dbg('PUSH', $path, $t, null, $e->getMessage());
+            }
             log_message('error', 'Firebase::push() failed for path [' . $path . ']: ' . $e->getMessage());
             return null;
         }
@@ -170,16 +217,38 @@ class Firebase
      */
     public function shallow_get(string $path): array
     {
+        $t = microtime(true);
         try {
             $value = $this->database->getReference($path)->shallow()->getSnapshot()->getValue();
-            if (!is_array($value)) {
-                return [];
+            $result = is_array($value) ? array_keys($value) : [];
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                $this->_dbg('SHALLOW', $path, $t, $result);
             }
-            return array_keys($value);
+            return $result;
         } catch (\Exception $e) {
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                $this->_dbg('SHALLOW', $path, $t, null, $e->getMessage());
+            }
             log_message('error', 'Firebase::shallow_get() failed for path [' . $path . ']: ' . $e->getMessage());
             return [];
         }
+    }
+
+    /* ── Debug helper (zero overhead when GRADER_DEBUG is false) ─────── */
+
+    private function _dbg(string $op, string $path, float $start, $result, ?string $error = null): void
+    {
+        if (!class_exists('Debug_tracker', false)) {
+            require_once APPPATH . 'libraries/Debug_tracker.php';
+        }
+        Debug_tracker::getInstance()->record_firebase_op(
+            $op,
+            $path,
+            (microtime(true) - $start) * 1000,
+            $result,
+            $error,
+            Debug_tracker::get_caller()
+        );
     }
 
     /**

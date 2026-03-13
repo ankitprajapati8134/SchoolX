@@ -247,7 +247,7 @@ class Schools extends MY_Controller
 
         // Load views
         $this->load->view('include/header');
-        $this->load->view('schoolProfile', $data);
+        $this->load->view('schoolprofile', $data);
         $this->load->view('include/footer');
     }
 

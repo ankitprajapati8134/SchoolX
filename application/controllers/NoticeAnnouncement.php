@@ -25,39 +25,69 @@ class NoticeAnnouncement extends MY_Controller
     public function fetch_recent_notices()
     {
         header('Content-Type: application/json');
-        echo json_encode($this->getRecentNotices(5));
+        echo json_encode($this->getRecentNotices(10));
     }
 
-    // ── Private helper ────────────────────────────────────────────
-    private function getRecentNotices($limit = 5)
+    // ── Private helper — merges legacy All Notices + Communication/Notices ──
+    private function getRecentNotices($limit = 10)
     {
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
+        $noticeList   = [];
+        $seenTitles   = []; // de-duplicate dual-written notices
 
-        $path    = 'Schools/' . $school_name . '/' . $session_year . '/All Notices';
-        $notices = $this->firebase->get($path);
+        // ── Source 1: Legacy All Notices ──────────────────────────
+        $legacyPath = 'Schools/' . $school_name . '/' . $session_year . '/All Notices';
+        $legacy     = $this->firebase->get($legacyPath);
+        if (is_array($legacy)) {
+            unset($legacy['Count']);
+            foreach ($legacy as $id => $n) {
+                if (!is_array($n)) continue;
+                $ts = $n['Timestamp'] ?? $n['Time_Stamp'] ?? null;
+                if ($ts === null) continue;
 
-        // Guard: Firebase returned null or non-array
-        if (empty($notices) || !is_array($notices)) return [];
+                $title = trim($n['Title'] ?? '');
+                $dedupKey = strtolower($title) . '|' . substr((string)$ts, 0, 16);
+                $seenTitles[$dedupKey] = true;
 
-        // Remove the Count key — it is not a notice
-        unset($notices['Count']);
-
-        $noticeList = [];
-        foreach ($notices as $id => $notice) {
-            if (!is_array($notice)) continue;
-
-            // FIX: accept BOTH 'Timestamp' (what we save) and 'Time_Stamp' (legacy)
-            $ts = $notice['Timestamp'] ?? $notice['Time_Stamp'] ?? null;
-            if ($ts === null) continue;
-
-            $notice['id']         = $id;
-            $notice['Time_Stamp'] = $ts;   // normalise key for sorting
-            $noticeList[]         = $notice;
+                $noticeList[] = [
+                    'id'          => $id,
+                    'Title'       => $title,
+                    'Description' => $n['Description'] ?? $n['description'] ?? '',
+                    'Time_Stamp'  => $ts,
+                    'source'      => 'legacy',
+                ];
+            }
         }
 
-        usort($noticeList, fn($a, $b) => $b['Time_Stamp'] <=> $a['Time_Stamp']);
+        // ── Source 2: Communication/Notices ───────────────────────
+        $commPath = 'Schools/' . $school_name . '/Communication/Notices';
+        $commData = $this->firebase->get($commPath);
+        if (is_array($commData)) {
+            unset($commData['Counter']);
+            foreach ($commData as $id => $n) {
+                if (!is_array($n)) continue;
+                $ts = $n['created_at'] ?? $n['Timestamp'] ?? null;
+                if ($ts === null) continue;
 
+                $title = trim($n['title'] ?? $n['Title'] ?? '');
+                $dedupKey = strtolower($title) . '|' . substr((string)$ts, 0, 16);
+
+                // Skip if already seen from legacy (dual-written)
+                if (isset($seenTitles[$dedupKey])) continue;
+
+                $noticeList[] = [
+                    'id'          => $id,
+                    'Title'       => $title,
+                    'Description' => $n['body'] ?? $n['Description'] ?? '',
+                    'Time_Stamp'  => $ts,
+                    'source'      => 'communication',
+                ];
+            }
+        }
+
+        // Sort newest first and return top N
+        usort($noticeList, fn($a, $b) => strcmp($b['Time_Stamp'], $a['Time_Stamp']));
         return array_slice($noticeList, 0, $limit);
     }
 

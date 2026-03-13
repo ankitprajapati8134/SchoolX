@@ -341,7 +341,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 .fr-page-title {
     font-family: 'Playfair Display', serif;
-    font-size: 24px;
+    font-size: 1.35rem;
     font-weight: 700;
     color: var(--fc-navy);
     display: flex;
@@ -367,7 +367,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .fr-breadcrumb li+li::before {
     content: ' / ';
     margin: 0 4px;
-    color: #cbd5e1;
+    color: var(--fc-border);
 }
 
 .fr-breadcrumb a {
@@ -520,7 +520,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .fr-head-hint {
     font-size: 11.5px;
     color: var(--fc-muted);
-    background: rgba(14, 116, 144, .08);
+    background: rgba(14, 116, 144, .07);
     border-radius: 20px;
     padding: 3px 10px;
 }
@@ -665,7 +665,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 /* Heat-map */
 .fr-cell-zero {
-    color: #b8cfe8;
+    color: var(--fc-border);
 }
 
 .fr-cell-low {
@@ -680,7 +680,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .fr-cell-high {
     background: rgba(22, 163, 74, .09);
     font-weight: 600;
-    color: #14532d;
+    color: var(--fc-green);
 }
 
 /* Row states */
@@ -699,7 +699,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .fr-row.fr-selected {
-    background: #bee3ff !important;
+    background: rgba(14, 116, 144, .12) !important;
 }
 
 .fr-row.fr-selected .fr-class-dot {
@@ -728,7 +728,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 .fr-table tfoot .fr-td-total {
     background: rgba(14, 116, 144, .45);
-    color: #7dd3fc;
+    color: #5eead4;
 }
 
 /* ── Buttons ── */

@@ -15,6 +15,20 @@ defined('SHOW_DEBUG_BACKTRACE') OR define('SHOW_DEBUG_BACKTRACE', TRUE);
 
 /*
 |--------------------------------------------------------------------------
+| GraderIQ Debug Mode
+|--------------------------------------------------------------------------
+| When the flag file application/logs/.debug_enabled exists, full debug
+| tracing is active: every Firebase op, request, schema check, and
+| unauthorized access attempt is logged to application/logs/debug_YYYY-MM-DD.log
+|
+| Toggle via the SA Debug Panel at /superadmin/debug
+| or manually: touch application/logs/.debug_enabled  (on, Linux)
+|              del application\logs\.debug_enabled    (off, Windows)
+*/
+defined('GRADER_DEBUG') OR define('GRADER_DEBUG', file_exists(APPPATH . 'logs/.debug_enabled'));
+
+/*
+|--------------------------------------------------------------------------
 | File and Directory Modes
 |--------------------------------------------------------------------------
 |

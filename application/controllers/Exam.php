@@ -5,8 +5,8 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  * Exam controller — full ERP-grade redesign
  *
  * Firebase structure:
- *   Central: Schools/{school}/{year}/Exams/{EXM0001}/...
- *   Per-section copy: Schools/{school}/{year}/Class 9th/Section A/Exams/{EXM0001}/{date}/{subject}
+ *   Central: Schools/{school}/{year}/Exams/{EXM_20260313_143052_a7f3b2}/...
+ *   Per-section copy: Schools/{school}/{year}/Class 9th/Section A/Exams/{examId}/{date}/{subject}
  *
  * Methods:
  *   index()          — list all exams
@@ -16,6 +16,10 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  *   update_status()  — POST AJAX: update Status field
  *   get_subjects()   — GET AJAX: subjects for a class
  *   manage_exam()    — backward-compat redirect to index
+ *
+ * RBAC:
+ *   Super Admin / Admin — full access
+ *   Teacher             — index (read-only), view, get_subjects
  */
 class Exam extends MY_Controller
 {
@@ -23,9 +27,14 @@ class Exam extends MY_Controller
     const ALLOWED_SCALES   = ['Percentage', 'A-F Grades', 'O-E Grades', '10-Point', 'Pass/Fail'];
     const ALLOWED_STATUSES = ['Draft', 'Published', 'Completed'];
 
+    /** Roles allowed to create, edit, delete exams and change status. */
+    const ADMIN_ROLES = ['Super Admin', 'Admin'];
+
     public function __construct()
     {
         parent::__construct();
+        $this->load->library('exam_engine');
+        $this->exam_engine->init($this->firebase, $this->school_name, $this->session_year);
     }
 
     // ── Backward compatibility ────────────────────────────────────────────
@@ -58,9 +67,11 @@ class Exam extends MY_Controller
     // ── create() — GET: form; POST AJAX: save ────────────────────────────
     public function create()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'create exam');
+
         $school    = $this->school_name;
         $year      = $this->session_year;
-        $structure = $this->get_class_structure();
+        $structure = $this->exam_engine->get_class_structure();
 
         if ($this->input->method() === 'post') {
             header('Content-Type: application/json');
@@ -209,7 +220,11 @@ class Exam extends MY_Controller
                 $savedCount++;
             }
 
-            $this->json_success(['examId' => $examId, 'message' => "Exam created successfully ({$savedCount} entries saved)."]);
+            $this->json_success([
+                'examId'     => $examId,
+                'message'    => "Exam created successfully ({$savedCount} entries saved).",
+                'csrf_token' => $this->security->get_csrf_hash(),
+            ]);
             return;
         }
 
@@ -249,6 +264,7 @@ class Exam extends MY_Controller
     // ── delete($id) ──────────────────────────────────────────────────────
     public function delete($id = null)
     {
+        $this->_require_role(self::ADMIN_ROLES, 'delete exam');
         if (!$id) { redirect('exam'); }
 
         $school   = $this->school_name;
@@ -279,6 +295,7 @@ class Exam extends MY_Controller
     // ── update_status() — POST AJAX ──────────────────────────────────────
     public function update_status()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'update exam status');
         header('Content-Type: application/json');
 
         $id     = trim((string) $this->input->post('examId'));
@@ -299,82 +316,35 @@ class Exam extends MY_Controller
     {
         header('Content-Type: application/json');
 
-        $school   = $this->school_name;
-        $classKey = trim((string) $this->input->get('class')); // e.g. "Class 9th"
+        $classKey = trim((string) $this->input->get('class'));
 
         if (!$classKey) {
             echo json_encode(['subjects' => []]);
             return;
         }
 
-        // Convert "Class 9th" → Subject_list key (matches Subjects.php logic)
-        $raw = strtolower($classKey);
-        if (strpos($raw, 'nursery') !== false) {
-            $listKey = 'Nursery';
-        } elseif (strpos($raw, 'lkg') !== false) {
-            $listKey = 'LKG';
-        } elseif (strpos($raw, 'ukg') !== false) {
-            $listKey = 'UKG';
-        } elseif (strpos($raw, 'playgroup') !== false || strpos($raw, 'play') !== false) {
-            $listKey = 'Playgroup';
-        } elseif (preg_match('/\d+/', $classKey, $m)) {
-            $listKey = (int) $m[0]; // 9, 10, 11 …
-        } else {
-            echo json_encode(['subjects' => []]);
-            return;
-        }
-
-        $raw  = $this->firebase->get("Schools/{$school}/Subject_list/{$listKey}") ?? [];
-        $names = [];
-        if (is_array($raw)) {
-            foreach ($raw as $code => $data) {
-                if ($code === 'pattern_type') continue;
-                if (is_array($data) && !empty($data['subject_name'])) {
-                    $names[] = $data['subject_name'];
-                }
-            }
-        }
-
-        echo json_encode(['subjects' => $names]);
+        echo json_encode(['subjects' => $this->exam_engine->get_subject_list($classKey)]);
     }
 
     // ── Private helpers ──────────────────────────────────────────────────
 
     /**
-     * Build [classKey => [sectionLetters]] from the session root using shallow_get.
-     */
-    private function get_class_structure(): array
-    {
-        $school      = $this->school_name;
-        $year        = $this->session_year;
-        $structure   = [];
-        $sessionKeys = $this->firebase->shallow_get("Schools/{$school}/{$year}");
-
-        foreach ($sessionKeys as $classKey) {
-            if (strpos($classKey, 'Class ') !== 0) continue;
-            $sectionKeys    = $this->firebase->shallow_get("Schools/{$school}/{$year}/{$classKey}");
-            $sectionLetters = [];
-            foreach ($sectionKeys as $sk) {
-                if (strpos($sk, 'Section ') !== 0) continue;
-                $sectionLetters[] = str_replace('Section ', '', $sk);
-            }
-            $structure[$classKey] = $sectionLetters;
-        }
-
-        return $structure;
-    }
-
-    /**
-     * Generate next sequential EXM ID (EXM0001, EXM0002, …).
-     * Increments the Count node under Exams/.
+     * Generate a collision-safe exam ID without a shared counter.
+     *
+     * Format: EXM_{YYYYMMDD}_{HHmmss}_{6-char hex}
+     * Example: EXM_20260313_143052_a7f3b2
+     *
+     * - No race condition (no read-increment-write cycle)
+     * - Human-readable (date + time visible in the key)
+     * - Sortable chronologically in Firebase (lexicographic order)
+     * - 6 hex chars of randomness = 16M combinations per second — collision-proof
+     * - Backward-compatible: existing EXM0001-style IDs remain valid Firebase keys
      */
     private function generate_exam_id(): string
     {
-        $school = $this->school_name;
-        $year   = $this->session_year;
-        $count  = (int) ($this->firebase->get("Schools/{$school}/{$year}/Exams/Count") ?? 0);
-        $count++;
-        $this->firebase->set("Schools/{$school}/{$year}/Exams/Count", $count);
-        return 'EXM' . str_pad($count, 4, '0', STR_PAD_LEFT);
+        $now  = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
+        $rand = bin2hex(random_bytes(3)); // 6 hex chars
+
+        return 'EXM_' . $now->format('Ymd_His') . '_' . $rand;
     }
 }

@@ -52,8 +52,10 @@ $profilePic = $student_data['Profile Pic'] ?? '';
     <div class="box box-primary erp-card">
         <div class="box-body">
 
-            <form action="<?= base_url('student/edit_student/' . $student_data['User Id']); ?>" method="post"
+            <form action="<?= base_url('student/edit_student/' . urlencode($student_data['User Id'])); ?>" method="post"
                 enctype="multipart/form-data" id="edit_student_form">
+                <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>"
+                       value="<?= $this->security->get_csrf_hash() ?>">
 
                 <!-- ================= BASIC INFORMATION ================= -->
                 <div class="section-card">
@@ -65,25 +67,25 @@ $profilePic = $student_data['Profile Pic'] ?? '';
 
                         <div class="form-group col-md-3">
                             <label>Student ID</label>
-                            <input type="text" name="user_id" value="<?= $student_data['User Id']; ?>"
+                            <input type="text" name="user_id" value="<?= htmlspecialchars($student_data['User Id'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" readonly>
                         </div>
 
                         <div class="form-group col-md-3">
                             <label>Student Name</label>
-                            <input type="text" name="Name" value="<?= $student_data['Name']; ?>" class="form-control"
+                            <input type="text" name="Name" value="<?= htmlspecialchars($student_data['Name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" class="form-control"
                                 required>
                         </div>
 
                         <div class="form-group col-md-3">
                             <label>Class</label>
-                            <input type="text" name="class" value="<?= $student_data['Class']; ?>" class="form-control"
+                            <input type="text" name="class" value="<?= htmlspecialchars($student_data['Class'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" class="form-control"
                                 readonly>
                         </div>
 
                         <div class="form-group col-md-3">
                             <label>Section</label>
-                            <input type="text" name="section" value="<?= $student_data['Section']; ?>"
+                            <input type="text" name="section" value="<?= htmlspecialchars($student_data['Section'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" readonly>
                         </div>
                     </div>
@@ -91,7 +93,7 @@ $profilePic = $student_data['Profile Pic'] ?? '';
                     <div class="row">
                         <div class="form-group col-md-3">
                             <label>Date of Birth</label>
-                            <input type="text" name="dob" value="<?= $student_data['DOB'] ?? '' ?>"
+                            <input type="text" name="dob" value="<?= htmlspecialchars($student_data['DOB'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                 class="form-control datepicker" placeholder="dd-mm-yyyy" required>
                         </div>
 
@@ -99,11 +101,11 @@ $profilePic = $student_data['Profile Pic'] ?? '';
                         <div class="form-group col-md-3">
                             <label>Gender</label>
                             <select name="gender" class="form-control">
-                                <option value="Male" <?= $student_data['Gender'] == 'Male' ? 'selected' : '' ?>>Male
+                                <option value="Male" <?= ($student_data['Gender'] ?? '') == 'Male' ? 'selected' : '' ?>>Male
                                 </option>
-                                <option value="Female" <?= $student_data['Gender'] == 'Female' ? 'selected' : '' ?>>
+                                <option value="Female" <?= ($student_data['Gender'] ?? '') == 'Female' ? 'selected' : '' ?>>
                                     Female</option>
-                                <option value="Other" <?= $student_data['Gender'] == 'Other' ? 'selected' : '' ?>>
+                                <option value="Other" <?= ($student_data['Gender'] ?? '') == 'Other' ? 'selected' : '' ?>>
                                     Other</option>
                             </select>
                         </div>
@@ -111,14 +113,14 @@ $profilePic = $student_data['Profile Pic'] ?? '';
                         <div class="form-group col-md-3">
                             <label>Admission Date</label>
                             <input type="text" name="admission_date"
-                                value="<?= $student_data['Admission Date'] ?? '' ?>" class="form-control datepicker"
+                                value="<?= htmlspecialchars($student_data['Admission Date'] ?? '', ENT_QUOTES, 'UTF-8') ?>" class="form-control datepicker"
                                 placeholder="dd-mm-yyyy" required>
                         </div>
 
 
                         <div class="form-group col-md-3">
                             <label>Email</label>
-                            <input type="email" name="email" value="<?= $student_data['Email']; ?>" class="form-control"
+                            <input type="email" name="email" value="<?= htmlspecialchars($student_data['Email'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" class="form-control"
                                 required>
                         </div>
                     </div>
@@ -126,7 +128,7 @@ $profilePic = $student_data['Profile Pic'] ?? '';
                     <div class="row">
                         <div class="form-group col-md-3">
                             <label>Phone Number</label>
-                            <input type="text" name="phone_number" value="<?= $student_data['Phone Number']; ?>"
+                            <input type="text" name="phone_number" value="<?= htmlspecialchars($student_data['Phone Number'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" required>
                         </div>
 
@@ -135,7 +137,7 @@ $profilePic = $student_data['Profile Pic'] ?? '';
                             <select name="blood_group" class="form-control">
                                 <?php $groups = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-", "Unknown"];
                                 foreach ($groups as $g): ?>
-                                    <option value="<?= $g ?>" <?= $student_data['Blood Group'] == $g ? 'selected' : '' ?>>
+                                    <option value="<?= $g ?>" <?= ($student_data['Blood Group'] ?? '') == $g ? 'selected' : '' ?>>
                                         <?= $g ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -145,13 +147,13 @@ $profilePic = $student_data['Profile Pic'] ?? '';
                         <div class="form-group col-md-3">
                             <label>Category</label>
                             <select name="category" class="form-control">
-                                <option value="General" <?= $student_data['Category'] == 'General' ? 'selected' : '' ?>>
+                                <option value="General" <?= ($student_data['Category'] ?? '') == 'General' ? 'selected' : '' ?>>
                                     General</option>
-                                <option value="OBC" <?= $student_data['Category'] == 'OBC' ? 'selected' : '' ?>>OBC
+                                <option value="OBC" <?= ($student_data['Category'] ?? '') == 'OBC' ? 'selected' : '' ?>>OBC
                                 </option>
-                                <option value="SC" <?= $student_data['Category'] == 'SC' ? 'selected' : '' ?>>SC
+                                <option value="SC" <?= ($student_data['Category'] ?? '') == 'SC' ? 'selected' : '' ?>>SC
                                 </option>
-                                <option value="ST" <?= $student_data['Category'] == 'ST' ? 'selected' : '' ?>>ST
+                                <option value="ST" <?= ($student_data['Category'] ?? '') == 'ST' ? 'selected' : '' ?>>ST
                                 </option>
                             </select>
                         </div>
@@ -224,37 +226,37 @@ $profilePic = $student_data['Profile Pic'] ?? '';
 
                         <div class="form-group col-md-3">
                             <label>Father Name</label>
-                            <input type="text" name="father_name" value="<?= $student_data['Father Name']; ?>"
+                            <input type="text" name="father_name" value="<?= htmlspecialchars($student_data['Father Name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" required>
                         </div>
 
                         <div class="form-group col-md-3">
                             <label>Father Occupation</label>
                             <input type="text" name="father_occupation"
-                                value="<?= $student_data['Father Occupation']; ?>" class="form-control" required>
+                                value="<?= htmlspecialchars($student_data['Father Occupation'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" class="form-control" required>
                         </div>
 
                         <div class="form-group col-md-3">
                             <label>Mother Name</label>
-                            <input type="text" name="mother_name" value="<?= $student_data['Mother Name']; ?>"
+                            <input type="text" name="mother_name" value="<?= htmlspecialchars($student_data['Mother Name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" required>
                         </div>
 
                         <div class="form-group col-md-3">
                             <label>Mother Occupation</label>
                             <input type="text" name="mother_occupation"
-                                value="<?= $student_data['Mother Occupation']; ?>" class="form-control" required>
+                                value="<?= htmlspecialchars($student_data['Mother Occupation'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" class="form-control" required>
                         </div>
 
                         <div class="form-group col-md-3">
                             <label>Guardian Contact</label>
-                            <input type="text" name="guard_contact" value="<?= $student_data['Guard Contact']; ?>"
+                            <input type="text" name="guard_contact" value="<?= htmlspecialchars($student_data['Guard Contact'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" required>
                         </div>
 
                         <div class="form-group col-md-3">
                             <label>Guardian Relation</label>
-                            <input type="text" name="guard_relation" value="<?= $student_data['Guard Relation']; ?>"
+                            <input type="text" name="guard_relation" value="<?= htmlspecialchars($student_data['Guard Relation'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" required>
                         </div>
                     </div>
@@ -270,25 +272,25 @@ $profilePic = $student_data['Profile Pic'] ?? '';
                     <div class="row">
                         <div class="form-group col-md-3">
                             <label>Street</label>
-                            <input type="text" name="street" value="<?= $student_data['Address']['Street']; ?>"
+                            <input type="text" name="street" value="<?= htmlspecialchars($student_data['Address']['Street'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" required>
                         </div>
 
                         <div class="form-group col-md-3">
                             <label>City</label>
-                            <input type="text" name="city" value="<?= $student_data['Address']['City']; ?>"
+                            <input type="text" name="city" value="<?= htmlspecialchars($student_data['Address']['City'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" required>
                         </div>
 
                         <div class="form-group col-md-3">
                             <label>State</label>
-                            <input type="text" name="state" value="<?= $student_data['Address']['State']; ?>"
+                            <input type="text" name="state" value="<?= htmlspecialchars($student_data['Address']['State'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" required>
                         </div>
 
                         <div class="form-group col-md-3">
                             <label>Postal Code</label>
-                            <input type="text" name="postal_code" value="<?= $student_data['Address']['PostalCode']; ?>"
+                            <input type="text" name="postal_code" value="<?= htmlspecialchars($student_data['Address']['PostalCode'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" required>
                         </div>
                     </div>
@@ -302,19 +304,19 @@ $profilePic = $student_data['Profile Pic'] ?? '';
 
                         <div class="form-group col-md-4">
                             <label>Previous Class</label>
-                            <input type="text" name="pre_class" value="<?= $student_data['Pre Class'] ?? ''; ?>"
+                            <input type="text" name="pre_class" value="<?= htmlspecialchars($student_data['Pre Class'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" required>
                         </div>
 
                         <div class="form-group col-md-4">
                             <label>Previous School</label>
-                            <input type="text" name="pre_school" value="<?= $student_data['Pre School'] ?? ''; ?>"
+                            <input type="text" name="pre_school" value="<?= htmlspecialchars($student_data['Pre School'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" required>
                         </div>
 
                         <div class="form-group col-md-4">
                             <label>Previous Marks (%)</label>
-                            <input type="text" name="pre_marks" value="<?= $student_data['Pre Marks'] ?? ''; ?>"
+                            <input type="text" name="pre_marks" value="<?= htmlspecialchars($student_data['Pre Marks'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                 class="form-control" required>
                         </div>
                     </div>
@@ -678,106 +680,7 @@ $profilePic = $student_data['Profile Pic'] ?? '';
 </script>
 
 
-<!-- <script>
-    function showAlert(type, message) {
 
-        const colors = {
-            success: "#28a745",
-            error: "#dc3545",
-            warning: "#ffc107",
-            info: "#17a2b8"
-        };
-
-        const alertBox = document.createElement("div");
-        alertBox.innerText = message;
-        alertBox.style.position = "fixed";
-        alertBox.style.top = "20px";
-        alertBox.style.right = "20px";
-        alertBox.style.padding = "12px 18px";
-        alertBox.style.background = colors[type] || "#333";
-        alertBox.style.color = "#fff";
-        alertBox.style.borderRadius = "6px";
-        alertBox.style.boxShadow = "0 4px 10px rgba(0,0,0,0.2)";
-        alertBox.style.zIndex = "9999";
-        alertBox.style.fontSize = "13px";
-        alertBox.style.animation = "fadeIn 0.3s ease";
-        document.body.appendChild(alertBox);
-
-        setTimeout(() => {
-            alertBox.remove();
-        }, 3000);
-    }
-
-
-
-    function goBack() {
-        window.history.back();
-    }
-
-    $(document).ready(function() {
-
-        $('#edit_student_form').on('submit', function(e) {
-
-            e.preventDefault();
-
-            let formData = new FormData(this);
-
-            $.ajax({
-                url: $(this).attr('action'),
-                type: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                dataType: 'json',
-
-                success: function(response) {
-
-                    if (response.status === 'success') {
-
-                        if (response.photo_notice) {
-                            showAlert("info", response.photo_notice);
-                        }
-
-                        showAlert("success", "Student updated successfully!");
-
-                        setTimeout(function() {
-                            window.location.href =
-                                '<?php echo base_url("student/all_student"); ?>';
-                        }, 1500);
-
-                    } else {
-                        showAlert("error", "Failed to update student.");
-                    }
-                },
-
-                error: function(xhr) {
-                    showAlert("error", "Server error occurred.");
-                }
-            });
-
-        });
-
-        $('.datepicker').datepicker({
-            format: 'dd-mm-yyyy',
-            autoclose: true,
-            todayHighlight: true
-        });
-
-
-    });
-
-    document.getElementById('select_all_exempted_fees')
-        ?.addEventListener('change', function() {
-
-            const checkboxes =
-                document.querySelectorAll('.exempted-fee-checkbox');
-
-            checkboxes.forEach(cb => {
-                cb.checked = this.checked;
-            });
-
-        });
-</script> -->
 
 
 <style>

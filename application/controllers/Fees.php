@@ -471,7 +471,7 @@ class Fees extends MY_Controller
     {
         $this->output->set_content_type('application/json');
 
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
 
         // FIX: Read userId from $_POST (FormData) instead of php://input JSON.
         // This means CSRF token arrives in the body field normally — no 403.
@@ -575,7 +575,7 @@ class Fees extends MY_Controller
             return;
         }
 
-        $student = $this->CM->get_data("Users/Parents/{$this->school_id}/$userId");
+        $student = $this->CM->get_data("Users/Parents/{$this->parent_db_key}/$userId");
         if (empty($student)) {
             echo json_encode(['error' => "Student '$userId' not found"]);
             return;
@@ -604,7 +604,7 @@ class Fees extends MY_Controller
     {
         header('Content-Type: application/json');
 
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $userId    = trim($this->input->post('user_id') ?? '');
 
         if ($userId === '') {
@@ -667,7 +667,7 @@ class Fees extends MY_Controller
         ob_start();
         header('Content-Type: application/json');
 
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $userId    = trim($this->input->post('user_id') ?? '');
         $selectedMonths = $this->input->post('months') ?? [];
 
@@ -803,7 +803,7 @@ class Fees extends MY_Controller
 
     private function _searchByName($entry)
     {
-        $students = $this->CM->get_data('Users/Parents/' . $this->school_id);
+        $students = $this->CM->get_data('Users/Parents/' . $this->parent_db_key);
         $results  = [];
         if (!is_array($students)) return $results;
 
@@ -844,7 +844,7 @@ class Fees extends MY_Controller
         $this->output->set_content_type('application/json');
         $this->load->library('firebase');
 
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -980,7 +980,23 @@ class Fees extends MY_Controller
             log_message('error', 'submit_fees account book failed: ' . $e->getMessage());
         }
 
-        // 5. Receipt counter
+        // 5. Receipt Index (O(1) lookup for print_receipt)
+        try {
+            $this->firebase->set(
+                "Schools/$school_name/$session_year/Accounts/Receipt_Index/$receiptNo",
+                [
+                    'date'    => $date,
+                    'user_id' => $userId,
+                    'class'   => $class,
+                    'section' => $section,
+                    'amount'  => $schoolFees - $discountFees + $fineAmount,
+                ]
+            );
+        } catch (Exception $e) {
+            log_message('error', 'submit_fees receipt index write failed: ' . $e->getMessage());
+        }
+
+        // 6. Receipt counter
         try {
             $rcPath = "Schools/$school_name/$session_year/Accounts/Fees/Receipt No";
             $this->firebase->set($rcPath, ((int)($this->firebase->get($rcPath) ?? 0)) + 1);
@@ -988,7 +1004,7 @@ class Fees extends MY_Controller
             log_message('error', 'submit_fees receipt counter failed: ' . $e->getMessage());
         }
 
-        // 6. Mark months as paid
+        // 7. Mark months as paid
         $monthOrder = [
             'April',
             'May',
@@ -1006,8 +1022,9 @@ class Fees extends MY_Controller
         ];
         usort(
             $selectedMonths,
-            fn($a, $b) =>
-            array_search($a, $monthOrder) - array_search($b, $monthOrder)
+            function ($a, $b) use ($monthOrder) {
+                return array_search($a, $monthOrder) - array_search($b, $monthOrder);
+            }
         );
 
         $totalSubmitted = $schoolFees + $submitAmount;
@@ -1019,15 +1036,173 @@ class Fees extends MY_Controller
             }
         }
 
-        // 7. Carry-forward overpaid amount
+        // 8. Carry-forward overpaid amount
         if ($totalSubmitted > 0.005) {
             $this->firebase->set("$studentBase/Oversubmittedfees", round($totalSubmitted, 2));
         }
 
+        // ── Accounting integration via Operations_accounting library
+        try {
+            $this->load->library('Operations_accounting', null, 'ops_acct');
+            $this->ops_acct->init(
+                $this->firebase, $school_name, $session_year, $this->admin_id, $this
+            );
+            $this->ops_acct->create_fee_journal([
+                'school_name'  => $school_name,
+                'session_year' => $session_year,
+                'date'         => date('Y-m-d'),
+                'amount'       => (float) $schoolFees,
+                'payment_mode' => $paymentMode ?? 'Cash',
+                'bank_code'    => '',
+                'receipt_no'   => $receiptNo ?? '',
+                'student_name' => $student['Name'] ?? $userId,
+                'student_id'   => $userId,
+                'class'        => $class ?? '',
+                'admin_id'     => $this->admin_id,
+            ]);
+        } catch (\Exception $e) {
+            log_message('error', 'Accounting integration failed in submit_fees: ' . $e->getMessage());
+        }
+
         $this->output->set_output(json_encode([
-            'status'  => 'success',
-            'message' => 'Fees submitted successfully!',
+            'status'     => 'success',
+            'message'    => 'Fees submitted successfully!',
+            'receipt_no' => $receiptNo,
+            'user_id'    => $userId,
         ]));
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  PRINT RECEIPT
+    // ══════════════════════════════════════════════════════════════════
+
+    public function print_receipt($receiptNo = null)
+    {
+        if (empty($receiptNo)) show_404();
+        if (!preg_match('/^[0-9]+$/', $receiptNo)) show_404();
+
+        $school_id    = $this->parent_db_key;
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+        $receiptKey   = 'F' . $receiptNo;
+
+        // ── 1. Look up receipt via index (O(1)), fall back to voucher scan ──
+        $index = $this->firebase->get(
+            "Schools/$school_name/$session_year/Accounts/Receipt_Index/$receiptNo"
+        );
+
+        $voucher     = null;
+        $voucherDate = '';
+        $userId      = '';
+        $class       = '';
+        $section     = '';
+
+        if (is_array($index) && !empty($index['date']) && !empty($index['user_id'])) {
+            // Fast path: index exists — fetch voucher directly by date
+            $voucherDate = $index['date'];
+            $userId      = $index['user_id'];
+            $class       = $index['class']   ?? '';
+            $section     = $index['section'] ?? '';
+            $voucher     = $this->firebase->get(
+                "Schools/$school_name/$session_year/Accounts/Vouchers/$voucherDate/$receiptKey"
+            );
+            if (is_array($voucher)) {
+                $voucher = (array) $voucher;
+            } else {
+                $voucher = null;
+            }
+        }
+
+        // Fallback: scan all voucher dates (for receipts created before the index)
+        if (empty($voucher)) {
+            $allVouchers = $this->firebase->get(
+                "Schools/$school_name/$session_year/Accounts/Vouchers"
+            ) ?? [];
+            if (is_array($allVouchers)) {
+                foreach ($allVouchers as $date => $entries) {
+                    if (!is_array($entries)) continue;
+                    if (isset($entries[$receiptKey])) {
+                        $voucher     = (array) $entries[$receiptKey];
+                        $voucherDate = $date;
+                        $userId      = $voucher['Id'] ?? '';
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (empty($voucher) || empty($userId)) {
+            show_404();
+        }
+
+        // ── 2. Load student profile ──
+        $student = $this->firebase->get("Users/Parents/$school_id/$userId") ?? [];
+        if (!is_array($student)) $student = [];
+
+        // Use class/section from index if available, otherwise resolve from profile
+        if ($class === '' || $section === '') {
+            list($class, $section) = $this->_resolveClassSection($student);
+        }
+
+        // ── 3. Load fee record for this receipt ──
+        $feeRecord = [];
+        if ($class !== '' && $section !== '') {
+            $studentBase = $this->studentPath($class, $section, $userId);
+            $feeRecord   = $this->firebase->get("$studentBase/Fees Record/$receiptKey") ?? [];
+            if (!is_array($feeRecord)) $feeRecord = [];
+        }
+
+        // If fee record empty, build from voucher data
+        if (empty($feeRecord)) {
+            $feeRecord = [
+                'Amount'   => $voucher['Fees Received'] ?? '0.00',
+                'Date'     => $voucherDate,
+                'Mode'     => $voucher['Mode'] ?? 'N/A',
+                'Discount' => '0.00',
+                'Fine'     => '0.00',
+                'Refer'    => '',
+            ];
+        }
+
+        // ── 4. School profile for header ──
+        $schoolProfile = $this->firebase->get("Schools/$school_name/Config/Profile") ?? [];
+        if (!is_array($schoolProfile)) $schoolProfile = [];
+        $schoolLogo = $this->firebase->get("Schools/$school_name/Logo") ?? '';
+
+        // ── 5. Extract class/section display ──
+        $classDisplay   = str_replace('Class ', '', $class);
+        $sectionDisplay = str_replace('Section ', '', $section);
+
+        // ── 6. Parse amounts ──
+        $amount   = floatval(str_replace(',', '', $feeRecord['Amount']   ?? '0'));
+        $discount = floatval(str_replace(',', '', $feeRecord['Discount'] ?? '0'));
+        $fine     = floatval(str_replace(',', '', $feeRecord['Fine']     ?? '0'));
+        $netTotal = $amount - $discount + $fine;
+
+        $data = [
+            'receipt_no'      => $receiptNo,
+            'receipt_key'     => $receiptKey,
+            'receipt_date'    => $feeRecord['Date'] ?? $voucherDate,
+            'student'         => $student,
+            'student_name'    => $student['Name'] ?? $userId,
+            'father_name'     => $student['Father Name'] ?? '',
+            'user_id'         => $userId,
+            'class_display'   => $classDisplay,
+            'section_display' => $sectionDisplay,
+            'amount'          => $amount,
+            'discount'        => $discount,
+            'fine'            => $fine,
+            'net_total'       => $netTotal,
+            'payment_mode'    => $feeRecord['Mode'] ?? $voucher['Mode'] ?? 'N/A',
+            'reference'       => $feeRecord['Refer'] ?? '',
+            'school_name'     => $schoolProfile['name'] ?? $this->school_display_name ?? $school_name,
+            'school_address'  => $schoolProfile['address'] ?? '',
+            'school_phone'    => $schoolProfile['phone'] ?? '',
+            'school_logo'     => $schoolLogo,
+            'session_year'    => $session_year,
+        ];
+
+        $this->load->view('fees/receipt', $data);
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -1140,7 +1315,7 @@ class Fees extends MY_Controller
     {
         $this->output->set_content_type('application/json');
 
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $sn        = $this->school_name;
         $sy        = $this->session_year;
 
@@ -1158,10 +1333,23 @@ class Fees extends MY_Controller
             return;
         }
 
-        $studentsPath = $this->studentPath($class, $section) . '/List';
-        $feesPath     = $this->feesPath($class, $section);
+        $feesPath = $this->feesPath($class, $section);
 
-        $student_ids = $this->firebase->get($studentsPath);
+        // Single bulk read: entire section Students subtree (List + per-student data)
+        $allStudentData = $this->firebase->get($this->studentPath($class, $section));
+        if (empty($allStudentData) || !is_array($allStudentData)) {
+            $this->output->set_output(json_encode([[
+                'userId' => null,
+                'name' => "No students in $class $section",
+                'totalFee' => null,
+                'receivedFee' => null,
+                'dueFee' => null,
+            ]]));
+            return;
+        }
+
+        $student_ids = isset($allStudentData['List']) && is_array($allStudentData['List'])
+            ? $allStudentData['List'] : [];
         if (empty($student_ids)) {
             $this->output->set_output(json_encode([[
                 'userId' => null,
@@ -1204,21 +1392,22 @@ class Fees extends MY_Controller
             $name  = $prof['Name']        ?? 'N/A';
             $fname = $prof['Father Name'] ?? 'N/A';
 
-            $recs = $this->firebase->get($this->studentPath($class, $section, $uid) . '/Fees Record');
+            // Extract Fees Record and Discount from already-fetched subtree
+            $studentData = isset($allStudentData[$uid]) && is_array($allStudentData[$uid])
+                ? $allStudentData[$uid] : [];
+
+            $recs = isset($studentData['Fees Record']) && is_array($studentData['Fees Record'])
+                ? $studentData['Fees Record'] : [];
             $paid = 0;
-            if (is_array($recs)) {
-                foreach ($recs as $r) {
-                    if (is_array($r)) {
-                        $paid += (float)str_replace(',', '', $r['Amount'] ?? 0);
-                    }
+            foreach ($recs as $r) {
+                if (is_array($r)) {
+                    $paid += (float)str_replace(',', '', $r['Amount'] ?? 0);
                 }
             }
 
-            $discNode = $this->firebase->get($this->studentPath($class, $section, $uid) . '/Discount');
-            $discount = 0;
-            if (is_array($discNode)) {
-                $discount += (float)($discNode['totalDiscount'] ?? 0);
-            }
+            $discNode = isset($studentData['Discount']) && is_array($studentData['Discount'])
+                ? $studentData['Discount'] : [];
+            $discount = (float)($discNode['totalDiscount'] ?? 0);
 
             $response[] = [
                 'userId'      => $uid,
@@ -1230,7 +1419,9 @@ class Fees extends MY_Controller
             ];
         }
 
-        usort($response, fn($a, $b) => $b['dueFee'] <=> $a['dueFee']);
+        usort($response, function ($a, $b) {
+            return $b['dueFee'] <=> $a['dueFee'];
+        });
 
         $this->output->set_output(json_encode($response));
     }
@@ -1241,7 +1432,7 @@ class Fees extends MY_Controller
 
     public function fees_records()
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $sn        = $this->school_name;
         $sy        = $this->session_year;
 

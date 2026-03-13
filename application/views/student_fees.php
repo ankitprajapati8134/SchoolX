@@ -53,21 +53,21 @@
                 <div class="sfr-stat-ico ico-green"><i class="fa fa-inr"></i></div>
                 <div>
                     <div class="sfr-stat-label">Total Paid</div>
-                    <div class="sfr-stat-val" style="color:#16a34a;" id="sfrStPaid">₹ 0</div>
+                    <div class="sfr-stat-val c-paid" id="sfrStPaid">₹ 0</div>
                 </div>
             </div>
             <div class="sfr-stat">
                 <div class="sfr-stat-ico ico-red"><i class="fa fa-exclamation-circle"></i></div>
                 <div>
                     <div class="sfr-stat-label">Total Fine</div>
-                    <div class="sfr-stat-val" style="color:#dc2626;" id="sfrStFine">₹ 0</div>
+                    <div class="sfr-stat-val c-fine" id="sfrStFine">₹ 0</div>
                 </div>
             </div>
             <div class="sfr-stat">
                 <div class="sfr-stat-ico ico-amber"><i class="fa fa-tag"></i></div>
                 <div>
                     <div class="sfr-stat-label">Total Discount</div>
-                    <div class="sfr-stat-val" style="color:#d97706;" id="sfrStDisc">₹ 0</div>
+                    <div class="sfr-stat-val c-disc" id="sfrStDisc">₹ 0</div>
                 </div>
             </div>
         </div>
@@ -214,11 +214,16 @@
    ③ SyntaxError resolved because ① stops the HTML 403 response
    ═══════════════════════════════════════════════════════════ */
 
-var CSRF_NAME = document.querySelector('meta[name="csrf-name"]').getAttribute('content');
-var CSRF_HASH = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+var CSRF_NAME = (document.querySelector('meta[name="csrf-name"]') || {}).content || '<?= $this->security->get_csrf_token_name() ?>';
+var CSRF_HASH = (document.querySelector('meta[name="csrf-token"]') || {}).content || '<?= $this->security->get_csrf_hash() ?>';
 var SITE_URL = '<?= rtrim(site_url(), '/') ?>';
 
 /* ── Helpers ── */
+function esc(s) {
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(s || ''));
+    return d.innerHTML;
+}
 function fmtRs(n) {
     n = parseFloat(String(n || 0).replace(/,/g, '')) || 0;
     return '₹ ' + n.toLocaleString('en-IN', {
@@ -241,7 +246,7 @@ function toast(msg, type) {
     } [type];
     var el = document.createElement('div');
     el.className = 'sfr-toast t-' + type;
-    el.innerHTML = '<i class="fa fa-' + ico + '"></i> ' + msg;
+    el.innerHTML = '<i class="fa fa-' + ico + '"></i> ' + esc(msg);
     document.getElementById('sfToastWrap').appendChild(el);
     setTimeout(function() {
         el.classList.add('sfr-toast-hide');
@@ -305,7 +310,7 @@ function loadReceipts() {
         '<tr><td colspan="10" class="sfr-state">' +
         '<i class="fa fa-spinner fa-spin sfr-state-ico" style="opacity:.6;"></i>' +
         '<p class="sfr-state-ttl">Loading…</p>' +
-        '<p class="sfr-state-sub">Fetching records for <strong>' + userId + '</strong></p>' +
+        '<p class="sfr-state-sub">Fetching records for <strong>' + esc(userId) + '</strong></p>' +
         '</td></tr>';
 
     document.getElementById('sfReceiptsFoot').style.display = 'none';
@@ -366,26 +371,26 @@ function loadReceipts() {
                 tr.setAttribute('data-s', searchKey);
                 tr.innerHTML =
                     /* # */
-                    '<td style="color:#9ca3af;font-weight:600;font-size:12px;">' + (i + 1) + '</td>' +
+                    '<td class="sfr-td-num">' + (i + 1) + '</td>' +
                     /* Receipt No */
-                    '<td><span class="sfr-pill"><i class="fa fa-hashtag"></i>' + (rec.receiptNo || '—') +
+                    '<td><span class="sfr-pill"><i class="fa fa-hashtag"></i>' + esc(rec.receiptNo || '—') +
                     '</span></td>' +
                     /* Date */
-                    '<td style="white-space:nowrap;color:#374151;">' +
-                    '<i class="fa fa-calendar-o" style="color:#9ca3af;margin-right:5px;font-size:11px;"></i>' +
-                    (rec.date || '—') +
+                    '<td class="sfr-td-date">' +
+                    '<i class="fa fa-calendar-o sfr-td-date-ico"></i>' +
+                    esc(rec.date || '—') +
                     '</td>' +
                     /* Student + father — avatar + stacked text */
                     '<td>' +
                     '<div style="display:flex;align-items:center;">' +
-                    '<span class="sfr-ico-cell">' + initials(name) + '</span>' +
-                    '<div class="sfr-sname">' + name +
-                    (father ? '<span>S/o ' + father + '</span>' : '') +
+                    '<span class="sfr-ico-cell">' + esc(initials(name)) + '</span>' +
+                    '<div class="sfr-sname">' + esc(name) +
+                    (father ? '<span>S/o ' + esc(father) + '</span>' : '') +
                     '</div>' +
                     '</div>' +
                     '</td>' +
                     /* Class */
-                    '<td style="font-size:12px;color:#374151;white-space:nowrap;">' + (rec.class || '—') +
+                    '<td class="sfr-td-class">' + esc(rec.class || '—') +
                     '</td>' +
                     /* Amount Paid */
                     '<td><span class="c-paid">' + fmtRs(amt) + '</span></td>' +
@@ -396,10 +401,10 @@ function loadReceipts() {
                     '<td>' + (dis > 0 ? '<span class="c-disc">' + fmtRs(dis) + '</span>' :
                         '<span class="c-mute">—</span>') + '</td>' +
                     /* Mode */
-                    '<td><span class="sfr-mode">' + (rec.account || 'N/A') + '</span></td>' +
+                    '<td><span class="sfr-mode">' + esc(rec.account || 'N/A') + '</span></td>' +
                     /* Reference */
-                    '<td style="color:#6b7280;font-size:12px;max-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
-                    (rec.reference || '—') +
+                    '<td class="sfr-td-ref">' +
+                    esc(rec.reference || '—') +
                     '</td>';
 
                 tbody.appendChild(tr);
@@ -427,12 +432,11 @@ function loadReceipts() {
             if (data.length > 5) document.getElementById('sfFilterBar').style.display = 'flex';
         })
         .catch(function(err) {
-            console.error('fetch_fee_receipts:', err);
             tbody.innerHTML =
                 '<tr><td colspan="10" class="sfr-state">' +
-                '<i class="fa fa-exclamation-circle sfr-state-ico" style="color:#dc2626;opacity:.7;"></i>' +
-                '<p class="sfr-state-ttl" style="color:#dc2626;">Failed to load receipts</p>' +
-                '<p class="sfr-state-sub">' + (err.message || 'Please try again.') + '</p>' +
+                '<i class="fa fa-exclamation-circle sfr-state-ico sfr-state-err"></i>' +
+                '<p class="sfr-state-ttl sfr-state-err">Failed to load receipts</p>' +
+                '<p class="sfr-state-sub">' + esc(err.message || 'Please try again.') + '</p>' +
                 '</td></tr>';
             toast('Failed to load receipts.', 'error');
         });
@@ -475,47 +479,51 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
 
 <style>
 /*
- * student_fees.php — All CSS variables removed and replaced with
- * hardcoded values taken directly from the app screenshots.
+ * student_fees.php — Theme-aware CSS using variables from global header.
  *
- * Every var(--gold), var(--bg), var(--t1), var(--font-d) etc.
- * was resolving to nothing → broken layout, wrong colours.
+ * Uses --sfr-* local tokens that resolve to global theme vars (--gold, --bg, --t1, etc.)
+ * with hardcoded fallbacks for safety. Automatically adapts to light/dark mode.
  *
- * Exact palette from screenshots:
- *   Page bg        #f4f6f9
- *   Card bg        #ffffff
- *   Card head bg   #f8fafc
- *   Table header   #1a2332  (solid dark navy)
- *   Table footer   #1a2332  (same navy — "Class Total" row style)
- *   Teal/primary   #0d9488
- *   Body text      #1a2332
- *   Secondary text #6b7280
- *   Border         #e5e7eb
- *   Row separator  #f1f5f9
- *   Row hover      #f0fdfa
- *   Green amounts  #16a34a
- *   Red amounts    #dc2626
- *   Amber amounts  #d97706
+ * Font-size scale (rem-based, consistent with other fee views):
+ *   Page title:  1.35rem   Breadcrumb: .78rem     Card head: .88rem
+ *   Label:       .68rem    Body/Input: .82rem     Table body: .8rem
+ *   Table head:  .68rem    Stat value: 1.25rem    Badge/pill: .7rem
+ *   Button:      .82rem    Toast:      .8rem
  */
+
+:root {
+    --sfr-navy:    var(--bg4, #1a2332);
+    --sfr-teal:    var(--gold, #0d9488);
+    --sfr-teal2:   var(--gold2, #0f766e);
+    --sfr-sky:     var(--gold-dim, #f0fdfa);
+    --sfr-green:   #16a34a;
+    --sfr-red:     #dc2626;
+    --sfr-amber:   #d97706;
+    --sfr-text:    var(--t1, #1a2332);
+    --sfr-text2:   var(--t2, #374151);
+    --sfr-muted:   var(--t3, #9ca3af);
+    --sfr-border:  var(--border, #f1f5f9);
+    --sfr-bg:      var(--bg, #f4f6f9);
+    --sfr-card:    var(--bg2, #ffffff);
+    --sfr-card-hd: var(--bg3, #f8fafc);
+    --sfr-shadow:  var(--sh, 0 1px 3px rgba(0,0,0,.06));
+    --sfr-radius:  12px;
+}
 
 /* ── Page ── */
 .sfr-page {
     padding: 24px 28px;
-    background: #f4f6f9;
+    background: var(--sfr-bg);
     min-height: 100vh;
 }
 
-/* ════════════════════════════
-   PAGE HEADER
-   Exact match: "₹ Fee Counter" / "Cash Book" title style
-   Navy bold title, teal icon, small grey breadcrumb below
-   ════════════════════════════ */
+/* ── PAGE HEADER ── */
 .sfr-page-hd { margin-bottom: 26px; }
 
 .sfr-page-title {
-    font-size: 23px;
+    font-size: 1.35rem;
     font-weight: 800;
-    color: #1a2332;          /* was: var(--t1) — undefined */
+    color: var(--sfr-text);
     margin: 0 0 6px;
     display: flex;
     align-items: center;
@@ -524,42 +532,38 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
     line-height: 1.2;
 }
 .sfr-page-title i {
-    color: #0d9488;          /* was: var(--gold) — undefined */
-    font-size: 21px;
+    color: var(--sfr-teal);
+    font-size: 1.2rem;
 }
 
 .sfr-breadcrumb {
     list-style: none;
     padding: 0; margin: 0;
     display: flex; align-items: center; gap: 6px;
-    font-size: 12.5px;
-    color: #9ca3af;          /* was: var(--t3) — undefined */
+    font-size: .78rem;
+    color: var(--sfr-muted);
 }
-.sfr-breadcrumb li + li::before { content: '/'; color: #d1d5db; margin-right: 6px; }
+.sfr-breadcrumb li + li::before { content: '/'; color: var(--sfr-border); margin-right: 6px; }
 .sfr-breadcrumb a {
-    color: #0d9488;          /* was: var(--gold) — undefined */
+    color: var(--sfr-teal);
     text-decoration: none; font-weight: 500;
 }
 .sfr-breadcrumb a:hover { text-decoration: underline; }
 
-/* ════════════════════════════
-   STAT CARDS
-   Same as fee counter TOTAL FEE / ALREADY PAID / DISCOUNT / DUE AMOUNT cards
-   White card, coloured left border, coloured icon box
-   ════════════════════════════ */
+/* ── STAT CARDS ── */
 .sfr-stats {
-    display: none;           /* revealed via JS once data loads */
+    display: none;
     grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
     gap: 16px;
     margin-bottom: 24px;
 }
 .sfr-stat {
-    background: #ffffff;     /* was: var(--bg2) — undefined */
-    border-radius: 12px;
+    background: var(--sfr-card);
+    border-radius: var(--sfr-radius);
     padding: 18px 20px;
     display: flex; align-items: center; gap: 16px;
-    box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 14px rgba(0,0,0,.04);
-    border: 1px solid #f1f5f9;
+    box-shadow: var(--sfr-shadow);
+    border: 1px solid var(--sfr-border);
     transition: transform .18s, box-shadow .18s;
 }
 .sfr-stat:hover {
@@ -567,123 +571,113 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
     box-shadow: 0 6px 20px rgba(0,0,0,.09);
 }
 .sfr-stat-ico {
-    width: 46px; height: 46px; border-radius: 12px;
+    width: 46px; height: 46px; border-radius: var(--sfr-radius);
     display: flex; align-items: center; justify-content: center;
-    font-size: 19px; flex-shrink: 0;
+    font-size: 1.15rem; flex-shrink: 0;
 }
-.ico-teal  { background: #f0fdfa; color: #0d9488; }
-.ico-green { background: #f0fdf4; color: #16a34a; }
-.ico-red   { background: #fef2f2; color: #dc2626; }
-.ico-amber { background: #fffbeb; color: #d97706; }
+.ico-teal  { background: var(--sfr-sky); color: var(--sfr-teal); }
+.ico-green { background: #f0fdf4; color: var(--sfr-green); }
+.ico-red   { background: #fef2f2; color: var(--sfr-red); }
+.ico-amber { background: #fffbeb; color: var(--sfr-amber); }
 .sfr-stat-label {
-    font-size: 10.5px; font-weight: 700; color: #9ca3af;
+    font-size: .68rem; font-weight: 700; color: var(--sfr-muted);
     text-transform: uppercase; letter-spacing: .6px; margin-bottom: 4px;
 }
 .sfr-stat-val {
-    font-size: 21px; font-weight: 800; color: #1a2332; line-height: 1;
+    font-size: 1.25rem; font-weight: 800; color: var(--sfr-text); line-height: 1;
 }
 
-/* ════════════════════════════
-   CARDS
-   White body, light-grey head (#f8fafc), 1px #f1f5f9 border
-   ════════════════════════════ */
+/* ── CARDS ── */
 .sfr-card {
-    background: #ffffff;     /* was: var(--bg2) — undefined */
-    border-radius: 12px;
-    border: 1px solid #f1f5f9; /* was: var(--border) — undefined */
-    box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 14px rgba(0,0,0,.04);
+    background: var(--sfr-card);
+    border-radius: var(--sfr-radius);
+    border: 1px solid var(--sfr-border);
+    box-shadow: var(--sfr-shadow);
     margin-bottom: 20px;
     overflow: hidden;
 }
 .sfr-card-hd {
     display: flex; align-items: center; justify-content: space-between;
     padding: 14px 20px;
-    background: #f8fafc;     /* was: var(--bg3) — undefined */
-    border-bottom: 1.5px solid #f1f5f9; /* was: var(--border) — undefined */
+    background: var(--sfr-card-hd);
+    border-bottom: 1.5px solid var(--sfr-border);
     gap: 12px; flex-wrap: wrap;
 }
 .sfr-card-hd-left { display: flex; align-items: center; gap: 10px; }
-.sfr-card-hd-left i { color: #0d9488; font-size: 15px; } /* was: var(--gold) — undefined */
+.sfr-card-hd-left i { color: var(--sfr-teal); font-size: .92rem; }
 .sfr-card-hd-left h3 {
-    margin: 0; font-size: 14px; font-weight: 700;
-    color: #1a2332;          /* was: var(--t2) — undefined */
+    margin: 0; font-size: .88rem; font-weight: 700;
+    color: var(--sfr-text);
     letter-spacing: -.1px;
 }
 .sfr-card-body { padding: 20px; }
 
-/* ════════════════════════════
-   SEARCH ROW
-   ════════════════════════════ */
+/* ── SEARCH ROW ── */
 .sfr-search-row {
     display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
 }
 .sfr-field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 220px; }
 .sfr-field-lbl {
-    font-size: 11px; font-weight: 700; color: #374151; /* was: var(--t2) — undefined */
+    font-size: .68rem; font-weight: 700; color: var(--sfr-text2);
     text-transform: uppercase; letter-spacing: .55px;
 }
-.sfr-field-lbl span { color: #dc2626; }
+.sfr-field-lbl span { color: var(--sfr-red); }
 .sfr-input-wr { position: relative; }
 .sfr-input-ico {
     position: absolute; left: 12px; top: 50%;
-    transform: translateY(-50%); color: #9ca3af; font-size: 13px; pointer-events: none;
+    transform: translateY(-50%); color: var(--sfr-muted); font-size: .8rem; pointer-events: none;
 }
 .sfr-input {
     width: 100%; box-sizing: border-box;
     padding: 10px 14px 10px 36px;
-    border: 1.5px solid #e5e7eb; /* was: var(--brd2) — undefined */
+    border: 1.5px solid var(--sfr-border);
     border-radius: 8px;
-    font-size: 13.5px; font-weight: 500;
-    color: #1a2332;            /* was: var(--t1) — undefined */
-    background: #ffffff;       /* was: var(--bg3) — undefined */
+    font-size: .82rem; font-weight: 500;
+    color: var(--sfr-text);
+    background: var(--sfr-card);
     outline: none;
     transition: border-color .18s, box-shadow .18s;
 }
 .sfr-input:focus {
-    border-color: #0d9488;     /* was: var(--gold) — undefined */
+    border-color: var(--sfr-teal);
     box-shadow: 0 0 0 3px rgba(13,148,136,.13);
 }
-.sfr-input::placeholder { color: #b0b8c4; }
+.sfr-input::placeholder { color: var(--sfr-muted); opacity: .6; }
 
 .sfr-btn {
     display: inline-flex; align-items: center; gap: 7px;
     padding: 10px 22px; border-radius: 8px;
-    font-size: 13.5px; font-weight: 700;
+    font-size: .82rem; font-weight: 700;
     cursor: pointer; border: none;
     transition: all .18s; white-space: nowrap; line-height: 1;
 }
 .sfr-btn-primary {
-    background: #0d9488;       /* was: var(--gold) — undefined */
-    color: #ffffff;
+    background: var(--sfr-teal);
+    color: #fff;
     box-shadow: 0 2px 8px rgba(13,148,136,.28);
 }
 .sfr-btn-primary:hover {
-    background: #0f766e;
+    background: var(--sfr-teal2);
     box-shadow: 0 4px 16px rgba(13,148,136,.38);
     transform: translateY(-1px);
 }
 .sfr-btn-ghost {
-    background: #ffffff;       /* was: var(--bg3) — undefined */
-    color: #374151;            /* was: var(--t2) — undefined */
-    border: 1.5px solid #e5e7eb; /* was: var(--brd2) — undefined */
+    background: var(--sfr-card);
+    color: var(--sfr-text2);
+    border: 1.5px solid var(--sfr-border);
 }
-.sfr-btn-ghost:hover { border-color: #0d9488; color: #0d9488; background: #f0fdfa; }
+.sfr-btn-ghost:hover { border-color: var(--sfr-teal); color: var(--sfr-teal); background: var(--sfr-sky); }
 
-/* ════════════════════════════
-   STUDENT INFO BANNER
-   Dark navy gradient — same feel as fee counter's PAYMENT SUMMARY panel
-   Replaces the old border-left strip that used var() variables
-   ════════════════════════════ */
+/* ── STUDENT INFO BANNER ── */
 .sfr-banner {
     display: none;
-    background: linear-gradient(135deg, #1a2332 0%, #22304a 55%, #1e3a5a 100%);
-    border-radius: 12px;
+    background: linear-gradient(135deg, var(--sfr-navy) 0%, #22304a 55%, #1e3a5a 100%);
+    border-radius: var(--sfr-radius);
     padding: 20px 26px;
     margin-bottom: 20px;
     box-shadow: 0 4px 20px rgba(26,35,50,.3);
     position: relative; overflow: hidden;
 }
-/* decorative bg circles */
 .sfr-banner::before {
     content: ''; position: absolute;
     right: -40px; top: -40px;
@@ -701,12 +695,11 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
 .sfr-banner-inner {
     display: flex; align-items: center; flex-wrap: wrap; gap: 0; position: relative; z-index: 1;
 }
-/* initials circle — like "BA" "PR" teal circles in due fees screenshot */
 .sfr-avatar {
     width: 52px; height: 52px; border-radius: 14px;
-    background: #0d9488;
+    background: var(--sfr-teal);
     display: flex; align-items: center; justify-content: center;
-    font-size: 17px; font-weight: 800; color: #fff;
+    font-size: 1rem; font-weight: 800; color: #fff;
     flex-shrink: 0; margin-right: 22px;
     box-shadow: 0 2px 10px rgba(0,0,0,.22);
 }
@@ -718,121 +711,107 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
 .sfr-bf:first-child { padding-left: 0; }
 .sfr-bf:last-child  { border-right: none; }
 .sfr-bf-lbl {
-    font-size: 10px; color: rgba(255,255,255,.5);
+    font-size: .62rem; color: rgba(255,255,255,.5);
     text-transform: uppercase; letter-spacing: .7px; font-weight: 600; margin-bottom: 5px;
 }
-.sfr-bf-val { font-size: 14px; font-weight: 700; color: #fff; white-space: nowrap; }
+.sfr-bf-val { font-size: .88rem; font-weight: 700; color: #fff; white-space: nowrap; }
 .sfr-bf-val.teal  { color: #5eead4; }
 .sfr-bf-val.green { color: #86efac; }
 .sfr-bf-val.amber { color: #fcd34d; }
 
-/* ════════════════════════════
-   FILTER BAR (inside card, above table)
-   Matches "Search student or father name…" bar in due fees screenshot
-   ════════════════════════════ */
+/* ── FILTER BAR ── */
 .sfr-filter-bar {
     display: none; align-items: center; justify-content: space-between;
-    padding: 12px 20px; border-bottom: 1px solid #f1f5f9;
-    background: #fafbfc; gap: 12px; flex-wrap: wrap;
+    padding: 12px 20px; border-bottom: 1px solid var(--sfr-border);
+    background: var(--sfr-card-hd); gap: 12px; flex-wrap: wrap;
 }
 .sfr-filter-wr { position: relative; }
 .sfr-filter-ico {
     position: absolute; left: 11px; top: 50%;
-    transform: translateY(-50%); color: #9ca3af; font-size: 13px; pointer-events: none;
+    transform: translateY(-50%); color: var(--sfr-muted); font-size: .8rem; pointer-events: none;
 }
 .sfr-filter-inp {
     padding: 8px 14px 8px 32px;
-    border: 1.5px solid #e5e7eb; border-radius: 8px;
-    font-size: 13px; color: #1a2332; background: #fff;
+    border: 1.5px solid var(--sfr-border); border-radius: 8px;
+    font-size: .8rem; color: var(--sfr-text); background: var(--sfr-card);
     outline: none; transition: border-color .18s; min-width: 240px;
 }
-.sfr-filter-inp:focus { border-color: #0d9488; }
-.sfr-count { font-size: 12px; color: #6b7280; font-weight: 600; white-space: nowrap; }
+.sfr-filter-inp:focus { border-color: var(--sfr-teal); }
+.sfr-count { font-size: .75rem; color: var(--sfr-muted); font-weight: 600; white-space: nowrap; }
 
-/* ════════════════════════════
-   TABLE
-   Header  : solid #1a2332 navy (from both screenshots — NOT a gradient)
-   Rows    : white, #f0fdfa on hover
-   Footer  : solid #1a2332 navy with 3px teal top border
-             This matches the "Class Total" row in the due fees screenshot exactly
-   ════════════════════════════ */
+/* ── TABLE ── */
 .sfr-tbl-wr { overflow-x: auto; }
-.sfr-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sfr-tbl { width: 100%; border-collapse: collapse; font-size: .8rem; }
 
-/* Header — solid dark navy, uppercase small caps */
-.sfr-tbl thead tr { background: #1a2332; } /* was: linear-gradient(var(--gold)…) — undefined */
+.sfr-tbl thead tr { background: var(--sfr-navy); }
 .sfr-tbl thead th {
     padding: 13px 16px;
-    font-size: 11px; font-weight: 700; color: #fff;
+    font-size: .68rem; font-weight: 700; color: #fff;
     text-transform: uppercase; letter-spacing: .65px;
     white-space: nowrap; border: none; text-align: left;
 }
 
-/* Body rows */
-.sfr-tbl tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .14s; }
+.sfr-tbl tbody tr { border-bottom: 1px solid var(--sfr-border); transition: background .14s; }
 .sfr-tbl tbody tr:last-child { border-bottom: none; }
-.sfr-tbl tbody tr:hover { background: #f0fdfa; } /* was: var(--gold-dim) — undefined */
-.sfr-tbl td { padding: 13px 16px; vertical-align: middle; color: #374151; font-size: 13px; }
+.sfr-tbl tbody tr:hover { background: var(--sfr-sky); }
+.sfr-tbl td { padding: 13px 16px; vertical-align: middle; color: var(--sfr-text2); font-size: .8rem; }
 
-/* Student name / father stacked in one cell */
-.sfr-sname  { font-weight: 700; color: #1a2332; font-size: 13.5px; line-height: 1.3; }
-.sfr-sname  span { display: block; font-size: 11.5px; color: #6b7280; font-weight: 400; margin-top: 2px; }
+/* JS-generated cell classes (replaces inline styles) */
+.sfr-td-num  { color: var(--sfr-muted); font-weight: 600; font-size: .75rem; }
+.sfr-td-date { white-space: nowrap; color: var(--sfr-text2); }
+.sfr-td-date-ico { color: var(--sfr-muted); margin-right: 5px; font-size: .68rem; }
+.sfr-td-class { font-size: .75rem; color: var(--sfr-text2); white-space: nowrap; }
+.sfr-td-ref  { color: var(--sfr-muted); font-size: .75rem; max-width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* Table-row avatar — like "BA"/"PR" circles in due fees screenshot */
+.sfr-sname  { font-weight: 700; color: var(--sfr-text); font-size: .84rem; line-height: 1.3; }
+.sfr-sname  span { display: block; font-size: .72rem; color: var(--sfr-muted); font-weight: 400; margin-top: 2px; }
+
 .sfr-ico-cell {
     width: 36px; height: 36px; border-radius: 10px;
-    background: #0d9488; color: #fff;
+    background: var(--sfr-teal); color: #fff;
     display: inline-flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 800;
+    font-size: .75rem; font-weight: 800;
     flex-shrink: 0; margin-right: 10px; vertical-align: middle;
 }
 
-/* Receipt number pill */
 .sfr-pill {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 3px 10px 3px 8px; border-radius: 20px;
-    background: #ccfbf1; color: #0f766e;       /* was: var(--gold-dim)/var(--gold) — undefined */
-    font-size: 11.5px; font-weight: 800;
+    background: var(--sfr-sky); color: var(--sfr-teal2);
+    font-size: .7rem; font-weight: 800;
     border: 1px solid rgba(13,148,136,.18); white-space: nowrap;
 }
-.sfr-pill i { font-size: 9px; }
+.sfr-pill i { font-size: .56rem; }
 
-/* Payment mode badge */
 .sfr-mode {
     display: inline-block; padding: 3px 10px; border-radius: 20px;
-    background: #f3f4f6; color: #374151;
-    font-size: 11.5px; font-weight: 700; border: 1px solid #e5e7eb;
+    background: var(--sfr-card-hd); color: var(--sfr-text2);
+    font-size: .7rem; font-weight: 700; border: 1px solid var(--sfr-border);
 }
 
 /* Amount colour classes */
-.c-paid { font-weight: 700; color: #16a34a; }  /* was: var(--green) — undefined */
-.c-fine { font-weight: 600; color: #dc2626; }  /* was: var(--rose) — undefined */
-.c-disc { font-weight: 600; color: #d97706; }  /* was: var(--amber) — undefined */
-.c-mute { color: #9ca3af; }
+.c-paid { font-weight: 700; color: var(--sfr-green); }
+.c-fine { font-weight: 600; color: var(--sfr-red); }
+.c-disc { font-weight: 600; color: var(--sfr-amber); }
+.c-mute { color: var(--sfr-muted); }
 
-/* ── TABLE FOOTER ──
-   Matches "Class Total" row from due fees screenshot exactly:
-   - Same dark navy (#1a2332) background as the header
-   - 3px teal top border as a visual separator
-   - White text with coloured amount cells
-   Previously was just var(--bg3) with a thin border — looked plain
-*/
+/* ── TABLE FOOTER ── */
 .sfr-tbl tfoot { display: none; }
 .sfr-tbl tfoot tr {
-    background: #1a2332;        /* was: var(--bg3) — resolved to nothing */
-    border-top: 3px solid #0d9488; /* teal separator — same as teal accents throughout */
+    background: var(--sfr-navy);
+    border-top: 3px solid var(--sfr-teal);
 }
 .sfr-tbl tfoot td {
     padding: 14px 16px; border: none;
-    font-weight: 700; font-size: 13px; color: #fff;
+    font-weight: 700; font-size: .8rem; color: #fff;
 }
 .sfr-tfoot-lbl {
-    font-size: 11px !important; font-weight: 600 !important;
+    font-size: .68rem !important; font-weight: 600 !important;
     color: rgba(255,255,255,.55) !important;
     text-transform: uppercase; letter-spacing: .65px;
     text-align: right; padding-right: 20px !important;
 }
-.sfr-tfoot-paid { color: #86efac !important; font-size: 14px !important; }
+.sfr-tfoot-paid { color: #86efac !important; font-size: .88rem !important; }
 .sfr-tfoot-fine { color: #fca5a5 !important; }
 .sfr-tfoot-disc { color: #fcd34d !important; }
 
@@ -840,16 +819,17 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
 .sfr-state {
     text-align: center !important;
     padding: 60px 20px !important;
-    color: #9ca3af;
+    color: var(--sfr-muted);
 }
 .sfr-state-ico {
-    font-size: 46px; display: block;
-    margin: 0 auto 16px; color: #0d9488; opacity: .25;
+    font-size: 2.5rem; display: block;
+    margin: 0 auto 16px; color: var(--sfr-teal); opacity: .25;
 }
 .sfr-state-ttl {
-    font-size: 15px; font-weight: 700; color: #374151; margin: 0 0 6px;
+    font-size: .92rem; font-weight: 700; color: var(--sfr-text2); margin: 0 0 6px;
 }
-.sfr-state-sub { font-size: 13px; color: #9ca3af; margin: 0; }
+.sfr-state-sub { font-size: .8rem; color: var(--sfr-muted); margin: 0; }
+.sfr-state-err { color: var(--sfr-red) !important; opacity: .7; }
 
 /* ── Toast ── */
 .sfr-toasts {
@@ -859,604 +839,17 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
 .sfr-toast {
     display: flex; align-items: center; gap: 10px;
     padding: 12px 18px; border-radius: 8px;
-    font-size: 13px; font-weight: 600;
-    background: #ffffff;       /* was: var(--bg2) — undefined */
+    font-size: .8rem; font-weight: 600;
+    background: var(--sfr-card);
     box-shadow: 0 4px 20px rgba(0,0,0,.13);
     animation: sfr-in .25s ease; min-width: 240px;
-    border: 1px solid #f1f5f9; /* was: var(--border) — undefined */
+    border: 1px solid var(--sfr-border);
 }
-.t-success { border-left: 4px solid #16a34a; color: #16a34a; }
-.t-error   { border-left: 4px solid #dc2626; color: #dc2626; }
-.t-warning { border-left: 4px solid #d97706; color: #d97706; }
+.t-success { border-left: 4px solid var(--sfr-green); color: var(--sfr-green); }
+.t-error   { border-left: 4px solid var(--sfr-red);   color: var(--sfr-red); }
+.t-warning { border-left: 4px solid var(--sfr-amber); color: var(--sfr-amber); }
 .sfr-toast-hide { animation: sfr-out .3s ease forwards; }
 @keyframes sfr-in  { from { transform: translateX(60px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes sfr-out { to   { transform: translateX(60px); opacity: 0; } }
 </style>
 
-
-<!-- <script>
-/* ═══════════════════════════════════════════════════════════════════
-   student_fees.php — JavaScript
-   
-   CRITICAL BUG FIXES:
-   
-   1. 403 on fetch_fee_receipts:
-      Old code sent JSON body with Content-Type: application/json.
-      CI's CSRF filter reads only $_POST, so it couldn't find the
-      token in the JSON body → 403 BEFORE controller runs.
-      Fix: send FormData via postForm() so CI reads CSRF from $_POST.
-      Controller reads $this->input->post('userId') — NOT php://input.
-   
-   2. "Please enter a valid numeric User ID" for STU0006:
-      Old validation: if (isNaN(parseInt(userId))) { alert(...); return; }
-      Fix: validate only that the field is non-empty — the format
-      STU0006 is perfectly valid. Controller validates on its end.
-   
-   3. "SyntaxError: Unexpected token '<'" — was caused by the 403
-      returning an HTML error page. Fixed by fixing #1.
-═══════════════════════════════════════════════════════════════════ */
-
-/* ── CSRF tokens from meta tags (set by include/header.php) ── */
-var CSRF_NAME = document.querySelector('meta[name="csrf-name"]').getAttribute('content');
-var CSRF_HASH = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-
-var SITE_URL = '<?= rtrim(site_url(), '/') ?>';
-
-/* ── Utilities ── */
-function showToast(msg, type) {
-    var wrap = document.getElementById('sfToastWrap');
-    var el = document.createElement('div');
-    el.className = 'sf-toast sf-toast-' + (type || 'success');
-    var icons = {
-        success: 'check-circle',
-        error: 'times-circle',
-        warning: 'exclamation-triangle'
-    };
-    el.innerHTML = '<i class="fa fa-' + (icons[type] || 'info-circle') + '"></i> ' + msg;
-    wrap.appendChild(el);
-    setTimeout(function() {
-        el.classList.add('sf-toast-hide');
-        setTimeout(function() {
-            el.remove();
-        }, 350);
-    }, 3500);
-}
-
-function fmtRs(n) {
-    n = parseFloat(String(n || 0).replace(/,/g, '')) || 0;
-    return '₹ ' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
-
-/*
- * postForm — sends FormData with CSRF token in BOTH:
- *   1. FormData body field → CI built-in csrf_protection filter (reads $_POST)
- *   2. X-CSRF-Token header → MY_Controller secondary check
- * Controller reads $this->input->post('userId') — so FormData is required.
- */
-function postForm(url, params) {
-    var fd = new FormData();
-    fd.append(CSRF_NAME, CSRF_HASH); /* layer 1: CI filter */
-    if (params) {
-        Object.keys(params).forEach(function(k) {
-            fd.append(k, params[k]);
-        });
-    }
-    return fetch(url, {
-            method: 'POST',
-            body: fd,
-            headers: {
-                'X-CSRF-Token': CSRF_HASH,
-                /* layer 2: MY_Controller */
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-        .then(function(r) {
-            if (!r.ok) {
-                /* Capture non-OK responses for better error messages */
-                return r.text().then(function(t) {
-                    throw new Error('HTTP ' + r.status + ': ' + t.substring(0, 120));
-                });
-            }
-            return r.json();
-        });
-}
-
-/* ── Load receipts ── */
-function loadReceipts() {
-    /* BUG FIX #2: Accept any non-empty string — no numeric-only check */
-    var userId = document.getElementById('sfUserId').value.trim();
-    if (!userId) {
-        showToast('Please enter a student ID (e.g. STU0006).', 'warning');
-        return;
-    }
-
-    var tbody = document.getElementById('sfReceiptsTbody');
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;">' +
-        '<i class="fa fa-spinner fa-spin"></i> Loading receipts…</td></tr>';
-
-    document.getElementById('sfReceiptsCard').style.display = 'block';
-    document.getElementById('sfReceiptsFoot').style.display = 'none';
-
-    /*
-     * BUG FIX #1: Use postForm() NOT postJSON() / raw JSON fetch.
-     * Controller: $this->input->post('userId') reads from $_POST.
-     * Old bug: JSON body → CI CSRF filter can't find token → 403 HTML page
-     *   → JS tried to JSON.parse(HTML) → "Unexpected token '<'"
-     */
-    postForm(SITE_URL + '/fees/fetch_fee_receipts', {
-            userId: userId
-        })
-        .then(function(data) {
-            tbody.innerHTML = '';
-
-            if (!Array.isArray(data) || !data.length) {
-                tbody.innerHTML = '<tr><td colspan="10"><div class="sf-empty">' +
-                    '<i class="fa fa-inbox"></i>' +
-                    '<p>No payment records found for <strong>' + userId + '</strong>.</p>' +
-                    '</div></td></tr>';
-                /* Hide student strip totals */
-                document.getElementById('sfStudentStrip').classList.remove('visible');
-                return;
-            }
-
-            /* Populate student info strip */
-            var firstRec = data[0];
-            var parts = (firstRec.student || '').split('/');
-            document.getElementById('sfDispId').textContent = firstRec.Id || userId;
-            document.getElementById('sfDispName').textContent = (parts[0] || '').trim();
-            document.getElementById('sfDispClass').textContent = firstRec.class || '—';
-            document.getElementById('sfDispCount').textContent = data.length;
-            document.getElementById('sfStudentStrip').classList.add('visible');
-
-            var tAmt = 0,
-                tFin = 0,
-                tDis = 0;
-            data.forEach(function(rec, i) {
-                var amt = parseFloat(String(rec.amount || 0).replace(/,/g, ''));
-                var fin = parseFloat(String(rec.fine || 0).replace(/,/g, ''));
-                var dis = parseFloat(String(rec.discount || 0).replace(/,/g, ''));
-                tAmt += amt;
-                tFin += fin;
-                tDis += dis;
-
-                var tr = document.createElement('tr');
-                tr.innerHTML =
-                    '<td>' + (i + 1) + '</td>' +
-                    '<td><span class="sf-receipt-pill">#' + (rec.receiptNo || '—') + '</span></td>' +
-                    '<td>' + (rec.date || '—') + '</td>' +
-                    '<td>' + (rec.student || '—') + '</td>' +
-                    '<td>' + (rec.class || '—') + '</td>' +
-                    '<td class="sf-amt-positive">' + fmtRs(amt) + '</td>' +
-                    '<td class="sf-amt-fine">' + fmtRs(fin) + '</td>' +
-                    '<td class="sf-amt-discount">' + fmtRs(dis) + '</td>' +
-                    '<td>' + (rec.account || 'N/A') + '</td>' +
-                    '<td>' + (rec.reference || '—') + '</td>';
-                tbody.appendChild(tr);
-            });
-
-            /* Update totals row */
-            document.getElementById('sfDispTotal').textContent = fmtRs(tAmt);
-            document.getElementById('sfFootAmt').textContent = fmtRs(tAmt);
-            document.getElementById('sfFootFin').textContent = fmtRs(tFin);
-            document.getElementById('sfFootDis').textContent = fmtRs(tDis);
-            document.getElementById('sfReceiptsFoot').style.display = '';
-        })
-        .catch(function(err) {
-            console.error('fetch_fee_receipts error:', err);
-            tbody.innerHTML = '<tr><td colspan="10"><div class="sf-empty" style="color:var(--sf-red);">' +
-                '<i class="fa fa-exclamation-circle"></i>' +
-                '<p>Error loading receipts. Please try again.</p>' +
-                '<p style="font-size:11px;opacity:.7;">' + err.message + '</p>' +
-                '</div></td></tr>';
-            showToast('Failed to load receipts. Check console for details.', 'error');
-        });
-}
-
-function clearSearch() {
-    document.getElementById('sfUserId').value = '';
-    document.getElementById('sfReceiptsCard').style.display = 'none';
-    document.getElementById('sfStudentStrip').classList.remove('visible');
-    document.getElementById('sfReceiptsTbody').innerHTML = '';
-    document.getElementById('sfReceiptsFoot').style.display = 'none';
-}
-
-/* ── Auto-load if userId passed in URL ── */
-(function checkUrlParams() {
-    var params = new URLSearchParams(window.location.search);
-    var uid = params.get('userId') || '';
-    if (uid) {
-        document.getElementById('sfUserId').value = uid;
-        /* Small delay to ensure CSRF meta tags are parsed */
-        setTimeout(function() {
-            loadReceipts();
-        }, 120);
-    }
-})();
-
-/* ── Enter key ── */
-document.getElementById('sfUserId').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') loadReceipts();
-});
-</script> -->
-
-<!-- <style>
-/* ── Student Fees — ERP Gold Theme (day/night aware) ── */
-.sf-wrap {
-    padding: 20px 24px;
-    background: var(--bg);
-    min-height: 100vh;
-}
-
-.sf-topbar {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 22px;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
-.sf-page-title {
-    font-size: 20px;
-    font-weight: 800;
-    color: var(--t1);
-    margin: 0 0 4px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-family: var(--font-d);
-}
-
-.sf-page-title i {
-    color: var(--gold);
-}
-
-.sf-breadcrumb {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--t3);
-    font-family: var(--font-b);
-}
-
-.sf-breadcrumb li:not(:last-child)::after {
-    content: '/';
-    margin-left: 6px;
-    opacity: .5;
-}
-
-.sf-breadcrumb a {
-    color: var(--gold);
-}
-
-/* ── Cards ── */
-.sf-card {
-    background: var(--bg2);
-    border-radius: var(--r, 12px);
-    border: 1px solid var(--border);
-    box-shadow: var(--sh);
-    margin-bottom: 20px;
-    overflow: hidden;
-}
-
-.sf-card-head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 18px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg3);
-}
-
-.sf-card-head h3 {
-    margin: 0;
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--t2);
-    font-family: var(--font-b);
-    text-transform: uppercase;
-    letter-spacing: .6px;
-}
-
-.sf-card-head i {
-    color: var(--gold);
-}
-
-.sf-card-body {
-    padding: 18px;
-}
-
-.sf-search-row {
-    display: flex;
-    gap: 10px;
-    align-items: flex-end;
-    flex-wrap: wrap;
-}
-
-.sf-field {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    flex: 1;
-    min-width: 180px;
-}
-
-.sf-label {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--t2);
-    font-family: var(--font-b);
-    text-transform: uppercase;
-    letter-spacing: .5px;
-}
-
-.sf-input {
-    padding: 9px 12px;
-    border: 1.5px solid var(--brd2);
-    border-radius: var(--r-sm, 8px);
-    font-size: 13px;
-    outline: none;
-    background: var(--bg3);
-    color: var(--t1);
-    font-family: var(--font-b);
-    transition: border-color var(--ease), box-shadow var(--ease);
-}
-
-.sf-input:focus {
-    border-color: var(--gold);
-    box-shadow: 0 0 0 3px rgba(15, 118, 110, .15);
-}
-
-.sf-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 9px 20px;
-    border-radius: var(--r-sm, 8px);
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    border: none;
-    transition: all var(--ease);
-    white-space: nowrap;
-    font-family: var(--font-b);
-}
-
-.sf-btn-primary {
-    background: var(--gold);
-    color: #ffffff;
-}
-
-.sf-btn-primary:hover {
-    background: var(--gold2, #0d6b63);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(15, 118, 110, .35);
-}
-
-.sf-btn-ghost {
-    background: var(--bg3);
-    color: var(--t2);
-    border: 1.5px solid var(--brd2);
-}
-
-.sf-btn-ghost:hover {
-    border-color: var(--gold);
-    color: var(--gold);
-    background: var(--gold-dim);
-}
-
-/* ── Student info strip ── */
-.sf-student-strip {
-    display: none;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--gold);
-    border-radius: var(--r, 12px);
-    padding: 14px 20px;
-    margin-bottom: 20px;
-    align-items: center;
-    gap: 24px;
-    flex-wrap: wrap;
-    box-shadow: var(--sh);
-}
-
-.sf-student-strip.visible {
-    display: flex;
-}
-
-.sf-sinfo {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.sf-sinfo-label {
-    font-size: 10px;
-    color: var(--t3);
-    text-transform: uppercase;
-    letter-spacing: .6px;
-    font-family: var(--font-m);
-}
-
-.sf-sinfo-val {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--t1);
-    font-family: var(--font-b);
-}
-
-.sf-sinfo-divider {
-    width: 1px;
-    height: 36px;
-    background: var(--border);
-}
-
-/* ── Table ── */
-.sf-table-wrap {
-    overflow-x: auto;
-}
-
-.sf-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-    font-family: var(--font-b);
-}
-
-.sf-table thead tr {
-    background: linear-gradient(90deg, var(--gold) 0%, var(--gold2, #0d6b63) 100%);
-    color: #ffffff;
-    text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: .5px;
-}
-
-.sf-table thead th {
-    padding: 11px 14px;
-    font-weight: 700;
-    white-space: nowrap;
-}
-
-.sf-table tbody tr {
-    border-bottom: 1px solid var(--border);
-    transition: background var(--ease);
-}
-
-.sf-table tbody tr:hover {
-    background: var(--gold-dim);
-}
-
-.sf-table td {
-    padding: 10px 14px;
-    vertical-align: middle;
-    color: var(--t2);
-}
-
-.sf-table tfoot td {
-    padding: 10px 14px;
-    background: var(--bg3);
-    font-weight: 700;
-    color: var(--t1);
-    border-top: 2px solid var(--border);
-}
-
-.sf-receipt-pill {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 20px;
-    background: var(--gold-dim);
-    color: var(--gold);
-    font-size: 11px;
-    font-weight: 700;
-    font-family: var(--font-m);
-    border: 1px solid var(--gold-ring, rgba(15, 118, 110, .22));
-}
-
-.sf-amt-positive {
-    color: var(--green, #3DD68C);
-    font-weight: 700;
-}
-
-.sf-amt-discount {
-    color: var(--amber, #C9A84C);
-}
-
-.sf-amt-fine {
-    color: var(--rose, #E05C6F);
-}
-
-/* ── Empty / loading ── */
-.sf-empty {
-    text-align: center;
-    padding: 48px 20px;
-    color: var(--t3);
-    font-family: var(--font-b);
-}
-
-.sf-empty i {
-    font-size: 36px;
-    margin-bottom: 12px;
-    opacity: .35;
-    display: block;
-    color: var(--gold);
-}
-
-/* ── Toast ── */
-.sf-toast-wrap {
-    position: fixed;
-    bottom: 24px;
-    right: 24px;
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.sf-toast {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 18px;
-    border-radius: var(--r-sm, 8px);
-    font-size: 13px;
-    font-weight: 600;
-    box-shadow: var(--sh);
-    animation: sfToastIn .25s ease;
-    min-width: 240px;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    color: var(--t1);
-    font-family: var(--font-b);
-}
-
-@keyframes sfToastIn {
-    from {
-        transform: translateX(60px);
-        opacity: 0;
-    }
-
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-
-.sf-toast-success {
-    border-left: 4px solid var(--green, #3DD68C);
-}
-
-.sf-toast-success i {
-    color: var(--green, #3DD68C);
-}
-
-.sf-toast-error {
-    border-left: 4px solid var(--rose, #E05C6F);
-}
-
-.sf-toast-error i {
-    color: var(--rose, #E05C6F);
-}
-
-.sf-toast-warning {
-    border-left: 4px solid var(--gold);
-}
-
-.sf-toast-warning i {
-    color: var(--gold);
-}
-
-.sf-toast-hide {
-    animation: sfToastOut .3s ease forwards;
-}
-
-@keyframes sfToastOut {
-    to {
-        transform: translateX(60px);
-        opacity: 0;
-    }
-}
-</style> -->

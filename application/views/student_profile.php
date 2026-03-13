@@ -45,7 +45,7 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
         <!-- HERO -->
         <div class="sp-hero">
             <img class="sp-avatar" src="<?= htmlspecialchars($profilePhoto ?: $fallbackPhoto) ?>" alt="Photo"
-                onerror="this.src='<?= $fallbackPhoto ?>'">
+                onerror="this.src='<?= htmlspecialchars($fallbackPhoto, ENT_QUOTES, 'UTF-8') ?>'">
 
             <div class="sp-hero-info">
                 <h1 class="sp-hero-name"><?= htmlspecialchars($student['Name'] ?? 'Unknown') ?></h1>
@@ -299,7 +299,7 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
                                 <?php foreach ($mTitles as $ft):
                                             $rt = 0;
                                             foreach ($fees as $mon => $fd) {
-                                                if (!is_array($fd)) continue;
+                                                if ($mon === 'Yearly Fees' || !is_array($fd)) continue;
                                                 $rt += (float)($fd[$ft] ?? 0);
                                             }
                                             $mGrand += $rt;
@@ -427,7 +427,7 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
                             <div class="sp-doc-icon"><i class="fa fa-file-image-o"></i></div>
                             <?php endif; ?>
                             <div class="sp-doc-name"><?= htmlspecialchars($label) ?></div>
-                            <a href="<?= htmlspecialchars($url) ?>" target="_blank" class="sp-doc-link">
+                            <a href="<?= htmlspecialchars($url) ?>" target="_blank" rel="noopener noreferrer" class="sp-doc-link">
                                 <i class="fa fa-eye"></i> View
                             </a>
                         </div>
@@ -472,7 +472,7 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
                     <thead>
                         <tr>
                             <th>Fee Type</th>
-                            <?php foreach ($sortedMonths as $mon): ?><th><?= $mon ?></th><?php endforeach; ?>
+                            <?php foreach ($sortedMonths as $mon): ?><th><?= htmlspecialchars($mon) ?></th><?php endforeach; ?>
                             <th>Total</th>
                         </tr>
                     </thead>
@@ -599,6 +599,7 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
             discBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Applying...';
 
             var payload = new URLSearchParams();
+            payload.append('<?= $this->security->get_csrf_token_name() ?>', '<?= $this->security->get_csrf_hash() ?>');
             payload.append('userId',  '<?= htmlspecialchars($student['User Id'] ?? '', ENT_QUOTES) ?>');
             payload.append('class',   '<?= htmlspecialchars($class ?? '', ENT_QUOTES) ?>');
             payload.append('section', '<?= htmlspecialchars($section ?? '', ENT_QUOTES) ?>');

@@ -1,1044 +1,1017 @@
 <div class="content-wrapper">
-    <div class="page">
-        <div class="card">
+<link href="https://fonts.googleapis.com/css2?family=Clash+Display:wght@400;500;600;700&family=Satoshi:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Fallback if Clash Display CDN not available -->
+<link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=satoshi@300,400,500,600,700&display=swap" rel="stylesheet">
 
-            <!-- ══ LEFT PANEL ══ -->
-            <div class="panel-l">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   SCHOOL ADMIN LOGIN  ·  Diagonal Split + Floating Glass
+   Same teal/forest/gold colours — radically different layout
+   ═══════════════════════════════════════════════════════════ */
+:root {
+    --brand:       #0d9488;
+    --brand2:      #0f766e;
+    --brand3:      #2dd4bf;
+    --brand-dim:   rgba(13,148,136,.12);
+    --brand-ring:  rgba(13,148,136,.24);
+    --gold:        #d4a843;
+    --gold2:       #f0c060;
+    --forest:      #1a2e1a;
+    --forest2:     #0f1f10;
+    --leaf:        #4a7c59;
+    --sans:        'Satoshi', 'Plus Jakarta Sans', system-ui, sans-serif;
+    --display:     'Clash Display', 'Satoshi', system-ui, sans-serif;
+    --mono:        'JetBrains Mono', ui-monospace, monospace;
+    --ease:        .22s cubic-bezier(.4,0,.2,1);
+    --ease-spring: .5s cubic-bezier(.34,1.56,.64,1);
+}
 
-                <div class="brand-mark">
-                    <div class="brand-icon">🏫</div>
-                    <div>
-                        <div class="brand-name">SchoolXAdmin</div>
-                        <div class="brand-sub">School Management System</div>
-                    </div>
-                </div>
+[data-theme="light"] {
+    --bg:          #e8f0e9;
+    --surface:     rgba(255,255,255,.82);
+    --surface2:    rgba(255,255,255,.55);
+    --border:      rgba(13,148,136,.15);
+    --border2:     rgba(13,148,136,.28);
+    --text:        #0a1a0a;
+    --text2:       #2a4a2a;
+    --muted:       #5a7a5a;
+    --muted2:      #a0baa0;
+    --input-bg:    rgba(240,248,240,.8);
+    --input-foc:   rgba(255,255,255,.95);
+    --glass-bg:    rgba(255,255,255,.75);
+    --glass-brd:   rgba(255,255,255,.9);
+    --sh:          0 8px 32px rgba(13,148,136,.12), 0 2px 8px rgba(0,0,0,.06);
+    --sh-card:     0 24px 80px rgba(13,80,60,.18), 0 4px 16px rgba(0,0,0,.08);
+    --red:         #dc2626;
+    --red-bg:      rgba(220,38,38,.06);
+    --red-brd:     rgba(220,38,38,.2);
+    --green-ok:    #16a34a;
+}
 
-                <div class="copy">
-                    <div class="copy-label">Admin Portal</div>
-                    <h1>Manage your<br><em>school smarter.</em></h1>
-                    <p>Students, staff, attendance, fees — everything in one place.</p>
-                </div>
+[data-theme="dark"] {
+    --bg:          #080e08;
+    --surface:     rgba(20,35,20,.92);
+    --surface2:    rgba(30,50,30,.7);
+    --border:      rgba(45,212,191,.12);
+    --border2:     rgba(45,212,191,.22);
+    --text:        #e4f0e4;
+    --text2:       #8ab88a;
+    --muted:       #4a6a4a;
+    --muted2:      #2a3e2a;
+    --input-bg:    rgba(20,40,20,.8);
+    --input-foc:   rgba(25,50,25,.95);
+    --glass-bg:    rgba(15,30,15,.85);
+    --glass-brd:   rgba(45,212,191,.15);
+    --sh:          0 8px 32px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);
+    --sh-card:     0 32px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(45,212,191,.08);
+    --red:         #f87171;
+    --red-bg:      rgba(248,113,113,.07);
+    --red-brd:     rgba(248,113,113,.2);
+    --green-ok:    #4ade80;
+}
 
-                <div class="stats">
-                    <div class="stat">
-                        <div class="stat-num">3,654</div>
-                        <div class="stat-lbl">Students</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-num">284</div>
-                        <div class="stat-lbl">Teachers</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-num">162</div>
-                        <div class="stat-lbl">Classes</div>
-                    </div>
-                </div>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-                <div class="deco">
-                    <i class="fas fa-graduation-cap"></i>
-                    <i class="fas fa-book-open"></i>
-                    <i class="fas fa-chalkboard-teacher"></i>
-                    <i class="fas fa-school"></i>
-                    <i class="fas fa-calendar-check"></i>
-                    <i class="fas fa-chart-bar"></i>
-                    <i class="fas fa-money-bill-wave"></i>
-                    <i class="fas fa-users"></i>
-                </div>
+/* ── Full-screen stage ─────────────────────────────────── */
+.lx-stage {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    width: 100%;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+}
 
-            </div>
-            <!-- /LEFT PANEL -->
+/* ── Animated mesh background ─────────────────────────── */
+.lx-mesh {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+}
 
-            <!-- ══ RIGHT PANEL ══ -->
-            <div class="panel-r">
+.lx-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    animation: lxFloat linear infinite;
+    will-change: transform;
+}
 
-                <div class="form-head">
-                    <div class="form-kicker">Secure Access</div>
-                    <h2>Welcome back 👋</h2>
-                    <p>Sign in to your admin account to continue.</p>
-                    <div class="mode-pill">
-                        <span class="mode-dot"></span>
-                        <span id="modePillText">Day mode — auto</span>
-                    </div>
-                </div>
+.lx-orb-1 {
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(13,148,136,.18) 0%, transparent 65%);
+    top: -150px; left: -150px;
+    animation-duration: 18s;
+}
+.lx-orb-2 {
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(26,46,26,.35) 0%, transparent 65%);
+    bottom: -100px; right: -100px;
+    animation-duration: 22s;
+    animation-delay: -8s;
+}
+.lx-orb-3 {
+    width: 350px; height: 350px;
+    background: radial-gradient(circle, rgba(212,168,67,.08) 0%, transparent 65%);
+    top: 40%; left: 55%;
+    animation-duration: 26s;
+    animation-delay: -14s;
+}
+[data-theme="dark"] .lx-orb-1 { background: radial-gradient(circle, rgba(13,148,136,.22) 0%, transparent 65%); }
+[data-theme="dark"] .lx-orb-2 { background: radial-gradient(circle, rgba(15,30,10,.8) 0%, transparent 65%); }
+[data-theme="dark"] .lx-orb-3 { background: radial-gradient(circle, rgba(212,168,67,.06) 0%, transparent 65%); }
 
-                <!-- Flash error -->
-                <?php if ($this->session->flashdata('error')): ?>
-                    <div class="alert">
-                        <i class="fas fa-triangle-exclamation"></i>
-                        <span><?= htmlspecialchars($this->session->flashdata('error')) ?></span>
-                    </div>
-                <?php endif; ?>
+@keyframes lxFloat {
+    0%,100% { transform: translate(0,0) scale(1); }
+    33%      { transform: translate(40px, -30px) scale(1.05); }
+    66%      { transform: translate(-20px, 25px) scale(.97); }
+}
 
-                <!-- Flash success (e.g. logout) -->
-                <?php if ($this->session->flashdata('success')): ?>
-                    <div class="alert alert-success">
-                        <i class="fas fa-circle-check"></i>
-                        <span><?= htmlspecialchars($this->session->flashdata('success')) ?></span>
-                    </div>
-                <?php endif; ?>
+/* Fine grain overlay */
+.lx-grain {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: .025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-size: 200px 200px;
+}
 
-                <!-- Form -->
-                <form method="post" action="<?= base_url('admin_login/check_credentials') ?>" class="login-form"
-                    id="loginForm">
-                    <!-- ADD THIS LINE RIGHT HERE -->
-                    <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" value="<?= $this->security->get_csrf_hash() ?>">
+/* ── Theme button ──────────────────────────────────────── */
+.lx-theme-btn {
+    position: fixed;
+    top: 16px; right: 18px;
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-brd);
+    border-radius: 40px;
+    padding: 7px 13px 7px 10px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text2);
+    letter-spacing: .5px;
+    backdrop-filter: blur(12px);
+    box-shadow: var(--sh);
+    animation: lxFadeDown .5s .4s ease both;
+    transition: all var(--ease);
+}
+.lx-theme-btn:hover { border-color: var(--brand3); color: var(--text); transform: scale(1.03); }
 
+[data-theme="light"] .ico-moon { display: none; }
+[data-theme="light"] .ico-sun  { color: var(--brand); font-size: 12px; }
+[data-theme="dark"]  .ico-sun  { display: none; }
+[data-theme="dark"]  .ico-moon { color: var(--gold2); font-size: 12px; }
 
-                    <div class="fgroup">
-                        <div class="flabel"><i class="fas fa-id-badge"></i> Admin ID</div>
-                        <div class="finput-wrap">
-                            <input type="text" name="admin_id" id="admin_id" placeholder="Enter your Admin ID" required
-                                autocomplete="username">
-                            <i class="ficon fas fa-user"></i>
-                        </div>
-                    </div>
+.lx-auto-tag {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 20px;
+    background: var(--brand-dim);
+    color: var(--brand3);
+    border: 1px solid var(--brand-ring);
+}
 
-                    <div class="fgroup">
-                        <div class="flabel"><i class="fas fa-school"></i> School ID</div>
-                        <div class="finput-wrap">
-                            <input type="text" name="school_id" id="school_id" placeholder="Enter your School ID"
-                                required autocomplete="organization">
-                            <i class="ficon fas fa-building"></i>
-                        </div>
-                    </div>
+/* ── Main wrapper — diagonal split ───────────────────── */
+.lx-wrap {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    max-width: 1020px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 580px;
+    gap: 0;
+    animation: lxRise .7s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes lxRise {
+    from { opacity: 0; transform: translateY(32px) scale(.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
 
-                    <div class="fdivider"></div>
+/* ── Left: big visual side ────────────────────────────── */
+.lx-visual {
+    background: linear-gradient(145deg, var(--forest2) 0%, var(--forest) 40%, #0d2a0d 70%, #071407 100%);
+    border-radius: 24px 0 0 24px;
+    padding: 52px 48px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+}
 
-                    <div class="fgroup">
-                        <div class="flabel"><i class="fas fa-lock"></i> Password</div>
-                        <div class="finput-wrap">
-                            <input type="password" name="password" id="password" placeholder="Enter your password"
-                                required autocomplete="current-password">
-                            <i class="ficon fas fa-eye pw-toggle" id="pwToggle"></i>
-                        </div>
-                    </div>
+/* Diagonal slash accent */
+.lx-visual::before {
+    content: '';
+    position: absolute;
+    top: 0; right: -1px; bottom: 0;
+    width: 80px;
+    background: linear-gradient(to right, transparent, var(--bg));
+    clip-path: polygon(40% 0%, 100% 0%, 100% 100%, 0% 100%);
+    z-index: 2;
+    pointer-events: none;
+}
+[data-theme="dark"] .lx-visual::before {
+    background: linear-gradient(to right, transparent, var(--bg));
+}
 
-                    <button type="submit" class="btn-submit" id="submitBtn">
-                        <div class="btn-inner">
-                            <div class="spin"></div>
-                            <span class="btn-text">
-                                <i class="fas fa-arrow-right-to-bracket"></i>
-                                Sign In to Dashboard
-                            </span>
-                        </div>
-                    </button>
+/* Gold top bar */
+.lx-visual::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--gold), var(--gold2), transparent);
+    border-radius: 24px 0 0 0;
+}
 
-                </form>
+/* Grid lines on visual side */
+.lx-vgrid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(45,212,191,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(45,212,191,.04) 1px, transparent 1px);
+    background-size: 44px 44px;
+    pointer-events: none;
+}
 
-                <div class="form-foot">
-                    <div class="secure">
-                        <i class="fas fa-shield-halved"></i>
-                        256-bit encrypted
-                    </div>
-                    <a href="<?= base_url('admin_login/forgot_password') ?>" class="forgot-link">
-                        Forgot password?
-                    </a>
-                </div>
+/* Big number accent */
+.lx-big-num {
+    position: absolute;
+    bottom: -20px; right: 40px;
+    font-family: var(--display);
+    font-size: clamp(140px, 18vw, 200px);
+    font-weight: 700;
+    color: transparent;
+    -webkit-text-stroke: 1px rgba(45,212,191,.08);
+    line-height: 1;
+    user-select: none;
+    pointer-events: none;
+    letter-spacing: -8px;
+}
 
-            </div>
-            <!-- /RIGHT PANEL -->
+.lx-vtop {
+    position: relative;
+    z-index: 3;
+    animation: lxSlideR .5s .1s ease both;
+}
 
-        </div>
+.lx-brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 0;
+}
+
+.lx-brand-mark {
+    position: relative;
+}
+
+.lx-brand-icon-wrap {
+    width: 52px; height: 52px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--leaf), var(--brand2));
+    border: 1px solid rgba(212,168,67,.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.3), 0 0 0 1px rgba(45,212,191,.1);
+    position: relative;
+    overflow: hidden;
+}
+.lx-brand-icon-wrap::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,.15) 0%, transparent 60%);
+}
+
+.lx-brand-text { }
+.lx-brand-name {
+    font-family: var(--display);
+    font-size: 19px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: -.3px;
+    line-height: 1;
+}
+.lx-brand-sub {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: rgba(255,255,255,.35);
+    margin-top: 4px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+/* Mid — headline */
+.lx-vmid {
+    position: relative;
+    z-index: 3;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 40px 0;
+    animation: lxSlideR .5s .18s ease both;
+}
+
+.lx-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--brand3);
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+}
+.lx-eyebrow-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--brand3);
+    box-shadow: 0 0 8px var(--brand3);
+    animation: lxPulse 2s ease-in-out infinite;
+}
+@keyframes lxPulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.lx-headline {
+    font-family: var(--display);
+    font-size: clamp(32px, 4vw, 46px);
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.05;
+    letter-spacing: -1.5px;
+    margin-bottom: 18px;
+}
+.lx-headline em {
+    font-style: normal;
+    display: block;
+    background: linear-gradient(90deg, var(--brand3), var(--gold2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.lx-sub-text {
+    font-size: 14px;
+    color: rgba(255,255,255,.42);
+    line-height: 1.75;
+    max-width: 280px;
+}
+
+/* Feature pills */
+.lx-features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 22px;
+}
+.lx-feat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(45,212,191,.15);
+    border-radius: 20px;
+    font-size: 11px;
+    color: rgba(255,255,255,.55);
+    font-family: var(--mono);
+    transition: all var(--ease);
+}
+.lx-feat-pill:hover {
+    background: rgba(45,212,191,.08);
+    border-color: rgba(45,212,191,.3);
+    color: var(--brand3);
+}
+.lx-feat-pill i { font-size: 9px; color: var(--brand3); }
+
+/* Stats */
+.lx-vbottom {
+    position: relative;
+    z-index: 3;
+    animation: lxSlideR .5s .26s ease both;
+}
+
+.lx-stats {
+    display: flex;
+    gap: 0;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(45,212,191,.1);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.lx-stat {
+    flex: 1;
+    padding: 14px 16px;
+    border-right: 1px solid rgba(45,212,191,.08);
+    transition: background var(--ease);
+}
+.lx-stat:last-child { border-right: none; }
+.lx-stat:hover { background: rgba(45,212,191,.05); }
+
+.lx-stat-num {
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--gold2);
+    line-height: 1;
+    letter-spacing: -.5px;
+}
+.lx-stat-lbl {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: rgba(255,255,255,.3);
+    margin-top: 4px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+/* ── Right: glass form card ───────────────────────────── */
+.lx-form-side {
+    background: var(--glass-bg);
+    border-radius: 0 24px 24px 0;
+    border: 1px solid var(--glass-brd);
+    border-left: none;
+    backdrop-filter: blur(20px);
+    padding: 52px 50px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--sh-card);
+}
+
+/* Subtle inner glow top */
+.lx-form-side::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 20%; right: 20%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--brand-ring), transparent);
+}
+
+/* ── Form head ─────────────────────────────────────────── */
+.lx-form-head {
+    margin-bottom: 30px;
+    animation: lxSlideL .5s .15s ease both;
+}
+
+.lx-form-kicker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+.lx-form-kicker::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+
+.lx-form-h2 {
+    font-family: var(--display);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -.6px;
+    line-height: 1.1;
+    margin-bottom: 6px;
+}
+
+.lx-form-sub {
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.6;
+}
+
+/* Mode pill */
+.lx-mode-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--muted);
+}
+.lx-mode-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    animation: lxPulse 2s ease-in-out infinite;
+}
+[data-theme="light"] .lx-mode-dot { background: var(--brand); box-shadow: 0 0 6px rgba(13,148,136,.5); }
+[data-theme="dark"]  .lx-mode-dot { background: var(--gold); box-shadow: 0 0 6px rgba(212,168,67,.5); }
+
+/* Alerts */
+.lx-alert {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    border-left: 3px solid;
+    backdrop-filter: blur(8px);
+    animation: lxShake .4s ease both;
+}
+.lx-alert.error   { background: var(--red-bg);  border-color: var(--red);      color: var(--red); }
+.lx-alert.success { background: rgba(13,148,136,.07); border-color: var(--green-ok); color: var(--green-ok); }
+
+@keyframes lxShake {
+    0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-5px)} 40%,80%{transform:translateX(5px)}
+}
+
+/* ── Fields ────────────────────────────────────────────── */
+.lx-form { animation: lxSlideL .5s .22s ease both; }
+
+/* Two fields side by side */
+.lx-field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.lx-fgroup { margin-bottom: 14px; }
+.lx-fgroup.full { grid-column: 1 / -1; }
+
+.lx-flabel {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    margin-bottom: 7px;
+    font-family: var(--sans);
+}
+.lx-flabel i { font-size: 9.5px; color: var(--brand); }
+
+.lx-finput-wrap { position: relative; }
+
+.lx-finput-wrap input {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 42px 11px 14px;
+    font-size: 13.5px;
+    font-family: var(--sans);
+    color: var(--text);
+    outline: none;
+    caret-color: var(--brand);
+    transition: all var(--ease);
+    backdrop-filter: blur(6px);
+}
+.lx-finput-wrap input::placeholder { color: var(--muted2); }
+.lx-finput-wrap input:focus {
+    border-color: var(--brand);
+    background: var(--input-foc);
+    box-shadow: 0 0 0 3px var(--brand-dim);
+    transform: translateY(-1px);
+}
+
+.lx-ficon {
+    position: absolute;
+    right: 13px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: 12.5px;
+    pointer-events: none;
+    transition: color var(--ease);
+}
+.lx-finput-wrap:focus-within .lx-ficon { color: var(--brand); }
+.lx-pw-toggle { pointer-events: all; cursor: pointer; }
+.lx-pw-toggle:hover { color: var(--text); }
+
+/* Separator */
+.lx-sep {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 6px 0 14px;
+    color: var(--muted2);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+.lx-sep::before, .lx-sep::after { content:''; flex:1; height:1px; background:var(--border); }
+
+/* Submit */
+.lx-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, var(--brand2), var(--brand), var(--leaf));
+    background-size: 200% 200%;
+    background-position: 0% 50%;
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-family: var(--display);
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    cursor: pointer;
+    margin-top: 6px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 6px 24px rgba(13,148,136,.35);
+    transition: all .4s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+}
+.lx-btn:hover {
+    background-position: 100% 50%;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 32px rgba(13,148,136,.45);
+}
+.lx-btn:active { transform: translateY(0); }
+.lx-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+/* Shimmer on hover */
+.lx-btn::after {
+    content: '';
+    position: absolute;
+    top: -50%; left: -60%;
+    width: 40%; height: 200%;
+    background: rgba(255,255,255,.15);
+    transform: skewX(-15deg);
+    transition: left .5s ease;
+}
+.lx-btn:hover::after { left: 120%; }
+
+.lx-btn-inner { display: flex; align-items: center; gap: 9px; position: relative; z-index: 1; }
+
+.lx-btn-spinner {
+    display: none;
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,.25);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: lxSpin .65s linear infinite;
+}
+.lx-btn.loading .lx-btn-inner  { display: none; }
+.lx-btn.loading .lx-btn-spinner { display: block; }
+@keyframes lxSpin { to { transform: rotate(360deg); } }
+
+/* Footer */
+.lx-form-foot {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    animation: lxSlideL .5s .30s ease both;
+}
+
+.lx-secure {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--muted);
+}
+.lx-secure i { color: var(--green-ok); font-size: 10px; }
+
+.lx-forgot {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--brand);
+    text-decoration: none;
+    transition: all var(--ease);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.lx-forgot:hover { color: var(--brand3); gap: 7px; }
+
+/* ── Smooth theme transitions ─────────────────────────── */
+.lx-t-ready *, .lx-t-ready *::before, .lx-t-ready *::after {
+    transition: background-color .3s ease, border-color .3s ease,
+                color .3s ease, box-shadow .3s ease !important;
+}
+
+/* ── Animations ─────────────────────────────────────────── */
+@keyframes lxSlideR {
+    from { opacity:0; transform:translateX(-20px); }
+    to   { opacity:1; transform:translateX(0); }
+}
+@keyframes lxSlideL {
+    from { opacity:0; transform:translateX(20px); }
+    to   { opacity:1; transform:translateX(0); }
+}
+@keyframes lxFadeDown {
+    from { opacity:0; transform:translateY(-10px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 860px) {
+    .lx-wrap { grid-template-columns: 1fr; max-width: 480px; }
+    .lx-visual { border-radius: 24px 24px 0 0; padding: 36px 32px; }
+    .lx-visual::before { display: none; }
+    .lx-form-side { border-radius: 0 0 24px 24px; border-left: 1px solid var(--glass-brd); border-top: none; padding: 36px 32px; }
+    .lx-stats { display: none; }
+    .lx-headline { font-size: 28px; }
+    .lx-vmid { padding: 24px 0 20px; }
+    .lx-field-row { grid-template-columns: 1fr; }
+    .lx-stage { overflow: auto; align-items: flex-start; padding: 20px; }
+}
+@media (max-width: 460px) {
+    .lx-visual, .lx-form-side { padding: 28px 22px; }
+    .lx-headline { font-size: 24px; }
+}
+</style>
+
+<div class="lx-stage" id="lxStage">
+
+    <!-- Animated mesh background -->
+    <div class="lx-mesh">
+        <div class="lx-orb lx-orb-1"></div>
+        <div class="lx-orb lx-orb-2"></div>
+        <div class="lx-orb lx-orb-3"></div>
     </div>
-    <!-- ── THEME TOGGLE ── -->
-    <button class="theme-btn" id="themeBtn" title="Toggle theme">
+    <div class="lx-grain"></div>
+
+    <!-- Theme toggle -->
+    <button class="lx-theme-btn" id="lxThemeBtn" title="Toggle theme (double-click = auto)">
         <i class="fas fa-sun  ico-sun"></i>
         <i class="fas fa-moon ico-moon"></i>
-        <span id="themeLabel">DAY</span>
-        <span class="auto-tag" id="autoTag">AUTO</span>
+        <span id="lxThemeLabel">DAY</span>
+        <span class="lx-auto-tag" id="lxAutoTag">AUTO</span>
     </button>
-</div>
+
+    <!-- Main layout -->
+    <div class="lx-wrap">
+
+        <!-- ══ Visual left ══ -->
+        <div class="lx-visual">
+            <div class="lx-vgrid"></div>
+            <div class="lx-big-num">S</div>
+
+            <div class="lx-vtop">
+                <div class="lx-brand">
+                    <div class="lx-brand-mark">
+                        <div class="lx-brand-icon-wrap">🏫</div>
+                    </div>
+                    <div class="lx-brand-text">
+                        <div class="lx-brand-name">SchoolXAdmin</div>
+                        <div class="lx-brand-sub">Management System</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lx-vmid">
+                <div class="lx-eyebrow">
+                    <div class="lx-eyebrow-dot"></div>
+                    <h2>Admin Portal</h2>
+                </div>
+                <h1 class="lx-headline">
+                    Manage your<br>
+                    <em>school smarter.</em>
+                </h1>
+                <p class="lx-sub-text">Students, staff, attendance, fees — everything rooted in one place.</p>
+
+                <div class="lx-features">
+                    <div class="lx-feat-pill"><i class="fas fa-users"></i> Students</div>
+                    <div class="lx-feat-pill"><i class="fas fa-chalkboard-teacher"></i> Staff</div>
+                    <div class="lx-feat-pill"><i class="fas fa-calendar-check"></i> Attendance</div>
+                    <div class="lx-feat-pill"><i class="fas fa-money-bill-wave"></i> Fees</div>
+                    <div class="lx-feat-pill"><i class="fas fa-chart-bar"></i> Reports</div>
+                </div>
+            </div>
+
+            <div class="lx-vbottom">
+                <div class="lx-stats">
+                    <div class="lx-stat">
+                        <!-- <div class="lx-stat-num">3,654</div> -->
+                        <div class="lx-stat-lbl">Students</div>
+                    </div>
+                    <div class="lx-stat">
+                        <!-- <div class="lx-stat-num">284</div> -->
+                        <div class="lx-stat-lbl">Teachers</div>
+                    </div>
+                    <div class="lx-stat">
+                        <!-- <div class="lx-stat-num">162</div> -->
+                        <div class="lx-stat-lbl">Classes</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ Glass form right ══ -->
+        <div class="lx-form-side">
+
+            <div class="lx-form-head">
+                <div class="lx-form-kicker">Secure Access</div>
+                <h2 class="lx-form-h2">Welcome back 👋</h2>
+                <p class="lx-form-sub">Sign in to your admin account to continue.</p>
+                <div class="lx-mode-pill">
+                    <div class="lx-mode-dot"></div>
+                    <span id="lxModePillText">Day mode — auto</span>
+                </div>
+            </div>
+
+            <?php if ($this->session->flashdata('error')): ?>
+            <div class="lx-alert error">
+                <i class="fas fa-triangle-exclamation"></i>
+                <span><?= htmlspecialchars($this->session->flashdata('error')) ?></span>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($this->session->flashdata('success')): ?>
+            <div class="lx-alert success">
+                <i class="fas fa-circle-check"></i>
+                <span><?= htmlspecialchars($this->session->flashdata('success')) ?></span>
+            </div>
+            <?php endif; ?>
+
+            <form method="post"
+                  action="<?= base_url('admin_login/check_credentials') ?>"
+                  class="lx-form"
+                  id="lxLoginForm">
+
+                <input type="hidden"
+                       name="<?= $this->security->get_csrf_token_name() ?>"
+                       value="<?= $this->security->get_csrf_hash() ?>">
+
+                <!-- Admin ID + School ID side by side -->
+                <div class="lx-field-row">
+                    <div class="lx-fgroup">
+                        <div class="lx-flabel"><i class="fas fa-id-badge"></i> Admin ID</div>
+                        <div class="lx-finput-wrap">
+                            <input type="text" name="admin_id" id="lxAdminId"
+                                   placeholder="ADM0001"
+                                   required autocomplete="username">
+                            <i class="lx-ficon fas fa-user"></i>
+                        </div>
+                    </div>
+                    <div class="lx-fgroup">
+                        <div class="lx-flabel"><i class="fas fa-school"></i> School ID</div>
+                        <div class="lx-finput-wrap">
+                            <input type="text" name="school_id" id="lxSchoolId"
+                                   placeholder="10004"
+                                   required autocomplete="organization">
+                            <i class="lx-ficon fas fa-building"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lx-sep">credentials</div>
+
+                <div class="lx-fgroup">
+                    <div class="lx-flabel"><i class="fas fa-lock"></i> Password</div>
+                    <div class="lx-finput-wrap">
+                        <input type="password" name="password" id="lxPassword"
+                               placeholder="Enter your password"
+                               required autocomplete="current-password">
+                        <i class="lx-ficon lx-pw-toggle fas fa-eye" id="lxPwToggle"></i>
+                    </div>
+                </div>
+
+                <button type="submit" class="lx-btn" id="lxSubmitBtn">
+                    <span class="lx-btn-inner">
+                        <i class="fas fa-arrow-right-to-bracket"></i>
+                        Sign In to Dashboard
+                    </span>
+                    <span class="lx-btn-spinner"></span>
+                </button>
+
+            </form>
+
+            <div class="lx-form-foot">
+                <div class="lx-secure">
+                    <i class="fas fa-shield-halved"></i>
+                    256-bit encrypted
+                </div>
+                <a href="<?= base_url('admin_login/forgot_password') ?>" class="lx-forgot">
+                    Forgot password? <i class="fas fa-arrow-right" style="font-size:9px;"></i>
+                </a>
+            </div>
+
+        </div>
+
+    </div><!-- /lx-wrap -->
+
+</div><!-- /lx-stage -->
 
 <script>
-    const html = document.documentElement;
-    const themeBtn = document.getElementById('themeBtn');
-    const themeLabel = document.getElementById('themeLabel');
-    const autoTag = document.getElementById('autoTag');
-    const pillText = document.getElementById('modePillText');
+(function () {
+    'use strict';
 
-    let manualOverride = false; // becomes true when user clicks toggle
+    var html       = document.documentElement;
+    var themeBtn   = document.getElementById('lxThemeBtn');
+    var themeLabel = document.getElementById('lxThemeLabel');
+    var autoTag    = document.getElementById('lxAutoTag');
+    var pillText   = document.getElementById('lxModePillText');
+    var manualMode = false;
 
-    function getTimeTheme() {
-        const h = new Date().getHours();
+    function timeTheme() {
+        var h = new Date().getHours();
         return (h >= 6 && h < 18) ? 'light' : 'dark';
     }
 
-    function applyTheme(theme, isManual = false) {
+    function applyTheme(theme, isManual) {
         html.setAttribute('data-theme', theme);
-
-        const isDark = theme === 'dark';
-        themeLabel.textContent = isDark ? 'NIGHT' : 'DAY';
-        autoTag.textContent = isManual ? 'MANUAL' : 'AUTO';
-        autoTag.style.opacity = isManual ? '0.55' : '1';
-
-        const timeStr = new Date().toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        pillText.textContent = isDark ?
-            `Night mode · ${timeStr}` :
-            `Day mode · ${timeStr}`;
-
+        var dark           = theme === 'dark';
+        themeLabel.textContent = dark ? 'NIGHT' : 'DAY';
+        autoTag.textContent    = isManual ? 'MANUAL' : 'AUTO';
+        autoTag.style.opacity  = isManual ? '0.55' : '1';
+        var time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        pillText.textContent   = dark ? 'Night mode · ' + time : 'Day mode · ' + time;
         if (isManual) {
             localStorage.setItem('graderadmin_theme', theme);
             localStorage.setItem('graderadmin_manual', '1');
         }
     }
 
-    // ── Init: check if user had a manual preference ──
-    const savedTheme = localStorage.getItem('graderadmin_theme');
-    const savedManual = localStorage.getItem('graderadmin_manual') === '1';
-
+    /* Init */
+    var savedTheme  = localStorage.getItem('graderadmin_theme');
+    var savedManual = localStorage.getItem('graderadmin_manual') === '1';
     if (savedManual && savedTheme) {
-        manualOverride = true;
+        manualMode = true;
         applyTheme(savedTheme, true);
     } else {
-        applyTheme(getTimeTheme(), false);
+        applyTheme(timeTheme(), false);
     }
 
-    // Enable smooth transitions AFTER first paint (avoids flash)
-    requestAnimationFrame(() => {
-        setTimeout(() => document.body.classList.add('t-ready'), 50);
+    requestAnimationFrame(function () {
+        setTimeout(function () { document.body.classList.add('lx-t-ready'); }, 50);
     });
 
-    // ── Manual toggle ──
-    themeBtn.addEventListener('click', () => {
-        const curr = html.getAttribute('data-theme');
-        const next = curr === 'dark' ? 'light' : 'dark';
-        manualOverride = true;
-        applyTheme(next, true);
+    themeBtn.addEventListener('click', function () {
+        var curr = html.getAttribute('data-theme');
+        manualMode = true;
+        applyTheme(curr === 'dark' ? 'light' : 'dark', true);
     });
 
-    // ── Auto re-check every minute (follows clock if no manual override) ──
-    setInterval(() => {
-        if (!manualOverride) {
-            applyTheme(getTimeTheme(), false);
-        }
-        // Update the time display in the pill every minute regardless
-        const isDark = html.getAttribute('data-theme') === 'dark';
-        const timeStr = new Date().toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        pillText.textContent = isDark ? `Night mode · ${timeStr}` : `Day mode · ${timeStr}`;
-    }, 60000);
-
-    // ── Double-click toggle button resets to AUTO ──
-    themeBtn.addEventListener('dblclick', () => {
-        manualOverride = false;
+    themeBtn.addEventListener('dblclick', function () {
+        manualMode = false;
         localStorage.removeItem('graderadmin_theme');
         localStorage.removeItem('graderadmin_manual');
-        autoTag.textContent = 'AUTO';
+        autoTag.textContent   = 'AUTO';
         autoTag.style.opacity = '1';
-        applyTheme(getTimeTheme(), false);
+        applyTheme(timeTheme(), false);
     });
 
-    /* ══════════════════════════════════════════
-       PASSWORD SHOW / HIDE
-    ══════════════════════════════════════════ */
-    const pwToggle = document.getElementById('pwToggle');
-    const pwInput = document.getElementById('password');
+    setInterval(function () {
+        if (!manualMode) applyTheme(timeTheme(), false);
+        var dark = html.getAttribute('data-theme') === 'dark';
+        var time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        pillText.textContent = dark ? 'Night mode · ' + time : 'Day mode · ' + time;
+    }, 60000);
 
-    pwToggle.addEventListener('click', () => {
-        const show = pwInput.type === 'password';
+    /* Password toggle */
+    var pwToggle = document.getElementById('lxPwToggle');
+    var pwInput  = document.getElementById('lxPassword');
+    pwToggle.addEventListener('click', function () {
+        var show = pwInput.type === 'password';
         pwInput.type = show ? 'text' : 'password';
-        pwToggle.classList.toggle('fa-eye', !show);
-        pwToggle.classList.toggle('fa-eye-slash', show);
+        pwToggle.classList.toggle('fa-eye',       !show);
+        pwToggle.classList.toggle('fa-eye-slash',  show);
     });
 
-    /* ══════════════════════════════════════════
-       SUBMIT LOADING STATE
-    ══════════════════════════════════════════ */
-    document.getElementById('loginForm').addEventListener('submit', () => {
-        const btn = document.getElementById('submitBtn');
+    /* Submit loading */
+    document.getElementById('lxLoginForm').addEventListener('submit', function () {
+        var btn = document.getElementById('lxSubmitBtn');
         btn.classList.add('loading');
         btn.disabled = true;
-        setTimeout(() => {
+        setTimeout(function () {
             btn.classList.remove('loading');
             btn.disabled = false;
         }, 6000);
     });
+
+}());
 </script>
-
-<style>
-    :root {
-        --brand: #0f766e;
-        --brand-dark: #0d6b63;
-        --brand-light: #14b8a6;
-        --brand-dim: rgba(15, 118, 110, 0.10);
-        --brand-ring: rgba(15, 118, 110, 0.22);
-        --font: 'Plus Jakarta Sans', sans-serif;
-        --mono: 'JetBrains Mono', monospace;
-    }
-
-    /* LIGHT THEME */
-    [data-theme="light"] {
-        --bg: #F8F9FC;
-        --surface: #FFFFFF;
-        --surface2: #F2F4F8;
-        --surface3: #E8EBF2;
-        --border: #E2E5EE;
-        --border2: #D0D5E2;
-        --text: #111520;
-        --text2: #3D4460;
-        --muted: #8A92AA;
-        --muted-light: #C5CAD8;
-        --input-bg: #F2F4F8;
-        --input-focus: #FFFFFF;
-        --panel-bg: #111520;
-        --panel-text: #FFFFFF;
-        --panel-sub: rgba(255, 255, 255, 0.45);
-        --panel-border: rgba(255, 255, 255, 0.08);
-        --panel-card: rgba(255, 255, 255, 0.07);
-        --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 32px rgba(0, 0, 0, 0.08);
-        --shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.06), 0 20px 60px rgba(0, 0, 0, 0.10);
-        --red: #E5484D;
-        --red-bg: rgba(229, 72, 77, 0.06);
-        --red-border: rgba(229, 72, 77, 0.18);
-        --green: #12A05C;
-    }
-
-    /* DARK THEME */
-    [data-theme="dark"] {
-        --bg: #0C0E14;
-        --surface: #141720;
-        --surface2: #1B1F2E;
-        --surface3: #222740;
-        --border: rgba(255, 255, 255, 0.07);
-        --border2: rgba(255, 255, 255, 0.11);
-        --text: #EDF0F8;
-        --text2: #9BA3BF;
-        --muted: #454E6A;
-        --muted-light: #353D55;
-        --input-bg: #1B1F2E;
-        --input-focus: #222740;
-        --panel-bg: #111520;
-        --panel-text: #FFFFFF;
-        --panel-sub: rgba(255, 255, 255, 0.4);
-        --panel-border: rgba(255, 255, 255, 0.07);
-        --panel-card: rgba(255, 255, 255, 0.06);
-        --shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 8px 32px rgba(0, 0, 0, 0.4);
-        --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4), 0 24px 64px rgba(0, 0, 0, 0.5);
-        --red: #F87171;
-        --red-bg: rgba(248, 113, 113, 0.07);
-        --red-border: rgba(248, 113, 113, 0.18);
-        --green: #34D399;
-    }
-
-    /* ─────────────────────────────────────────
-       SMOOTH THEME TRANSITION
-    ───────────────────────────────────────── */
-    *,
-    *::before,
-    *::after {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-    }
-
-    .t-ready * {
-        transition:
-            background-color .3s ease,
-            border-color .3s ease,
-            color .3s ease,
-            box-shadow .3s ease;
-    }
-
-    /* ─────────────────────────────────────────
-       BASE
-    ───────────────────────────────────────── */
-    html,
-    body {
-        height: 100%;
-        font-family: var(--font);
-        background: var(--bg);
-        color: var(--text);
-        overflow: hidden;
-    }
-
-    /* ─────────────────────────────────────────
-       SUBTLE BACKGROUND PATTERN
-    ───────────────────────────────────────── */
-    body::before {
-        content: '';
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        background-image:
-            radial-gradient(circle, var(--border) 1px, transparent 1px);
-        background-size: 28px 28px;
-        opacity: 0.6;
-        pointer-events: none;
-    }
-
-    [data-theme="dark"] body::before {
-        opacity: 0.35;
-    }
-
-    /* ─────────────────────────────────────────
-       THEME TOGGLE  — top right
-    ───────────────────────────────────────── */
-    .theme-btn {
-        position: fixed;
-        top: 20px;
-        right: 22px;
-        z-index: 300;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        background: var(--surface);
-        border: 1px solid var(--border2);
-        border-radius: 8px;
-        padding: 7px 13px 7px 10px;
-        cursor: pointer;
-        box-shadow: var(--shadow);
-        font-family: var(--mono);
-        font-size: 11px;
-        font-weight: 500;
-        color: var(--text2);
-        letter-spacing: 0.5px;
-        animation: fadeDown .5s .4s ease both;
-    }
-
-    .theme-btn:hover {
-        border-color: var(--brand);
-        color: var(--text);
-    }
-
-    /* Icon swap */
-    .theme-btn .ico-sun,
-    .theme-btn .ico-moon {
-        font-size: 13px;
-    }
-
-    [data-theme="light"] .ico-moon {
-        display: none;
-    }
-
-    [data-theme="light"] .ico-sun {
-        display: block;
-        color: var(--brand);
-    }
-
-    [data-theme="dark"] .ico-sun {
-        display: none;
-    }
-
-    [data-theme="dark"] .ico-moon {
-        display: block;
-        color: #A5B4FC;
-    }
-
-    /* Auto tag */
-    .auto-tag {
-        font-size: 9px;
-        background: var(--brand-dim);
-        color: var(--brand);
-        border: 1px solid var(--brand-ring);
-        padding: 1px 6px;
-        border-radius: 4px;
-        font-family: var(--mono);
-        letter-spacing: .3px;
-    }
-
-    /* ─────────────────────────────────────────
-       PAGE LAYOUT
-    ───────────────────────────────────────── */
-    .page {
-        position: relative;
-        z-index: 1;
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 24px;
-    }
-
-    /* ─────────────────────────────────────────
-       CARD
-    ───────────────────────────────────────── */
-    .card {
-        display: flex;
-        width: 100%;
-        max-width: 940px;
-        min-height: 560px;
-        border-radius: 20px;
-        overflow: hidden;
-        border: 1px solid var(--border2);
-        box-shadow: var(--shadow-lg);
-        animation: riseIn .65s cubic-bezier(.16, 1, .3, 1) both;
-    }
-
-    @keyframes riseIn {
-        from {
-            opacity: 0;
-            transform: translateY(24px);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    /* ─────────────────────────────────────────
-       LEFT PANEL  — always dark, brand accent
-    ───────────────────────────────────────── */
-    .panel-l {
-        width: 380px;
-        flex-shrink: 0;
-        background: var(--panel-bg);
-        padding: 52px 44px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        position: relative;
-        overflow: hidden;
-        border-right: 1px solid var(--panel-border);
-    }
-
-    /* Brand accent bar — top */
-    .panel-l::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 3px;
-        background: var(--brand);
-    }
-
-    /* Subtle corner glow */
-    .panel-l::after {
-        content: '';
-        position: absolute;
-        bottom: -60px;
-        right: -60px;
-        width: 240px;
-        height: 240px;
-        background: radial-gradient(circle, rgba(15, 118, 110, 0.08) 0%, transparent 70%);
-        pointer-events: none;
-    }
-
-    /* Brand mark */
-    .brand-mark {
-        display: flex;
-        align-items: center;
-        gap: 13px;
-        animation: slideR .5s .1s ease both;
-    }
-
-    .brand-icon {
-        width: 44px;
-        height: 44px;
-        background: var(--brand);
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 20px;
-        flex-shrink: 0;
-        box-shadow: 0 4px 16px rgba(15, 118, 110, 0.3);
-    }
-
-    .brand-name {
-        font-size: 17px;
-        font-weight: 800;
-        color: #FFFFFF;
-        letter-spacing: -.4px;
-    }
-
-    .brand-sub {
-        font-size: 11px;
-        color: var(--panel-sub);
-        font-family: var(--mono);
-        margin-top: 2px;
-    }
-
-    /* Copy block */
-    .copy {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        padding: 44px 0 36px;
-        animation: slideR .5s .18s ease both;
-    }
-
-    .copy-label {
-        font-size: 10.5px;
-        font-family: var(--mono);
-        color: var(--brand);
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        margin-bottom: 16px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .copy-label::before {
-        content: '';
-        width: 20px;
-        height: 1.5px;
-        background: var(--brand);
-        border-radius: 2px;
-    }
-
-    .copy h1 {
-        font-size: 34px;
-        font-weight: 800;
-        letter-spacing: -1.2px;
-        line-height: 1.12;
-        color: #FFFFFF;
-        margin-bottom: 14px;
-    }
-
-    .copy h1 em {
-        font-style: normal;
-        color: var(--brand);
-    }
-
-    .copy p {
-        font-size: 13.5px;
-        color: var(--panel-sub);
-        line-height: 1.7;
-    }
-
-    /* Stats */
-    .stats {
-        display: flex;
-        gap: 12px;
-        animation: slideR .5s .26s ease both;
-    }
-
-    .stat {
-        flex: 1;
-        background: var(--panel-card);
-        border: 1px solid var(--panel-border);
-        border-radius: 10px;
-        padding: 12px 14px;
-    }
-
-    .stat-num {
-        font-size: 19px;
-        font-weight: 700;
-        font-family: var(--mono);
-        color: var(--brand);
-    }
-
-    .stat-lbl {
-        font-size: 10.5px;
-        color: var(--panel-sub);
-        margin-top: 3px;
-    }
-
-    /* Deco grid of icons */
-    .deco {
-        position: absolute;
-        bottom: 18px;
-        right: 18px;
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 7px;
-        opacity: 0.04;
-    }
-
-    .deco i {
-        font-size: 20px;
-        color: #FFF;
-    }
-
-    /* ─────────────────────────────────────────
-       RIGHT PANEL  — form
-    ───────────────────────────────────────── */
-    .panel-r {
-        flex: 1;
-        background: var(--surface);
-        padding: 52px 48px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        position: relative;
-    }
-
-    /* Top accent line in dark mode */
-    [data-theme="dark"] .panel-r::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 2px;
-        background: var(--brand);
-        opacity: 0.6;
-    }
-
-    /* Form heading */
-    .form-head {
-        margin-bottom: 30px;
-        animation: slideL .5s .15s ease both;
-    }
-
-    .form-kicker {
-        font-size: 10.5px;
-        font-family: var(--mono);
-        color: var(--muted);
-        letter-spacing: 1.5px;
-        text-transform: uppercase;
-        margin-bottom: 7px;
-    }
-
-    .form-head h2 {
-        font-size: 24px;
-        font-weight: 800;
-        letter-spacing: -.5px;
-        color: var(--text);
-    }
-
-    .form-head p {
-        font-size: 13px;
-        color: var(--muted);
-        margin-top: 5px;
-    }
-
-    /* Time-mode indicator */
-    .mode-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        margin-top: 12px;
-        background: var(--surface2);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 5px 10px;
-        font-size: 11px;
-        font-family: var(--mono);
-        color: var(--muted);
-    }
-
-    .mode-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-    }
-
-    [data-theme="light"] .mode-dot {
-        background: var(--brand);
-        box-shadow: 0 0 6px rgba(15, 118, 110, .5);
-    }
-
-    [data-theme="dark"] .mode-dot {
-        background: #A5B4FC;
-        box-shadow: 0 0 6px rgba(165, 180, 252, .5);
-    }
-
-    /* Error alert */
-    .alert {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        background: var(--red-bg);
-        border: 1px solid var(--red-border);
-        border-left: 3px solid var(--red);
-        border-radius: 8px;
-        padding: 12px 14px;
-        margin-bottom: 22px;
-        font-size: 13px;
-        color: var(--red);
-        animation: shakeX .4s ease both;
-    }
-
-    @keyframes shakeX {
-
-        0%,
-        100% {
-            transform: translateX(0);
-        }
-
-        20%,
-        60% {
-            transform: translateX(-5px);
-        }
-
-        40%,
-        80% {
-            transform: translateX(5px);
-        }
-    }
-
-    /* Success alert */
-    .alert-success {
-        background: rgba(18, 160, 92, 0.07);
-        border-color: rgba(18, 160, 92, 0.20);
-        border-left-color: var(--green);
-        color: var(--green);
-    }
-
-    /* Form fields */
-    .login-form {
-        animation: slideL .5s .22s ease both;
-    }
-
-    .fgroup {
-        margin-bottom: 16px;
-    }
-
-    .flabel {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 11.5px;
-        font-weight: 700;
-        color: var(--text2);
-        letter-spacing: .4px;
-        text-transform: uppercase;
-        margin-bottom: 7px;
-    }
-
-    .flabel i {
-        font-size: 10.5px;
-        color: var(--brand);
-    }
-
-    .finput-wrap {
-        position: relative;
-    }
-
-    .finput-wrap input {
-        width: 100%;
-        background: var(--input-bg);
-        border: 1.5px solid var(--border);
-        border-radius: 10px;
-        padding: 12px 44px 12px 14px;
-        font-size: 14px;
-        font-family: var(--font);
-        color: var(--text);
-        outline: none;
-        caret-color: var(--brand);
-    }
-
-    .finput-wrap input::placeholder {
-        color: var(--muted-light);
-    }
-
-    .finput-wrap input:focus {
-        border-color: var(--brand);
-        background: var(--input-focus);
-        box-shadow: 0 0 0 3px var(--brand-ring);
-    }
-
-    .ficon {
-        position: absolute;
-        right: 13px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: var(--muted);
-        font-size: 13.5px;
-        pointer-events: none;
-    }
-
-    .finput-wrap:focus-within .ficon {
-        color: var(--brand);
-    }
-
-    .pw-toggle {
-        pointer-events: all;
-        cursor: pointer;
-    }
-
-    .pw-toggle:hover {
-        color: var(--text);
-    }
-
-    /* Divider between School ID and Password */
-    .fdivider {
-        height: 1px;
-        background: var(--border);
-        margin: 4px 0 16px;
-    }
-
-    /* Submit */
-    .btn-submit {
-        width: 100%;
-        padding: 13.5px;
-        background: var(--brand);
-        border: none;
-        border-radius: 10px;
-        color: #ffffff;
-        font-family: var(--font);
-        font-size: 14px;
-        font-weight: 800;
-        letter-spacing: .2px;
-        cursor: pointer;
-        box-shadow: 0 4px 16px rgba(15, 118, 110, 0.28);
-        margin-top: 4px;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .btn-submit:hover {
-        background: var(--brand-light);
-        box-shadow: 0 6px 22px rgba(15, 118, 110, 0.38);
-        transform: translateY(-1px);
-    }
-
-    .btn-submit:active {
-        transform: translateY(0);
-    }
-
-    .btn-inner {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 9px;
-        position: relative;
-        z-index: 1;
-    }
-
-    /* Loading state */
-    .btn-submit.loading .btn-text {
-        display: none;
-    }
-
-    .spin {
-        display: none;
-        width: 17px;
-        height: 17px;
-        border: 2px solid rgba(255, 255, 255, 0.25);
-        border-top-color: #ffffff;
-        border-radius: 50%;
-        animation: spin .65s linear infinite;
-    }
-
-    .btn-submit.loading .spin {
-        display: block;
-    }
-
-    @keyframes spin {
-        to {
-            transform: rotate(360deg);
-        }
-    }
-
-    /* Footer row */
-    .form-foot {
-        margin-top: 18px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        animation: slideL .5s .30s ease both;
-    }
-
-    .secure {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 11px;
-        color: var(--muted);
-    }
-
-    .secure i {
-        color: var(--green);
-        font-size: 10.5px;
-    }
-
-    .forgot-link {
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--brand);
-        text-decoration: none;
-        transition: opacity .2s;
-    }
-
-    .forgot-link:hover {
-        opacity: .75;
-    }
-
-    /* ─────────────────────────────────────────
-       ANIMATIONS
-    ───────────────────────────────────────── */
-    @keyframes slideR {
-        from {
-            opacity: 0;
-            transform: translateX(-18px);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateX(0);
-        }
-    }
-
-    @keyframes slideL {
-        from {
-            opacity: 0;
-            transform: translateX(18px);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateX(0);
-        }
-    }
-
-    @keyframes fadeDown {
-        from {
-            opacity: 0;
-            transform: translateY(-10px);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    /* ─────────────────────────────────────────
-       RESPONSIVE
-    ───────────────────────────────────────── */
-    @media (max-width: 780px) {
-        .card {
-            flex-direction: column;
-            max-width: 440px;
-        }
-
-        .panel-l {
-            width: 100%;
-            padding: 34px 28px;
-        }
-
-        .stats {
-            display: none;
-        }
-
-        .copy h1 {
-            font-size: 26px;
-        }
-
-        .copy {
-            padding: 28px 0 24px;
-        }
-
-        .panel-r {
-            padding: 34px 28px;
-        }
-
-        html,
-        body {
-            overflow: auto;
-        }
-    }
-
-    @media (max-width: 460px) {
-
-        .panel-l,
-        .panel-r {
-            padding: 26px 22px;
-        }
-
-        .copy h1 {
-            font-size: 22px;
-        }
-    }
-</style>

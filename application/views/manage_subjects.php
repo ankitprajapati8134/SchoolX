@@ -174,6 +174,9 @@
 let patternType = 0;
 
 /* ── Toast utility ── */
+function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 function smToast(msg, type) {
     var wrap = document.getElementById('smToastWrap');
     var el   = document.createElement('div');
@@ -200,6 +203,14 @@ document.getElementById('assessmentInfoModal').addEventListener('click', functio
 });
 
 document.addEventListener('DOMContentLoaded', function() {
+
+    /* ── CSRF setup for all AJAX calls ── */
+    var CSRF_NAME = '<?= $this->security->get_csrf_token_name() ?>';
+    var CSRF_HASH = '<?= $this->security->get_csrf_hash() ?>';
+    $.ajaxSetup({
+        data: { [CSRF_NAME]: CSRF_HASH },
+        headers: { 'X-CSRF-Token': CSRF_HASH }
+    });
 
     /* ── Bootstrap modal shim — inside DOMContentLoaded so $ is available ── */
     /* NOTE: Do NOT call .show() — CSS handles display:flex via .open class.  */

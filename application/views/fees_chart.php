@@ -641,7 +641,7 @@ function saveUpdatedFees() {
 }
 .fm-page-title {
     font-family: 'Lora', serif;
-    font-size: 25px; font-weight: 700;
+    font-size: 1.35rem; font-weight: 700;
     color: var(--fm-navy);
     display: flex; align-items: center; gap: 10px;
     margin: 0 0 6px;
@@ -655,7 +655,7 @@ function saveUpdatedFees() {
 }
 .fm-breadcrumb a { color: var(--fm-teal); text-decoration: none; font-weight: 500; }
 .fm-breadcrumb a:hover { text-decoration: underline; }
-.fm-breadcrumb li::before { content: '/'; margin-right: 6px; color: #cbd5e1; }
+.fm-breadcrumb li::before { content: '/'; margin-right: 6px; color: var(--fm-border); }
 .fm-breadcrumb li:first-child::before { display: none; }
 
 /* ── Card ── */
@@ -719,7 +719,7 @@ function saveUpdatedFees() {
     transition: border-color .14s, box-shadow .14s;
 }
 .fm-select:focus { border-color: var(--fm-teal); box-shadow: 0 0 0 3px rgba(15,118,110,.1); }
-.fm-select:disabled { background: #f1f5f9; cursor: not-allowed; color: var(--fm-muted); }
+.fm-select:disabled { background: var(--fm-bg); cursor: not-allowed; color: var(--fm-muted); }
 .fm-select-arrow {
     position: absolute; right: 10px; top: 50%;
     transform: translateY(-50%);
@@ -803,7 +803,7 @@ function saveUpdatedFees() {
     border: 1.5px solid var(--fm-border);
     border-radius: 5px; font-size: 13px;
     color: var(--fm-text);
-    background: #fafbff;
+    background: var(--fm-bg);
     font-family: 'Instrument Sans', sans-serif;
     outline: none;
     transition: border-color .12s, box-shadow .12s;
@@ -854,7 +854,7 @@ function saveUpdatedFees() {
 }
 .fm-total-bar-value {
     font-family: 'Lora', serif;
-    font-size: 28px; font-weight: 700;
+    font-size: 1.35rem; font-weight: 700;
     color: #fff;
 }
 

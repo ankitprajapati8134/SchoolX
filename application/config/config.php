@@ -16,7 +16,7 @@ $config['uri_protocol'] = 'REQUEST_URI';
 $config['url_suffix'] = '';
 $config['language'] = 'english';
 $config['charset'] = 'UTF-8';
-$config['enable_hooks'] = FALSE;
+$config['enable_hooks'] = TRUE;
 $config['subclass_prefix'] = 'MY_';
 $config['composer_autoload'] = TRUE;
 $config['composer_autoload'] = realpath(APPPATH . '../vendor/autoload.php');
@@ -92,7 +92,24 @@ $config['csrf_token_name']  = 'csrf_token';
 $config['csrf_cookie_name'] = 'csrf_token';
 $config['csrf_expire']      = 7200;
 $config['csrf_regenerate']  = FALSE;   // Keep FALSE for AJAX apps
-$config['csrf_exclude_uris'] = [];
+
+// ── SA panel CSRF handled by MY_Superadmin_Controller (session-based, not cookie). ──
+// The SA and school-admin panels share the same cookie domain/name, so CI3's
+// cookie-based check collides when both are open.  We exclude all SA routes
+// (except the login form POST) and verify CSRF manually in the base controller
+// using a token stored in the authenticated SA session.
+$config['csrf_exclude_uris'] = [
+    'superadmin/dashboard(.*)',
+    'superadmin/schools(.*)',
+    'superadmin/plans(.*)',
+    'superadmin/reports(.*)',
+    'superadmin/monitor(.*)',
+    'superadmin/backups(.*)',
+    'superadmin/debug(.*)',
+    'superadmin/migration(.*)',
+    'superadmin/csrf_token',
+    // NOTE: superadmin/login/authenticate is NOT excluded — CI3 protects the login form.
+];
 
 $config['compress_output'] = FALSE;
 $config['time_reference']  = 'local';

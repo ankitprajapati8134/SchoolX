@@ -47,10 +47,153 @@ class Admin extends MY_Controller
         $this->load->view('include/footer');
     }
 
+    // ====================================================================
+    //  DASHBOARD DATA — single AJAX endpoint (max 5 Firebase reads)
+    // ====================================================================
+
+    public function get_dashboard_data()
+    {
+        header('Content-Type: application/json');
+
+        $school    = $this->school_name;
+        $session   = $this->session_year;
+        $parentKey = $this->parent_db_key;
+        $role      = $this->admin_role;
+
+        // ── Read 1: All students ──────────────────────────────────────────
+        $students     = $this->firebase->get("Users/Parents/{$parentKey}");
+        $studentCount = 0;
+        $classDist    = [];
+        $genderDist   = ['Male' => 0, 'Female' => 0, 'Other' => 0];
+        $sectionSet   = [];
+
+        if (is_array($students)) {
+            foreach ($students as $sid => $s) {
+                if (!is_array($s) || empty($s['Name'])) continue;
+                $studentCount++;
+
+                $cls = trim($s['Class'] ?? 'Unknown');
+                $sec = trim($s['Section'] ?? '');
+                $classDist[$cls] = ($classDist[$cls] ?? 0) + 1;
+                if ($cls && $sec) $sectionSet["{$cls}|{$sec}"] = true;
+
+                $g = strtolower(trim($s['Gender'] ?? ''));
+                if ($g === 'male' || $g === 'm')        $genderDist['Male']++;
+                elseif ($g === 'female' || $g === 'f')  $genderDist['Female']++;
+                else                                     $genderDist['Other']++;
+            }
+        }
+        uksort($classDist, 'strnatcasecmp');
+
+        // ── Read 2: Teachers (shallow count) ──────────────────────────────
+        $teacherKeys  = $this->firebase->shallow_get("Schools/{$school}/{$session}/Teachers");
+        $teacherCount = is_array($teacherKeys) ? count($teacherKeys) : 0;
+
+        // ── Read 3: Session root (shallow) for class count ────────────────
+        $sessionKeys = $this->firebase->shallow_get("Schools/{$school}/{$session}");
+        $classCount  = 0;
+        if (is_array($sessionKeys)) {
+            foreach ($sessionKeys as $key) {
+                if (strpos($key, 'Class ') === 0) $classCount++;
+            }
+        }
+
+        // ── Read 4: Receipt Index (fees) — skip for Teacher role ──────────
+        $feesCollected = 0;
+        $monthlyFees   = [];
+
+        if ($role !== 'Teacher') {
+            $receipts = $this->firebase->get("Schools/{$school}/{$session}/Accounts/Receipt_Index");
+            if (is_array($receipts)) {
+                foreach ($receipts as $rNo => $r) {
+                    if (!is_array($r)) continue;
+                    $amt = (float) ($r['amount'] ?? 0);
+                    $feesCollected += $amt;
+
+                    $dateStr = $r['date'] ?? '';
+                    if ($dateStr) {
+                        $ts = strtotime($dateStr);
+                        if ($ts) {
+                            $monthKey = date('Y-m', $ts);
+                            $monthlyFees[$monthKey] = ($monthlyFees[$monthKey] ?? 0) + $amt;
+                        }
+                    }
+                }
+            }
+            ksort($monthlyFees);
+        }
+
+        // ── Read 5: Events ────────────────────────────────────────────────
+        $eventsRaw      = $this->firebase->get("Schools/{$school}/Events/List");
+        $upcoming       = [];
+        $ongoing        = [];
+        $recent         = [];
+        $calendarEvents = [];
+        $today          = date('Y-m-d');
+
+        if (is_array($eventsRaw)) {
+            foreach ($eventsRaw as $eid => $evt) {
+                if (!is_array($evt)) continue;
+                $start  = $evt['start_date'] ?? '';
+                $end    = $evt['end_date']   ?? $start;
+                $status = $evt['status']     ?? 'scheduled';
+
+                $item = [
+                    'id'       => $eid,
+                    'title'    => $evt['title']    ?? '',
+                    'category' => $evt['category'] ?? 'event',
+                    'start'    => $start,
+                    'end'      => $end,
+                    'status'   => $status,
+                    'location' => $evt['location'] ?? '',
+                ];
+
+                if ($start) {
+                    $calendarEvents[] = ['date' => $start, 'title' => $item['title']];
+                }
+
+                if ($status === 'cancelled') continue;
+
+                if ($start >= $today && $status === 'scheduled') {
+                    $upcoming[] = $item;
+                } elseif ($status === 'ongoing' || ($start <= $today && $end >= $today)) {
+                    $ongoing[] = $item;
+                } elseif ($status === 'completed') {
+                    $recent[] = $item;
+                }
+            }
+
+            usort($upcoming, fn($a, $b) => strcmp($a['start'], $b['start']));
+            usort($recent,   fn($a, $b) => strcmp($b['start'], $a['start']));
+            $upcoming = array_slice($upcoming, 0, 5);
+            $recent   = array_slice($recent, 0, 3);
+        }
+
+        echo json_encode([
+            'role'              => $role,
+            'stats'             => [
+                'students'       => $studentCount,
+                'teachers'       => $teacherCount,
+                'classes'        => $classCount,
+                'sections'       => count($sectionSet),
+                'fees_collected' => $feesCollected,
+            ],
+            'students_by_class' => $classDist,
+            'gender'            => $genderDist,
+            'monthly_fees'      => $monthlyFees,
+            'events'            => [
+                'upcoming' => $upcoming,
+                'ongoing'  => $ongoing,
+                'recent'   => $recent,
+            ],
+            'calendar_events'   => $calendarEvents,
+        ]);
+    }
+
     public function manage_admin()
     {
-        // [FIX-2] Use session school_id instead of hardcoded '1111'
-        $school_id = $this->school_id;
+        // [FIX-2] Use session school_code (login code) for Users/Admin paths
+        $school_id = $this->school_code;
 
         if ($this->input->method() === 'post') {
             header('Content-Type: application/json');
@@ -187,7 +330,7 @@ class Admin extends MY_Controller
     {
         header('Content-Type: application/json');
 
-        $school_id = $this->school_id;
+        $school_id = $this->school_code;
         $admin_id  = trim((string) $this->input->post('admin_id'));
 
         if (!$admin_id) {
@@ -325,7 +468,7 @@ class Admin extends MY_Controller
     {
         header('Content-Type: application/json');
 
-        $school_id = $this->school_id;
+        $school_id = $this->school_code;
         $modalId   = trim((string) $this->input->post('modal_id'));
         $userData  = $this->input->post('user_data');
 

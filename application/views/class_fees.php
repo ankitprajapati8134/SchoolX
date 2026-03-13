@@ -558,7 +558,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     .cf-page-title {
         font-family: 'Playfair Display', serif;
-        font-size: 24px;
+        font-size: 1.35rem;
         font-weight: 700;
         color: var(--fc-navy);
         display: flex;
@@ -584,7 +584,7 @@ document.addEventListener('DOMContentLoaded', function() {
     .cf-breadcrumb li+li::before {
         content: ' / ';
         margin: 0 4px;
-        color: #cbd5e1;
+        color: var(--fc-border);
     }
 
     .cf-breadcrumb a {
@@ -989,7 +989,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     .cf-table tbody tr.cf-selected {
-        background: #bee3ff !important;
+        background: rgba(14, 116, 144, .12) !important;
     }
 
     /* Name cell */
@@ -1003,7 +1003,7 @@ document.addEventListener('DOMContentLoaded', function() {
         width: 32px;
         height: 32px;
         border-radius: 50%;
-        background: linear-gradient(135deg, var(--fc-teal), #0891b2);
+        background: linear-gradient(135deg, var(--fc-teal), var(--fc-teal));
         color: #fff;
         font-weight: 700;
         font-size: 12px;

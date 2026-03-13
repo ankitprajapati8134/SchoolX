@@ -31,12 +31,16 @@ class MY_Controller extends CI_Controller
 {
     protected $admin_id;
     protected $school_id;
+    protected $school_code;
+    protected $school_display_name;
     protected $admin_role;
     protected $admin_name;
     protected $session_year;
     protected $school_name;
     protected $school_features;
     protected $available_sessions = [];
+    /** Key for Users/Parents/{key}/ paths — school_code for legacy, school_id for SCH_ schools */
+    protected $parent_db_key;
 
     /**
      * Routes that skip auth + CSRF checks.
@@ -61,14 +65,23 @@ class MY_Controller extends CI_Controller
         $this->_send_security_headers();
 
         // ── Pull session data ─────────────────────────────────────────────
-        $this->admin_id           = $this->session->userdata('admin_id');
-        $this->school_id          = $this->session->userdata('school_id');
-        $this->admin_role         = $this->session->userdata('admin_role');
-        $this->admin_name         = $this->session->userdata('admin_name');
-        $this->session_year       = $this->session->userdata('session');       // legacy key
-        $this->school_name        = $this->session->userdata('schoolName');
-        $this->school_features    = $this->session->userdata('school_features');
-        $this->available_sessions = $this->session->userdata('available_sessions') ?? [];
+        $this->admin_id            = $this->session->userdata('admin_id');
+        $this->school_id           = $this->session->userdata('school_id');       // SCH_XXXXXX
+        $this->school_code         = $this->session->userdata('school_code');     // login code
+        $this->admin_role          = $this->session->userdata('admin_role');
+        $this->admin_name          = $this->session->userdata('admin_name');
+        $this->session_year        = $this->session->userdata('session');         // legacy key
+        $this->school_name         = $this->session->userdata('schoolName');      // = school_id (SCH_XXXXXX)
+        $this->school_display_name = $this->session->userdata('school_display_name') ?? $this->school_name;
+        $this->school_features     = $this->session->userdata('school_features');
+        $this->available_sessions  = $this->session->userdata('available_sessions') ?? [];
+
+        // For Users/Parents/ and Users/Admin/ paths:
+        // Legacy schools store data under the login code (e.g. "10004"),
+        // new SCH_ schools store under the school_id (e.g. "SCH_XXXXXX").
+        $this->parent_db_key = (strpos($this->school_id ?? '', 'SCH_') === 0)
+            ? $this->school_id
+            : ($this->school_code ?: $this->school_id);
 
         // ── Determine current route ───────────────────────────────────────
         $controller = strtolower($this->router->fetch_class());
@@ -112,10 +125,11 @@ class MY_Controller extends CI_Controller
             $lastCheck = (int) $this->session->userdata('sub_check_ts');
 
             if ($now - $lastCheck >= 300) {
-                // [BUG-1] Correct path: "Users/Schools/..." not "Schools/..."
-                // [BUG-2] Correct library: $this->firebase not $this->CM
-                $subPath    = "Users/Schools/{$this->school_name}/subscription/status";
-                $liveStatus = $this->firebase->get($subPath);
+                // Subscription status check — try new path, then legacy fallback
+                $liveStatus = $this->firebase->get("System/Schools/{$this->school_id}/subscription/status");
+                if ($liveStatus === null || $liveStatus === false || $liveStatus === '') {
+                    $liveStatus = $this->firebase->get("Users/Schools/{$this->school_id}/subscription/status");
+                }
 
                 // [A-01] Only act if Firebase actually returned a value
                 if ($liveStatus !== null && $liveStatus !== false && $liveStatus !== '') {
@@ -186,12 +200,15 @@ class MY_Controller extends CI_Controller
         // ── [A-03] Share common vars with all views ───────────────────────
         // 'current_session' added so account_book.php gets the right variable.
         $this->load->vars([
-            'school_id'            => $this->school_id,
+            'school_id'            => $this->school_id,           // SCH_XXXXXX
+            'school_code'          => $this->school_code,         // login code
             'admin_id'             => $this->admin_id,
-            'school_name'          => $this->school_name,
+            'school_name'          => $this->school_display_name, // human name (for views)
+            'school_display_name'  => $this->school_display_name, // human name (explicit)
+            'school_firebase_key'  => $this->school_name,         // SCH_XXXXXX (for Firebase paths)
             'session_year'         => $this->session_year,
-            'current_session'      => $this->session_year,      // [A-03] account_book.php reads this
-            'available_sessions'   => $this->available_sessions, // session switcher dropdown
+            'current_session'      => $this->session_year,        // [A-03] account_book.php reads this
+            'available_sessions'   => $this->available_sessions,  // session switcher dropdown
             'admin_name'           => $this->admin_name,
             'admin_role'           => $this->admin_role,
             'school_features'      => $this->school_features,
@@ -230,9 +247,9 @@ class MY_Controller extends CI_Controller
         $keys = class_exists('Admin_login')
             ? Admin_login::SESSION_KEYS
             : [
-                'admin_id', 'school_id', 'admin_role', 'admin_name',
+                'admin_id', 'school_id', 'school_code', 'admin_role', 'admin_name',
                 'session', 'current_session', 'session_year',
-                'schoolName', 'school_features',
+                'schoolName', 'school_display_name', 'school_features',
                 'subscription_expiry', 'subscription_grace_end', 'subscription_warning',
                 'sub_check_ts', 'login_csrf',
             ];
@@ -257,7 +274,7 @@ class MY_Controller extends CI_Controller
      *
      * Usage:
      *   $class = $this->safe_path_segment($this->input->post('class'), 'class');
-     *   $path  = "Schools/{$this->school_name}/{$this->session_year}/{$class}";
+     *   $path  = "Schools/{$this->school_id}/{$this->session_year}/{$class}";
      */
     protected function safe_path_segment(string $value, string $field = 'value'): string
     {
@@ -324,5 +341,119 @@ class MY_Controller extends CI_Controller
         header('Content-Type: application/json');
         echo json_encode(['status' => 'error', 'message' => $message]);
         exit;
+    }
+
+    // =========================================================================
+    //  ROLE-BASED ACCESS CONTROL
+    // =========================================================================
+
+    /**
+     * Abort 403 if the current user's role is not in the allowed list.
+     *
+     * @param array $allowed  e.g. ['Super Admin', 'Admin']
+     * @param string $action  Human-readable action name for log/message
+     */
+    protected function _require_role(array $allowed, string $action = ''): void
+    {
+        $role = $this->admin_role ?? '';
+
+        // Super Admin always passes
+        if ($role === 'Super Admin') return;
+
+        if (in_array($role, $allowed, true)) return;
+
+        $label = $action ? " ({$action})" : '';
+        log_message('error',
+            "RBAC denied: role=[{$role}] admin=[{$this->admin_id}]"
+            . " school=[{$this->school_name}]{$label}"
+        );
+
+        if ($this->input->is_ajax_request()) {
+            $this->json_error('You do not have permission to perform this action.', 403);
+        }
+
+        show_error('You do not have permission to access this page.', 403, 'Access Denied');
+    }
+
+    /**
+     * Load the current teacher's class/subject assignments from Duties.
+     *
+     * Firebase path: Schools/{school}/{year}/Teachers/{adminId}/Duties
+     * Structure:     {DutyType}/{classSection}/{subject}: time
+     *   e.g.  SubjectTeacher / Class 9th 'A' / Mathematics : "09:00-10:00"
+     *
+     * Returns a flat set of normalised keys the teacher is assigned to:
+     *   ['Class 9th|Section A'            => true,   // class+section access
+     *    'Class 9th|Section A|Mathematics' => true ]  // class+section+subject access
+     *
+     * Result is cached on the instance so repeated calls within one request are free.
+     *
+     * @return array  Associative [key => true] for fast isset() lookups
+     */
+    protected function _get_teacher_assignments(): array
+    {
+        // Instance cache
+        if (isset($this->_teacher_assign_cache)) {
+            return $this->_teacher_assign_cache;
+        }
+
+        $school = $this->school_name;
+        $year   = $this->session_year;
+        $tid    = $this->admin_id;
+        $map    = [];
+
+        $duties = $this->firebase->get("Schools/{$school}/{$year}/Teachers/{$tid}/Duties");
+        if (!is_array($duties)) {
+            $this->_teacher_assign_cache = $map;
+            return $map;
+        }
+
+        foreach ($duties as $dutyType => $classes) {
+            if (!is_array($classes)) continue;
+            foreach ($classes as $classSection => $subjects) {
+                // classSection = "Class 9th 'A'"
+                // Parse → classKey="Class 9th", sectionLetter="A"
+                if (preg_match("/^(.+?)\\s*'([^']*)'\\s*$/", $classSection, $m)) {
+                    $classKey      = trim($m[1]);  // "Class 9th"
+                    $sectionLetter = trim($m[2]);  // "A"
+                } else {
+                    $classKey      = $classSection;
+                    $sectionLetter = '';
+                }
+                $sectionKey = $sectionLetter ? "Section {$sectionLetter}" : '';
+                $csKey      = "{$classKey}|{$sectionKey}";
+
+                $map[$csKey] = true;
+
+                if (is_array($subjects)) {
+                    foreach (array_keys($subjects) as $subject) {
+                        $map["{$csKey}|{$subject}"] = true;
+                    }
+                }
+            }
+        }
+
+        $this->_teacher_assign_cache = $map;
+        return $map;
+    }
+
+    /**
+     * Check if the current teacher is assigned to the given class/section (and optionally subject).
+     * Non-Teacher roles always return true (they have full access).
+     */
+    protected function _teacher_can_access(string $classKey, string $sectionKey, string $subject = ''): bool
+    {
+        if (($this->admin_role ?? '') !== 'Teacher') return true;
+
+        $assignments = $this->_get_teacher_assignments();
+        $csKey = "{$classKey}|{$sectionKey}";
+
+        // Must at least be assigned to this class+section
+        if (!isset($assignments[$csKey])) return false;
+
+        // If a subject check is requested, verify that too
+        if ($subject !== '' && !isset($assignments["{$csKey}|{$subject}"])) return false;
+
+        return true;
     }
 }

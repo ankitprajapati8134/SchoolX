@@ -9,12 +9,17 @@
             <h1 class="sg-page-title"><i class="fa fa-picture-o"></i> School Gallery</h1>
             <ol class="sg-breadcrumb">
                 <li><a href="<?= base_url() ?>"><i class="fa fa-home"></i> Dashboard</a></li>
-                <li>Schools</li>
-                <li>Gallery</li>
+                <li><a href="#" onclick="showAlbumsView(); return false;">Gallery</a></li>
+                <li class="sg-bc-album" style="display:none;"></li>
             </ol>
         </div>
         <div class="sg-topbar-right">
-            <button class="sg-btn sg-btn-primary" onclick="document.getElementById('sgFileInput').click()">
+            <!-- Back button (visible in album detail view) -->
+            <button class="sg-btn sg-btn-ghost" id="sgBackBtn" style="display:none;" onclick="showAlbumsView()">
+                <i class="fa fa-arrow-left"></i> Back to Albums
+            </button>
+            <!-- Upload button (visible only in album detail view) -->
+            <button class="sg-btn sg-btn-primary" id="sgUploadBtn" style="display:none;" onclick="document.getElementById('sgFileInput').click()">
                 <i class="fa fa-cloud-upload"></i> Upload Media
             </button>
             <input type="file" id="sgFileInput" multiple accept="image/*,video/*" style="display:none;">
@@ -23,6 +28,13 @@
 
     <!-- ── STAT STRIP ── -->
     <div class="sg-stat-strip">
+        <div class="sg-stat sg-stat-purple">
+            <div class="sg-stat-icon"><i class="fa fa-folder-open"></i></div>
+            <div>
+                <div class="sg-stat-label">Albums</div>
+                <div class="sg-stat-val" id="statAlbums">0</div>
+            </div>
+        </div>
         <div class="sg-stat sg-stat-blue">
             <div class="sg-stat-icon"><i class="fa fa-picture-o"></i></div>
             <div>
@@ -46,68 +58,104 @@
         </div>
     </div>
 
-    <!-- ── UPLOAD ZONE ── -->
-    <div class="sg-card">
-        <div class="sg-card-head">
-            <div class="sg-card-head-left">
-                <i class="fa fa-cloud-upload"></i>
-                <h3>Upload Media</h3>
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!--  VIEW 1: ALBUMS GRID                                             -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div id="sgAlbumsView">
+        <div class="sg-card">
+            <div class="sg-card-head">
+                <div class="sg-card-head-left">
+                    <i class="fa fa-th"></i>
+                    <h3>Event Albums</h3>
+                </div>
+                <div class="sg-card-head-right">
+                    <div class="sg-search-wrap sg-search-sm">
+                        <i class="fa fa-search sg-search-icon"></i>
+                        <input type="text" class="sg-search" id="sgAlbumSearch" placeholder="Search albums..." autocomplete="off">
+                    </div>
+                </div>
             </div>
-        </div>
-        <div class="sg-card-body">
-            <div class="sg-upload-zone" id="sgDropZone" onclick="document.getElementById('sgFileInput').click()">
-                <div class="sg-upload-icon"><i class="fa fa-cloud-upload"></i></div>
-                <p style="font-size:14px;font-weight:600;color:#1a2332;margin:0 0 4px;">
-                    Drop images &amp; videos here or click to browse
-                </p>
-                <p class="sg-upload-hint">Images: JPG, PNG, WEBP (max 5MB) &nbsp;·&nbsp; Videos: MP4, MOV, AVI (max 50MB)</p>
+            <div class="sg-card-body">
+                <div class="sg-albums-grid" id="sgAlbumsGrid"></div>
+                <div class="sg-empty" id="sgAlbumsEmpty" style="display:none;">
+                    <i class="fa fa-folder-open-o"></i>
+                    <p style="font-size:15px;font-weight:600;margin:0 0 6px;">No albums yet</p>
+                    <p style="font-size:13px;margin:0;">Create an event and upload media to start building your gallery.</p>
+                </div>
             </div>
-            <div class="sg-upload-progress" id="sgUploadProgress">
-                <div class="sg-upload-bar" id="sgUploadBar"></div>
-            </div>
-            <div class="sg-upload-status" id="sgUploadStatus"></div>
         </div>
     </div>
 
-    <!-- ── GALLERY CARD ── -->
-    <div class="sg-card">
-        <div class="sg-card-head">
-            <div class="sg-card-head-left">
-                <i class="fa fa-th"></i>
-                <h3>Media Library</h3>
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!--  VIEW 2: ALBUM DETAIL (media grid)                               -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div id="sgAlbumDetailView" style="display:none;">
+
+        <!-- Album header -->
+        <div class="sg-album-header" id="sgAlbumHeader">
+            <div class="sg-album-title-row">
+                <h2 id="sgAlbumTitle">Album</h2>
+                <span class="sg-album-badge" id="sgAlbumCategory"></span>
             </div>
-            <div class="sg-card-head-right">
-                <button class="sg-btn sg-btn-danger sg-btn-sm" id="sgDeleteSelBtn" style="display:none;"
-                    onclick="deleteSelectedFiles()">
-                    <i class="fa fa-trash-o"></i> Delete Selected (<span id="sgSelCount">0</span>)
-                </button>
+            <div class="sg-album-meta" id="sgAlbumMeta"></div>
+        </div>
+
+        <!-- Upload zone -->
+        <div class="sg-card" id="sgUploadCard">
+            <div class="sg-card-head">
+                <div class="sg-card-head-left">
+                    <i class="fa fa-cloud-upload"></i>
+                    <h3>Upload to Album</h3>
+                </div>
+            </div>
+            <div class="sg-card-body">
+                <div class="sg-upload-zone" id="sgDropZone" onclick="document.getElementById('sgFileInput').click()">
+                    <div class="sg-upload-icon"><i class="fa fa-cloud-upload"></i></div>
+                    <p style="font-size:14px;font-weight:600;color:var(--sg-navy);margin:0 0 4px;">
+                        Drop images &amp; videos here or click to browse
+                    </p>
+                    <p class="sg-upload-hint">Images: JPG, PNG, WEBP (max 5MB) &nbsp;·&nbsp; Videos: MP4, MOV, AVI (max 50MB)</p>
+                </div>
+                <div class="sg-upload-progress" id="sgUploadProgress">
+                    <div class="sg-upload-bar" id="sgUploadBar"></div>
+                </div>
+                <div class="sg-upload-status" id="sgUploadStatus"></div>
             </div>
         </div>
 
-        <div class="sg-card-body">
-
-            <!-- Filter bar -->
-            <div class="sg-filter-bar">
-                <div class="sg-search-wrap">
-                    <i class="fa fa-search sg-search-icon"></i>
-                    <input type="text" class="sg-search" id="sgSearch" placeholder="Search by filename or date…" autocomplete="off">
+        <!-- Media grid -->
+        <div class="sg-card">
+            <div class="sg-card-head">
+                <div class="sg-card-head-left">
+                    <i class="fa fa-th"></i>
+                    <h3>Media</h3>
                 </div>
-                <div class="sg-tab-pills">
-                    <button class="sg-tab active" data-tab="all">All</button>
-                    <button class="sg-tab" data-tab="images">Images</button>
-                    <button class="sg-tab" data-tab="videos">Videos</button>
+                <div class="sg-card-head-right">
+                    <button class="sg-btn sg-btn-danger sg-btn-sm" id="sgDeleteSelBtn" style="display:none;"
+                        onclick="deleteSelectedFiles()">
+                        <i class="fa fa-trash-o"></i> Delete Selected (<span id="sgSelCount">0</span>)
+                    </button>
                 </div>
-                <span class="sg-media-count" id="sgMediaCount">Loading…</span>
             </div>
+            <div class="sg-card-body">
+                <div class="sg-filter-bar">
+                    <div class="sg-search-wrap">
+                        <i class="fa fa-search sg-search-icon"></i>
+                        <input type="text" class="sg-search" id="sgSearch" placeholder="Search by filename or date..." autocomplete="off">
+                    </div>
+                    <div class="sg-tab-pills">
+                        <button class="sg-tab active" data-tab="all">All</button>
+                        <button class="sg-tab" data-tab="images">Images</button>
+                        <button class="sg-tab" data-tab="videos">Videos</button>
+                    </div>
+                    <span class="sg-media-count" id="sgMediaCount">Loading...</span>
+                </div>
 
-            <!-- Gallery content -->
-            <div id="sgGalleryContent">
                 <!-- Images section -->
                 <div class="sg-category" id="sgImagesSection">
                     <div class="sg-section-title">
-                        <i class="fa fa-picture-o" style="color:var(--sg-teal);"></i>
-                        Images
-                        <span class="sg-section-toggle" onclick="toggleSection('sgImagesGrid', 'sgImgArrow')">
+                        <i class="fa fa-picture-o" style="color:var(--sg-teal);"></i> Images
+                        <span class="sg-section-toggle" onclick="toggleSection('sgImagesGrid','sgImgArrow')">
                             <i class="fa fa-chevron-up" id="sgImgArrow"></i>
                         </span>
                     </div>
@@ -117,26 +165,24 @@
                 <!-- Videos section -->
                 <div class="sg-category" id="sgVideosSection">
                     <div class="sg-section-title">
-                        <i class="fa fa-film" style="color:var(--sg-amber);"></i>
-                        Videos
-                        <span class="sg-section-toggle" onclick="toggleSection('sgVideosGrid', 'sgVidArrow')">
+                        <i class="fa fa-film" style="color:var(--sg-amber);"></i> Videos
+                        <span class="sg-section-toggle" onclick="toggleSection('sgVideosGrid','sgVidArrow')">
                             <i class="fa fa-chevron-up" id="sgVidArrow"></i>
                         </span>
                     </div>
                     <div class="sg-grid" id="sgVideosGrid"></div>
                 </div>
 
-                <!-- Loading / empty state -->
+                <!-- Empty state -->
                 <div class="sg-empty" id="sgEmptyState" style="display:none;">
                     <i class="fa fa-picture-o"></i>
-                    <p style="font-size:15px;font-weight:600;margin:0 0 6px;">No media uploaded yet</p>
-                    <p style="font-size:13px;margin:0 0 16px;">Upload images and videos to build your school gallery.</p>
+                    <p style="font-size:15px;font-weight:600;margin:0 0 6px;">No media in this album</p>
+                    <p style="font-size:13px;margin:0 0 16px;">Upload images and videos to this event album.</p>
                     <button class="sg-btn sg-btn-primary" onclick="document.getElementById('sgFileInput').click()">
                         <i class="fa fa-cloud-upload"></i> Upload Now
                     </button>
                 </div>
             </div>
-
         </div>
     </div>
 
@@ -161,10 +207,21 @@
 
 
 <script>
-/* ── State ── */
-var SG = { images: [], videos: [], activeTab: 'all' };
+/* ═══════════════════════════════════════════════════════════════════════
+   School Gallery — Event-Based Albums
+   ═══════════════════════════════════════════════════════════════════════ */
+
+var SG = {
+    albums: [],
+    images: [],
+    videos: [],
+    activeTab: 'all',
+    currentAlbum: null   // { event_id, title, category, ... }
+};
 
 var BASE = '<?= rtrim(base_url(), '/') ?>';
+var CSRF_NAME = document.querySelector('meta[name="csrf-name"]').content;
+var CSRF_HASH = document.querySelector('meta[name="csrf-token"]').content;
 
 /* ── Utilities ── */
 function showToast(msg, type) {
@@ -193,6 +250,15 @@ function extractFileName(url) {
 }
 
 function formatDate(ts) {
+    if (!ts) return '';
+    var d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
+    return d.toLocaleDateString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric'
+    });
+}
+
+function formatDateTime(ts) {
+    if (!ts) return '';
     return new Date(ts * 1000).toLocaleDateString('en-IN', {
         day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
     });
@@ -208,14 +274,164 @@ function toggleSection(gridId, arrowId) {
     arrow.className = collapsed ? 'fa fa-chevron-up' : 'fa fa-chevron-down';
 }
 
-/* ── Render media ── */
-function renderAll() {
+
+/* ══════════════════════════════════════════════════════════════════════
+   VIEW 1: ALBUMS
+   ══════════════════════════════════════════════════════════════════════ */
+
+function fetchAlbums() {
+    showLoading(true);
+    fetch(BASE + '/schools/fetchGalleryAlbums')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            SG.albums = data.albums || [];
+            renderAlbums();
+            updateStats();
+        })
+        .catch(function(e) {
+            console.error('fetchAlbums:', e);
+            showToast('Failed to load albums.', 'error');
+        })
+        .finally(function() { showLoading(false); });
+}
+
+function renderAlbums() {
+    var grid  = document.getElementById('sgAlbumsGrid');
+    var empty = document.getElementById('sgAlbumsEmpty');
+
+    if (!SG.albums.length) {
+        grid.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+    }
+    empty.style.display = 'none';
+
+    grid.innerHTML = SG.albums.map(function(album) {
+        var cover = album.cover
+            ? '<img src="' + album.cover + '" alt="' + album.title + '">'
+            : '<div class="sg-album-placeholder"><i class="fa fa-picture-o"></i></div>';
+
+        var badge = album.category === 'general'
+            ? '<span class="sg-badge sg-badge-muted">Legacy</span>'
+            : (album.status === 'completed'
+                ? '<span class="sg-badge sg-badge-green">Completed</span>'
+                : '<span class="sg-badge sg-badge-teal">' + (album.status || 'Event') + '</span>');
+
+        var dateStr = album.start_date ? formatDate(album.start_date) : '';
+
+        return '<div class="sg-album-card" data-id="' + album.event_id + '" data-title="' + album.title.toLowerCase() + '" onclick="openAlbum(\'' + album.event_id + '\')">'
+            + '<div class="sg-album-cover">' + cover + '</div>'
+            + '<div class="sg-album-info">'
+            +   '<div class="sg-album-name">' + album.title + '</div>'
+            +   '<div class="sg-album-counts">'
+            +       '<span><i class="fa fa-picture-o"></i> ' + album.image_count + '</span>'
+            +       '<span><i class="fa fa-film"></i> ' + album.video_count + '</span>'
+            +   '</div>'
+            +   '<div class="sg-album-bottom">'
+            +       badge
+            +       (dateStr ? '<span class="sg-album-date">' + dateStr + '</span>' : '')
+            +   '</div>'
+            + '</div>'
+            + '</div>';
+    }).join('');
+}
+
+function updateStats() {
+    var totalImages = 0, totalVideos = 0;
+    SG.albums.forEach(function(a) {
+        totalImages += a.image_count || 0;
+        totalVideos += a.video_count || 0;
+    });
+    document.getElementById('statAlbums').textContent = SG.albums.length;
+    document.getElementById('statImages').textContent = totalImages;
+    document.getElementById('statVideos').textContent = totalVideos;
+    document.getElementById('statTotal').textContent  = totalImages + totalVideos;
+}
+
+/* Album search */
+document.getElementById('sgAlbumSearch').addEventListener('input', function() {
+    var q = this.value.toLowerCase().trim();
+    document.querySelectorAll('.sg-album-card').forEach(function(card) {
+        card.style.display = !q || card.dataset.title.includes(q) ? '' : 'none';
+    });
+});
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   VIEW 2: ALBUM DETAIL
+   ══════════════════════════════════════════════════════════════════════ */
+
+function openAlbum(eventId) {
+    var album = SG.albums.find(function(a) { return a.event_id === eventId; });
+    if (!album) return;
+
+    SG.currentAlbum = album;
+    SG.activeTab = 'all';
+
+    // Update breadcrumb
+    document.querySelector('.sg-bc-album').style.display = '';
+    document.querySelector('.sg-bc-album').textContent = album.title;
+
+    // Update album header
+    document.getElementById('sgAlbumTitle').textContent = album.title;
+    var catEl = document.getElementById('sgAlbumCategory');
+    catEl.textContent = album.category === 'general' ? 'Legacy Gallery' : (album.category || 'Event');
+    catEl.className = 'sg-album-badge' + (album.category === 'general' ? ' sg-badge-muted' : '');
+    var metaParts = [];
+    if (album.start_date) metaParts.push('<i class="fa fa-calendar"></i> ' + formatDate(album.start_date));
+    metaParts.push('<i class="fa fa-picture-o"></i> ' + album.image_count + ' images');
+    metaParts.push('<i class="fa fa-film"></i> ' + album.video_count + ' videos');
+    document.getElementById('sgAlbumMeta').innerHTML = metaParts.join(' &nbsp;&middot;&nbsp; ');
+
+    // Hide upload for legacy albums
+    var isLegacy = eventId === '__legacy__';
+    document.getElementById('sgUploadCard').style.display = isLegacy ? 'none' : '';
+    document.getElementById('sgUploadBtn').style.display = isLegacy ? 'none' : '';
+
+    // Switch views
+    document.getElementById('sgAlbumsView').style.display = 'none';
+    document.getElementById('sgAlbumDetailView').style.display = '';
+    document.getElementById('sgBackBtn').style.display = '';
+
+    // Reset tabs
+    document.querySelectorAll('.sg-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelector('.sg-tab[data-tab="all"]').classList.add('active');
+
+    fetchAlbumMedia(eventId);
+}
+
+function showAlbumsView() {
+    SG.currentAlbum = null;
+    document.getElementById('sgAlbumsView').style.display = '';
+    document.getElementById('sgAlbumDetailView').style.display = 'none';
+    document.getElementById('sgBackBtn').style.display = 'none';
+    document.getElementById('sgUploadBtn').style.display = 'none';
+    document.querySelector('.sg-bc-album').style.display = 'none';
+}
+
+function fetchAlbumMedia(eventId) {
+    showLoading(true);
+    document.getElementById('sgMediaCount').textContent = 'Loading...';
+
+    fetch(BASE + '/schools/fetchAlbumMedia?event_id=' + encodeURIComponent(eventId))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            SG.images = data.images || [];
+            SG.videos = data.videos || [];
+            renderMedia();
+        })
+        .catch(function(e) {
+            console.error('fetchAlbumMedia:', e);
+            showToast('Failed to load album media.', 'error');
+        })
+        .finally(function() { showLoading(false); });
+}
+
+
+/* ── Render media grid ── */
+function renderMedia() {
     renderGrid(SG.images, 'sgImagesGrid', 'image');
     renderGrid(SG.videos, 'sgVideosGrid', 'video');
-
-    document.getElementById('statImages').textContent = SG.images.length;
-    document.getElementById('statVideos').textContent = SG.videos.length;
-    document.getElementById('statTotal').textContent  = SG.images.length + SG.videos.length;
 
     updateMediaCount();
     applyTabFilter(SG.activeTab);
@@ -235,23 +451,29 @@ function renderGrid(items, gridId, type) {
         return;
     }
 
+    var isLegacy = SG.currentAlbum && SG.currentAlbum.event_id === '__legacy__';
+
     items.forEach(function(media) {
         var name = extractFileName(media.url);
-        var date = formatDate(media.timestamp);
+        var date = formatDateTime(media.timestamp);
         var safeUrl = media.url.replace(/'/g, "\\'");
 
         var mediaHtml = '';
         if (type === 'image') {
             mediaHtml = '<img src="' + media.url + '" class="sg-item-media" alt="' + name + '" onclick="openLightbox(\'' + safeUrl + '\',\'image\')">';
         } else {
-            var thumb    = media.thumbnail || media.url;
+            var thumb = media.thumbnail || media.url;
             var duration = media.duration || '';
-            var safeThumb = thumb.replace(/'/g, "\\'");
             mediaHtml = '<div class="sg-item-video-wrap" onclick="openLightbox(\'' + safeUrl + '\',\'video\')">'
                 + '<img src="' + thumb + '" alt="' + name + '">'
                 + '<div class="sg-play-btn"><i class="fa fa-play-circle"></i></div>'
                 + (duration ? '<span class="sg-duration">' + duration + '</span>' : '')
                 + '</div>';
+        }
+
+        var coverBtn = '';
+        if (!isLegacy && type === 'image') {
+            coverBtn = '<button class="sg-btn sg-btn-ghost sg-btn-sm" title="Set as cover" onclick="setCoverImage(\'' + safeUrl + '\', this)"><i class="fa fa-bookmark-o"></i></button>';
         }
 
         var item = document.createElement('div');
@@ -260,18 +482,18 @@ function renderGrid(items, gridId, type) {
         item.dataset.name = name.toLowerCase();
         item.dataset.date = date.toLowerCase();
         item.dataset.type = type;
+        item.dataset.mediaId = media.media_id || '';
 
         item.innerHTML =
-            '<input type="checkbox" class="sg-item-check" onclick="handleCheck(event, this)" data-url="' + media.url + '">' +
+            '<input type="checkbox" class="sg-item-check" onclick="handleCheck(event, this)" data-url="' + media.url + '" data-media-id="' + (media.media_id || '') + '">' +
             mediaHtml +
             '<div class="sg-item-footer">' +
                 '<div class="sg-item-name" title="' + name + '">' + name + '</div>' +
                 '<div class="sg-item-date">' + date + '</div>' +
                 '<div class="sg-item-actions">' +
-                    '<button class="sg-btn sg-btn-ghost sg-btn-sm" onclick="openLightbox(\'' + safeUrl + '\',\'' + type + '\')">' +
-                        '<i class="fa fa-eye"></i></button>' +
-                    '<button class="sg-btn sg-btn-danger sg-btn-sm" onclick="deleteFile(\'' + safeUrl + '\', this)">' +
-                        '<i class="fa fa-trash-o"></i></button>' +
+                    '<button class="sg-btn sg-btn-ghost sg-btn-sm" onclick="openLightbox(\'' + safeUrl + '\',\'' + type + '\')"><i class="fa fa-eye"></i></button>' +
+                    coverBtn +
+                    '<button class="sg-btn sg-btn-danger sg-btn-sm" onclick="deleteFile(\'' + safeUrl + '\', \'' + (media.media_id || '') + '\', this)"><i class="fa fa-trash-o"></i></button>' +
                 '</div>' +
             '</div>';
 
@@ -279,29 +501,11 @@ function renderGrid(items, gridId, type) {
     });
 }
 
-/* ── Fetch gallery ── */
-function fetchGalleryMedia() {
-    showLoading(true);
-    document.getElementById('sgMediaCount').textContent = 'Loading…';
-
-    fetch(BASE + '/schools/fetchGalleryMedia')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            SG.images = data.images || [];
-            SG.videos = data.videos || [];
-            renderAll();
-        })
-        .catch(function(e) {
-            console.error('fetchGallery:', e);
-            showToast('Failed to load gallery.', 'error');
-        })
-        .finally(function() { showLoading(false); });
-}
 
 /* ── Search ── */
 document.getElementById('sgSearch').addEventListener('input', function() {
     var q = this.value.toLowerCase().trim();
-    var items = document.querySelectorAll('.sg-item');
+    var items = document.querySelectorAll('#sgAlbumDetailView .sg-item');
     var shown = 0;
     items.forEach(function(item) {
         var match = !q || item.dataset.name.includes(q) || item.dataset.date.includes(q);
@@ -338,6 +542,7 @@ function updateMediaCount() {
     document.getElementById('sgMediaCount').textContent = total + ' item(s)';
 }
 
+
 /* ── Checkbox selection ── */
 function handleCheck(e, cb) {
     e.stopPropagation();
@@ -348,9 +553,9 @@ function handleCheck(e, cb) {
 }
 
 function updateSelCount() {
-    var count  = document.querySelectorAll('.sg-item-check:checked').length;
-    var btn    = document.getElementById('sgDeleteSelBtn');
-    var span   = document.getElementById('sgSelCount');
+    var count = document.querySelectorAll('.sg-item-check:checked').length;
+    var btn   = document.getElementById('sgDeleteSelBtn');
+    var span  = document.getElementById('sgSelCount');
     span.textContent = count;
     btn.style.display = count > 0 ? 'inline-flex' : 'none';
 }
@@ -361,36 +566,33 @@ function deleteSelectedFiles() {
     if (!confirm('Delete ' + cbs.length + ' selected file(s)? This cannot be undone.')) return;
 
     var promises = Array.from(cbs).map(function(cb) {
-        return deleteFilePromise(cb.dataset.url);
+        return deleteFilePromise(cb.dataset.url, cb.dataset.mediaId);
     });
 
     Promise.all(promises).then(function() {
         showToast('Selected files deleted.', 'success');
-        fetchGalleryMedia();
+        if (SG.currentAlbum) fetchAlbumMedia(SG.currentAlbum.event_id);
         updateSelCount();
     });
 }
 
+
 /* ── Delete ── */
-function deleteFile(fileUrl, btnEl) {
+function deleteFile(fileUrl, mediaId, btnEl) {
     if (!confirm('Delete this file permanently?')) return;
 
     var item = btnEl.closest('.sg-item');
     btnEl.disabled = true;
 
-    deleteFilePromise(fileUrl).then(function(ok) {
+    deleteFilePromise(fileUrl, mediaId).then(function(ok) {
         if (ok) {
             item.style.transition = 'all .3s';
             item.style.opacity = '0';
             item.style.transform = 'scale(.9)';
             setTimeout(function() {
                 item.remove();
-                // Refresh counts
                 SG.images = SG.images.filter(function(m) { return m.url !== fileUrl; });
                 SG.videos = SG.videos.filter(function(m) { return m.url !== fileUrl; });
-                document.getElementById('statImages').textContent = SG.images.length;
-                document.getElementById('statVideos').textContent = SG.videos.length;
-                document.getElementById('statTotal').textContent  = SG.images.length + SG.videos.length;
                 updateMediaCount();
                 updateSelCount();
             }, 300);
@@ -399,8 +601,13 @@ function deleteFile(fileUrl, btnEl) {
     });
 }
 
-function deleteFilePromise(fileUrl) {
-    return fetch(BASE + '/schools/deleteMedia?url=' + encodeURIComponent(fileUrl), { method: 'DELETE' })
+function deleteFilePromise(fileUrl, mediaId) {
+    var eventId = SG.currentAlbum ? SG.currentAlbum.event_id : '';
+    var qs = 'url=' + encodeURIComponent(fileUrl)
+           + '&event_id=' + encodeURIComponent(eventId)
+           + '&media_id=' + encodeURIComponent(mediaId || '');
+
+    return fetch(BASE + '/schools/deleteMedia?' + qs, { method: 'DELETE' })
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (d.status !== 'success') { showToast('Delete failed: ' + d.message, 'error'); return false; }
@@ -409,10 +616,39 @@ function deleteFilePromise(fileUrl) {
         .catch(function(e) { console.error('deleteFile:', e); showToast('Delete error.', 'error'); return false; });
 }
 
+
+/* ── Set cover image ── */
+function setCoverImage(imageUrl, btnEl) {
+    if (!SG.currentAlbum || SG.currentAlbum.event_id === '__legacy__') return;
+
+    btnEl.disabled = true;
+    var fd = new FormData();
+    fd.append('event_id', SG.currentAlbum.event_id);
+    fd.append('cover_url', imageUrl);
+    fd.append(CSRF_NAME, CSRF_HASH);
+
+    fetch(BASE + '/schools/setEventCover', { method: 'POST', body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.status === 'success') {
+                showToast('Cover image updated!', 'success');
+                // Update local state
+                SG.currentAlbum.cover = imageUrl;
+                var a = SG.albums.find(function(x) { return x.event_id === SG.currentAlbum.event_id; });
+                if (a) a.cover = imageUrl;
+            } else {
+                showToast('Failed: ' + d.message, 'error');
+            }
+        })
+        .catch(function(e) { showToast('Error setting cover.', 'error'); })
+        .finally(function() { btnEl.disabled = false; });
+}
+
+
 /* ── Lightbox ── */
 function openLightbox(url, type) {
-    var lb     = document.getElementById('sgLightbox');
-    var inner  = document.getElementById('sgLightboxInner');
+    var lb    = document.getElementById('sgLightbox');
+    var inner = document.getElementById('sgLightboxInner');
     var btnHtml = '<button class="sg-lightbox-close" onclick="closeLightbox()">&times;</button>';
 
     if (type === 'image') {
@@ -437,10 +673,11 @@ document.getElementById('sgLightbox').addEventListener('click', function(e) {
     if (e.target === this) closeLightbox();
 });
 
+
 /* ── Drag & drop ── */
 var dropZone = document.getElementById('sgDropZone');
 dropZone.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('drag-over'); });
-dropZone.addEventListener('dragleave', function()  { this.classList.remove('drag-over'); });
+dropZone.addEventListener('dragleave', function() { this.classList.remove('drag-over'); });
 dropZone.addEventListener('drop', function(e) {
     e.preventDefault(); this.classList.remove('drag-over');
     handleFiles(e.dataTransfer.files);
@@ -455,58 +692,60 @@ document.getElementById('sgFileInput').addEventListener('change', function(e) {
 /* ── Upload ── */
 function handleFiles(files) {
     if (!files.length) return;
+    if (!SG.currentAlbum || SG.currentAlbum.event_id === '__legacy__') {
+        showToast('Please open an event album to upload media.', 'error');
+        return;
+    }
 
     var validFiles = [];
     Array.from(files).forEach(function(f) {
         var ext = f.name.split('.').pop().toLowerCase();
         var isImg = ['jpg','jpeg','png','webp'].includes(ext);
         var isVid = ['mp4','mov','avi','mkv','webm'].includes(ext);
-        if (!isImg && !isVid) {
-            showToast('Skipped ' + f.name + ' — unsupported format.', 'error');
-            return;
-        }
-        if (isImg && f.size > 5*1024*1024) {
-            showToast(f.name + ' exceeds 5MB limit.', 'error'); return;
-        }
-        if (isVid && f.size > 50*1024*1024) {
-            showToast(f.name + ' exceeds 50MB limit.', 'error'); return;
-        }
+        if (!isImg && !isVid) { showToast('Skipped ' + f.name + ' — unsupported.', 'error'); return; }
+        if (isImg && f.size > 5*1024*1024) { showToast(f.name + ' exceeds 5MB.', 'error'); return; }
+        if (isVid && f.size > 50*1024*1024) { showToast(f.name + ' exceeds 50MB.', 'error'); return; }
         validFiles.push(f);
     });
 
     if (!validFiles.length) return;
 
-    var progress  = document.getElementById('sgUploadProgress');
-    var bar       = document.getElementById('sgUploadBar');
-    var statusEl  = document.getElementById('sgUploadStatus');
+    var progress = document.getElementById('sgUploadProgress');
+    var bar      = document.getElementById('sgUploadBar');
+    var statusEl = document.getElementById('sgUploadStatus');
     progress.style.display = 'block';
     statusEl.style.display = 'block';
     bar.style.width = '0%';
 
-    var total   = validFiles.length;
-    var done    = 0;
-    var failed  = 0;
+    var total = validFiles.length, done = 0, failed = 0;
 
     function next(i) {
         if (i >= total) {
             bar.style.width = '100%';
-            statusEl.textContent = failed ? (total - failed) + ' uploaded, ' + failed + ' failed.' : total + ' file(s) uploaded successfully!';
+            statusEl.textContent = failed ? (total - failed) + ' uploaded, ' + failed + ' failed.' : total + ' file(s) uploaded!';
             statusEl.style.color = failed ? 'var(--sg-red)' : 'var(--sg-green)';
             if (!failed) showToast(total + ' file(s) uploaded!', 'success');
             setTimeout(function() {
                 progress.style.display = 'none';
                 statusEl.style.display = 'none';
                 bar.style.width = '0%';
-                fetchGalleryMedia();
+                fetchAlbumMedia(SG.currentAlbum.event_id);
+                // Also refresh albums for updated counts
+                fetch(BASE + '/schools/fetchGalleryAlbums').then(function(r) { return r.json(); }).then(function(d) {
+                    SG.albums = d.albums || [];
+                    updateStats();
+                });
             }, 1800);
             return;
         }
 
         var file = validFiles[i];
         var type = file.type.startsWith('image') ? '1' : '2';
-        var fd   = new FormData();
+        var fd = new FormData();
         fd.append('file', file);
         fd.append('type', type);
+        fd.append('event_id', SG.currentAlbum.event_id);
+        fd.append(CSRF_NAME, CSRF_HASH);
 
         statusEl.textContent = 'Uploading ' + (i+1) + ' of ' + total + ': ' + file.name;
         statusEl.style.color = 'var(--sg-teal)';
@@ -527,14 +766,18 @@ function handleFiles(files) {
     next(0);
 }
 
+
 /* ── Init ── */
 document.addEventListener('DOMContentLoaded', function() {
-    fetchGalleryMedia();
+    fetchAlbums();
 });
 </script>
 
+
 <style>
-/* ── School Gallery — matches ERP theme ── */
+/* ═══════════════════════════════════════════════════════════════════════
+   School Gallery — Event Albums Theme
+   ═══════════════════════════════════════════════════════════════════════ */
 :root {
     --sg-navy:   #1a2332;
     --sg-teal:   #0d9488;
@@ -542,6 +785,7 @@ document.addEventListener('DOMContentLoaded', function() {
     --sg-amber:  #d97706;
     --sg-red:    #dc2626;
     --sg-green:  #16a34a;
+    --sg-purple: #7c3aed;
     --sg-muted:  #6b7280;
     --sg-border: #e5e7eb;
     --sg-bg:     #f4f6f9;
@@ -570,44 +814,115 @@ document.addEventListener('DOMContentLoaded', function() {
     padding: 9px 18px; border-radius: 7px; font-size: 13px; font-weight: 600;
     cursor: pointer; border: none; transition: all .18s; text-decoration: none;
 }
-.sg-btn-primary { background: var(--sg-teal);  color: #fff; }
+.sg-btn-primary { background: var(--sg-teal); color: #fff; }
 .sg-btn-primary:hover { background: #0f766e; }
-.sg-btn-danger  { background: var(--sg-red);   color: #fff; }
-.sg-btn-danger:hover  { background: #b91c1c; }
-.sg-btn-ghost   { background: #fff; color: var(--sg-navy); border: 1.5px solid var(--sg-border); }
-.sg-btn-ghost:hover   { border-color: var(--sg-teal); color: var(--sg-teal); }
-.sg-btn-amber   { background: var(--sg-amber); color: #fff; }
-.sg-btn-amber:hover   { background: #b45309; }
+.sg-btn-danger { background: var(--sg-red); color: #fff; }
+.sg-btn-danger:hover { background: #b91c1c; }
+.sg-btn-ghost { background: #fff; color: var(--sg-navy); border: 1.5px solid var(--sg-border); }
+.sg-btn-ghost:hover { border-color: var(--sg-teal); color: var(--sg-teal); }
 .sg-btn-sm { padding: 6px 12px; font-size: 12px; }
 .sg-btn:disabled { opacity: .55; cursor: not-allowed; }
 
 /* ── Stat strip ── */
-.sg-stat-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 22px; }
+.sg-stat-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 22px; }
 .sg-stat { background: var(--sg-white); border-radius: var(--sg-radius); padding: 16px 18px; display: flex; align-items: center; gap: 14px; box-shadow: var(--sg-shadow); border-left: 4px solid transparent; }
-.sg-stat-blue  { border-left-color: #3b82f6; }
-.sg-stat-green { border-left-color: var(--sg-green); }
-.sg-stat-amber { border-left-color: var(--sg-amber); }
+.sg-stat-blue   { border-left-color: #3b82f6; }
+.sg-stat-green  { border-left-color: var(--sg-green); }
+.sg-stat-amber  { border-left-color: var(--sg-amber); }
+.sg-stat-purple { border-left-color: var(--sg-purple); }
 .sg-stat-icon { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-.sg-stat-blue  .sg-stat-icon { background: #eff6ff; color: #3b82f6; }
-.sg-stat-green .sg-stat-icon { background: #f0fdf4; color: var(--sg-green); }
-.sg-stat-amber .sg-stat-icon { background: #fffbeb; color: var(--sg-amber); }
+.sg-stat-blue   .sg-stat-icon { background: #eff6ff; color: #3b82f6; }
+.sg-stat-green  .sg-stat-icon { background: #f0fdf4; color: var(--sg-green); }
+.sg-stat-amber  .sg-stat-icon { background: #fffbeb; color: var(--sg-amber); }
+.sg-stat-purple .sg-stat-icon { background: #f5f3ff; color: var(--sg-purple); }
 .sg-stat-label { font-size: 11px; color: var(--sg-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
-.sg-stat-val   { font-size: 22px; font-weight: 800; color: var(--sg-navy); line-height: 1.2; }
+.sg-stat-val { font-size: 22px; font-weight: 800; color: var(--sg-navy); line-height: 1.2; }
 
 /* ── Card ── */
 .sg-card { background: var(--sg-white); border-radius: var(--sg-radius); box-shadow: var(--sg-shadow); margin-bottom: 22px; overflow: hidden; }
 .sg-card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1.5px solid var(--sg-border); flex-wrap: wrap; gap: 10px; }
 .sg-card-head-left { display: flex; align-items: center; gap: 10px; }
 .sg-card-head h3 { margin: 0; font-size: 15px; font-weight: 700; color: var(--sg-navy); }
-.sg-card-head i  { color: var(--sg-teal); font-size: 16px; }
+.sg-card-head i { color: var(--sg-teal); font-size: 16px; }
 .sg-card-head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sg-card-body { padding: 20px; }
+
+/* ── Albums grid ── */
+.sg-albums-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 18px;
+}
+
+.sg-album-card {
+    border-radius: var(--sg-radius); overflow: hidden;
+    background: var(--sg-white); box-shadow: var(--sg-shadow);
+    border: 1.5px solid var(--sg-border); cursor: pointer;
+    transition: all .2s;
+}
+.sg-album-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    border-color: var(--sg-teal);
+}
+
+.sg-album-cover {
+    width: 100%; height: 160px; overflow: hidden; background: #f3f4f6;
+}
+.sg-album-cover img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    transition: transform .3s;
+}
+.sg-album-card:hover .sg-album-cover img { transform: scale(1.05); }
+
+.sg-album-placeholder {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    color: #d1d5db; font-size: 40px;
+}
+
+.sg-album-info { padding: 14px 16px; }
+.sg-album-name {
+    font-size: 14px; font-weight: 700; color: var(--sg-navy);
+    margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sg-album-counts {
+    display: flex; gap: 14px; font-size: 12px; color: var(--sg-muted); margin-bottom: 10px;
+}
+.sg-album-counts i { margin-right: 4px; }
+.sg-album-bottom {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.sg-album-date { font-size: 11px; color: var(--sg-muted); }
+
+/* Badges */
+.sg-badge {
+    display: inline-block; font-size: 10px; font-weight: 700; padding: 3px 8px;
+    border-radius: 4px; text-transform: uppercase; letter-spacing: .3px;
+}
+.sg-badge-teal  { background: var(--sg-teal-lt); color: var(--sg-teal); }
+.sg-badge-green { background: #f0fdf4; color: var(--sg-green); }
+.sg-badge-muted { background: #f3f4f6; color: var(--sg-muted); }
+
+/* ── Album header ── */
+.sg-album-header {
+    background: var(--sg-white); border-radius: var(--sg-radius); box-shadow: var(--sg-shadow);
+    padding: 20px 24px; margin-bottom: 22px;
+}
+.sg-album-title-row { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.sg-album-title-row h2 { margin: 0; font-size: 20px; font-weight: 700; color: var(--sg-navy); }
+.sg-album-badge {
+    font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 5px;
+    background: var(--sg-teal-lt); color: var(--sg-teal);
+}
+.sg-album-badge.sg-badge-muted { background: #f3f4f6; color: var(--sg-muted); }
+.sg-album-meta { font-size: 13px; color: var(--sg-muted); }
+.sg-album-meta i { margin-right: 3px; }
 
 /* ── Upload zone ── */
 .sg-upload-zone {
     border: 2px dashed var(--sg-border); border-radius: var(--sg-radius);
     padding: 32px 20px; text-align: center; cursor: pointer;
-    transition: all .2s; background: #fafafa; margin-bottom: 20px;
+    transition: all .2s; background: #fafafa;
 }
 .sg-upload-zone:hover, .sg-upload-zone.drag-over {
     border-color: var(--sg-teal); background: var(--sg-teal-lt);
@@ -624,6 +939,7 @@ document.addEventListener('DOMContentLoaded', function() {
 /* ── Filter / search ── */
 .sg-filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
 .sg-search-wrap { position: relative; flex: 1; min-width: 180px; }
+.sg-search-sm { max-width: 260px; }
 .sg-search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--sg-muted); font-size: 13px; }
 .sg-search { width: 100%; padding: 8px 12px 8px 32px; border: 1.5px solid var(--sg-border); border-radius: 7px; font-size: 13px; outline: none; transition: border .18s; }
 .sg-search:focus { border-color: var(--sg-teal); }
@@ -632,16 +948,8 @@ document.addEventListener('DOMContentLoaded', function() {
 .sg-tab.active { background: var(--sg-white); color: var(--sg-navy); box-shadow: 0 1px 4px rgba(0,0,0,.1); }
 .sg-media-count { font-size: 12px; color: var(--sg-muted); white-space: nowrap; }
 
-/* ── Selection bar ── */
-.sg-selection-bar {
-    display: none; align-items: center; justify-content: space-between;
-    padding: 10px 16px; background: var(--sg-teal-lt); border-radius: 8px;
-    margin-bottom: 14px; border: 1px solid var(--sg-teal);
-}
-.sg-selection-bar.visible { display: flex; }
-.sg-sel-text { font-size: 13px; font-weight: 600; color: var(--sg-teal); }
-
 /* ── Media grid ── */
+.sg-category { margin-bottom: 28px; }
 .sg-section-title {
     font-size: 13px; font-weight: 700; color: var(--sg-navy); margin-bottom: 14px;
     display: flex; align-items: center; gap: 8px;
@@ -664,23 +972,12 @@ document.addEventListener('DOMContentLoaded', function() {
 .sg-item:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,.12); border-color: var(--sg-teal); }
 .sg-item.selected { border-color: var(--sg-teal); box-shadow: 0 0 0 3px rgba(13,148,136,.2); }
 
-.sg-item-media {
-    width: 100%; height: 150px; object-fit: cover; display: block; cursor: pointer;
-}
-.sg-item-video-wrap {
-    position: relative; width: 100%; height: 150px; overflow: hidden; cursor: pointer;
-}
+.sg-item-media { width: 100%; height: 150px; object-fit: cover; display: block; cursor: pointer; }
+.sg-item-video-wrap { position: relative; width: 100%; height: 150px; overflow: hidden; cursor: pointer; }
 .sg-item-video-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.sg-play-btn {
-    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    background: rgba(0,0,0,.3);
-}
+.sg-play-btn { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.3); }
 .sg-play-btn i { font-size: 36px; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,.4); }
-.sg-duration {
-    position: absolute; bottom: 6px; right: 8px;
-    background: rgba(0,0,0,.7); color: #fff; font-size: 11px; font-weight: 600;
-    padding: 2px 6px; border-radius: 4px;
-}
+.sg-duration { position: absolute; bottom: 6px; right: 8px; background: rgba(0,0,0,.7); color: #fff; font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; }
 
 .sg-item-check {
     position: absolute; top: 8px; left: 8px; z-index: 2;
@@ -690,9 +987,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .sg-item:hover .sg-item-check,
 .sg-item.selected .sg-item-check { opacity: 1; }
 
-.sg-item-footer {
-    padding: 10px 12px; border-top: 1px solid var(--sg-border);
-}
+.sg-item-footer { padding: 10px 12px; border-top: 1px solid var(--sg-border); }
 .sg-item-name { font-size: 11px; font-weight: 600; color: var(--sg-navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
 .sg-item-date { font-size: 10px; color: var(--sg-muted); margin-bottom: 8px; }
 .sg-item-actions { display: flex; gap: 6px; }
@@ -739,316 +1034,4 @@ document.addEventListener('DOMContentLoaded', function() {
 .sg-toast-info    { background: #f0fdfa; color: var(--sg-teal);  border-left: 4px solid var(--sg-teal); }
 .sg-toast-hide    { animation: sgToastOut .3s ease forwards; }
 @keyframes sgToastOut { to { transform: translateX(60px); opacity: 0; } }
-
-/* ── Category sections ── */
-.sg-category { margin-bottom: 28px; }
-</style>
-
-<style>
-    body {
-        font-family: 'Roboto', Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        background-color: #f8f9fa;
-    }
-
-    .container {
-        padding: 2rem;
-        max-width: 1200px;
-        margin: auto;
-    }
-
-    .upload-section {
-        margin-bottom: 2rem;
-    }
-
-    .upload-btn {
-        background-color: #28a745;
-        color: white;
-        padding: 0.8rem 1.5rem;
-        border-radius: 5px;
-        cursor: pointer;
-        border: none;
-    }
-
-    #searchInput {
-        width: 100%;
-        padding: 10px;
-        margin-bottom: 1rem;
-        border: 1px solid #ced4da;
-        border-radius: 4px;
-    }
-
-    .grid-container {
-        margin-top: 2rem;
-    }
-
-    .category {
-        margin-bottom: 1rem;
-    }
-
-    .category h4 {
-        background: #007bff;
-        color: white;
-        padding: 10px 15px;
-        border-radius: 5px;
-        cursor: pointer;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 16px;
-    }
-
-    .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 1.5rem;
-    }
-
-    .grid-item {
-        background: white;
-        padding: 1rem;
-        text-align: center;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        transition: transform 0.2s ease-in-out, box-shadow 0.2s;
-    }
-
-    .grid-item:hover {
-        transform: scale(1.03);
-        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
-    }
-
-    .grid-item img,
-    .grid-item video {
-        width: 100%;
-        height: 180px;
-        object-fit: cover;
-        border-radius: 6px;
-        cursor: pointer;
-    }
-
-    .file-info {
-        width: 100%;
-        text-align: center;
-        padding: 10px 5px;
-        background: rgba(0, 0, 0, 0.05);
-        border-radius: 0 0 8px 8px;
-        margin-top: 10px;
-        font-size: 14px;
-    }
-
-    .file-name {
-        font-weight: bold;
-        margin: 6px 0 2px;
-        word-wrap: break-word;
-        font-size: 14px;
-        color: #333;
-    }
-
-    .upload-time {
-        font-size: 12px;
-        color: #666;
-    }
-
-    .button-container {
-        margin-top: 10px;
-    }
-
-    .view-btn,
-    .delete-btn {
-        display: inline-block;
-        padding: 6px 12px;
-        margin: 4px 6px 0 6px;
-        border-radius: 4px;
-        font-size: 13px;
-        border: none;
-        cursor: pointer;
-        transition: background 0.2s;
-    }
-
-    .view-btn {
-        background-color: #007bff;
-        color: white;
-    }
-
-    .view-btn:hover {
-        background-color: #0056b3;
-    }
-
-    .delete-btn {
-        background-color: #dc3545;
-        color: white;
-        display: none;
-    }
-
-    .grid-item:hover .delete-btn {
-        display: inline-block;
-    }
-
-    .delete-btn:hover {
-        background-color: #b02a37;
-    }
-
-    /* Modal Styling */
-    .modal {
-        display: flex;
-        /* ← ✅ Always use flex */
-        justify-content: center;
-        align-items: center;
-        position: fixed;
-        z-index: 1000;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.85);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.3s ease;
-    }
-
-    .modal.show {
-        opacity: 1;
-        pointer-events: all;
-    }
-
-    .modal-content {
-        background: transparent;
-        padding: 0;
-        border-radius: 10px;
-        max-width: 90vw;
-        max-height: 90vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        position: relative;
-        box-shadow: 0 0 15px rgba(0, 0, 0, 0.6);
-    }
-
-    .modal-content img,
-    .modal-content video {
-        max-width: 100%;
-        max-height: 80vh;
-        object-fit: contain;
-        border-radius: 5px;
-        display: block;
-        margin: auto;
-    }
-
-    /* .modal-content img {
-        max-width: 100%;
-        max-height: 80vh;
-        border-radius: 5px;
-    }
-
-    .modal-content video {
-        width: 100%;
-        height: auto;
-        max-height: 80vh;
-        object-fit: contain;
-        background: #000;
-        border-radius: 8px;
-    } */
-
-    .modal-img {
-        /* max-width: 100%;
-        max-height: 80vh;
-        width: auto;
-        height: auto;
-        object-fit: contain;
-        border-radius: 8px;
-        display: block;
-        margin: auto; */
-        max-width: 100%;
-        max-height: 80vh;
-        object-fit: contain;
-        border-radius: 8px;
-        display: block;
-    }
-
-
-
-    .close {
-        position: absolute;
-        top: 20px;
-        right: 30px;
-        font-size: 40px;
-        color: #ffffff;
-        z-index: 1001;
-        cursor: pointer;
-    }
-
-    #selectionContainer {
-        display: none;
-        background-color: #f1f1f1;
-        padding: 10px 15px;
-        border: 1px solid #ccc;
-        border-radius: 5px;
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        gap: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-
-    #selectedCount {
-        font-weight: bold;
-        color: #333;
-    }
-
-    #deleteSelectedBtn {
-        background-color: #dc3545;
-        color: white;
-        border: none;
-        padding: 8px 15px;
-        cursor: pointer;
-        border-radius: 5px;
-        font-weight: bold;
-        transition: 0.3s;
-    }
-
-    #deleteSelectedBtn:hover {
-        background-color: #c82333;
-    }
-
-    .video-thumbnail-wrapper {
-        position: relative;
-        width: 100%;
-    }
-
-    .video-thumb {
-        width: 100%;
-        height: 180px;
-        border-radius: 4px;
-        object-fit: cover;
-    }
-
-    .video-duration {
-        position: absolute;
-        bottom: 6px;
-        right: 8px;
-        background-color: rgba(0, 0, 0, 0.75);
-        color: white;
-        padding: 2px 6px;
-        font-size: 12px;
-        border-radius: 3px;
-    }
-
-    .media-top {
-        position: relative;
-        width: 100%;
-    }
-
-    .media-top input[type="checkbox"] {
-        position: absolute;
-        top: 8px;
-        left: 8px;
-        z-index: 2;
-        transform: scale(1.2);
-    }
 </style>

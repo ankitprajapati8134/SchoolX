@@ -175,7 +175,7 @@ ksort($uniqueSections);
                                     <img src="<?= htmlspecialchars($avatarUrl, ENT_QUOTES, 'UTF-8') ?>"
                                         class="sl-avatar"
                                         alt="<?= htmlspecialchars($student['Name'] ?? '') ?>"
-                                        onerror="this.src='<?= $fallbackAvatar ?>'">
+                                        onerror="this.src='<?= htmlspecialchars($fallbackAvatar, ENT_QUOTES, 'UTF-8') ?>'">
                                 </td>
                                 <td>
                                     <div class="sl-name"><?= htmlspecialchars($student['Name'] ?? 'N/A') ?></div>
@@ -208,11 +208,13 @@ ksort($uniqueSections);
                                             class="sl-act-btn sl-act-edit" title="Edit Student">
                                             <i class="fa fa-pencil"></i>
                                         </a>
-                                        <a href="<?= base_url('student/delete_student/' . urlencode($student['User Id'] ?? '')) ?>"
-                                            class="sl-act-btn sl-act-delete" title="Delete Student"
-                                            onclick="return confirm('Delete <?= htmlspecialchars(addslashes($student['Name'] ?? 'this student'), ENT_QUOTES) ?>? This cannot be undone.')">
-                                            <i class="fa fa-trash"></i>
-                                        </a>
+                                        <form method="post" action="<?= base_url('student/delete_student/' . urlencode($student['User Id'] ?? '')) ?>" style="display:inline;"
+                                            onsubmit="return confirm('Delete <?= htmlspecialchars(json_encode($student['Name'] ?? 'this student'), ENT_QUOTES, 'UTF-8') ?>? This cannot be undone.')">
+                                            <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" value="<?= $this->security->get_csrf_hash() ?>">
+                                            <button type="submit" class="sl-act-btn sl-act-delete" title="Delete Student">
+                                                <i class="fa fa-trash"></i>
+                                            </button>
+                                        </form>
                                     </div>
                                 </td>
                             </tr>
@@ -457,14 +459,23 @@ ksort($uniqueSections);
         bulkDelete.addEventListener('click', function() {
             var checked = getCheckedCheckboxes();
             if (checked.length === 0) return;
-            var names = checked.map(function(cb) {
-                return cb.dataset.uid;
-            }).join(', ');
+            var names = checked.map(function(cb) { return cb.dataset.uid; }).join(', ');
             if (!confirm('Delete ' + checked.length + ' selected students?\n\nIDs: ' + names + '\n\nThis cannot be undone.')) return;
-            /* Navigate to bulk delete endpoint or handle individually */
-            checked.forEach(function(cb) {
-                var uid = cb.dataset.uid;
-                if (uid) window.location.href = '<?= base_url("student/delete_student/") ?>' + encodeURIComponent(uid);
+            var csrfName = '<?= $this->security->get_csrf_token_name() ?>';
+            var csrfHash = '<?= $this->security->get_csrf_hash() ?>';
+            var uids = checked.map(function(cb) { return cb.dataset.uid; }).filter(Boolean);
+            var completed = 0, failed = 0;
+            uids.forEach(function(uid) {
+                var fd = new FormData();
+                fd.append(csrfName, csrfHash);
+                fetch('<?= base_url("student/delete_student/") ?>' + encodeURIComponent(uid), { method: 'POST', body: fd })
+                .then(function() { completed++; })
+                .catch(function() { failed++; })
+                .finally(function() {
+                    if (completed + failed === uids.length) {
+                        window.location.reload();
+                    }
+                });
             });
         });
 

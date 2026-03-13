@@ -51,7 +51,7 @@
                             <div class="sa-field">
                                 <label>Student ID</label>
                                 <input type="text" name="user_id" id="user_id"
-                                       value="<?= $user_Id ?>"
+                                       value="<?= htmlspecialchars($user_Id ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                        class="sa-input" readonly>
                             </div>
 
@@ -609,7 +609,10 @@ function showAlert(type, message) {
     var toast = document.createElement('div');
     toast.className = 'sa-toast ' + type;
     var icons = { success:'fa-check-circle', error:'fa-times-circle', warning:'fa-exclamation-triangle', info:'fa-info-circle' };
-    toast.innerHTML = '<i class="fa ' + (icons[type]||'fa-info-circle') + '"></i> ' + message;
+    var icon = document.createElement('i');
+    icon.className = 'fa ' + (icons[type]||'fa-info-circle');
+    toast.appendChild(icon);
+    toast.appendChild(document.createTextNode(' ' + message));
     document.body.appendChild(toast);
     setTimeout(function() { toast.remove(); }, 3400);
 }
@@ -921,17 +924,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 classSelect.appendChild(opt);
             });
         })
-        .catch(function(err) { console.error('Class fetch failed:', err); });
+        .catch(function(err) { });
 
     /* Class change → load sections */
     classSelect.addEventListener('change', function() {
         sectionSelect.innerHTML = '<option value="" disabled selected>Loading…</option>';
         subjectBox.innerHTML    = '<p class="sa-check-muted">Select section to view subjects.</p>';
 
+        var fd = new FormData();
+        fd.append('class_name', this.value);
+        fd.append('<?= $this->security->get_csrf_token_name() ?>', '<?= $this->security->get_csrf_hash() ?>');
         fetch('<?= base_url("student/get_sections_by_class") ?>', {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ class_name: this.value })
+            body:    fd
         })
         .then(function(r) { return r.json(); })
         .then(function(sections) {
@@ -943,7 +948,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 sectionSelect.appendChild(opt);
             });
         })
-        .catch(function(err) { console.error('Section fetch failed:', err); });
+        .catch(function(err) { });
     });
 
     /* Section change → load subjects */
@@ -956,10 +961,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         subjectBox.innerHTML = '<p class="sa-check-muted">Loading subjects…</p>';
 
+        var sfd = new FormData();
+        sfd.append('class_name', selectedClass);
+        sfd.append('<?= $this->security->get_csrf_token_name() ?>', '<?= $this->security->get_csrf_hash() ?>');
         fetch('<?= base_url("student/fetch_subjects") ?>', {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ class_name: selectedClass })
+            body:    sfd
         })
         .then(function(r) { if (!r.ok) throw new Error('Bad response'); return r.json(); })
         .then(function(subjects) {
@@ -985,7 +992,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         })
         .catch(function(err) {
-            console.error('Subject fetch failed:', err);
             subjectBox.innerHTML = '<p style="color:var(--sa-red);font-size:13px;">Failed to load subjects.</p>';
         });
     });

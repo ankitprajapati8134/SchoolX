@@ -232,7 +232,7 @@ class Common_model extends CI_Model
     public function get_school_name_by_id($schoolId)
     {
         try {
-            return $this->firebaseDatabase->getReference('School_ids/' . $schoolId)->getValue();
+            return $this->firebaseDatabase->getReference('Indexes/School_codes/' . $schoolId)->getValue();
         } catch (Exception $e) {
             log_message('error', 'Failed to get school name by ID: ' . $e->getMessage());
             return null;

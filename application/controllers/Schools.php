@@ -54,29 +54,37 @@ class Schools extends MY_Controller
         $this->load->view('include/footer');
     }
 
-    // ── Delete School ─────────────────────────────────────────────────────
+    // ── Delete School (Super Admin only) ────────────────────────────────
     public function delete_school($schoolId)
     {
+        if ($this->admin_role !== 'Super Admin') {
+            show_error('Access denied. Super Admin only.', 403);
+            return;
+        }
         $schoolName = $this->CM->get_school_name_by_id($schoolId);
 
         if ($schoolName) {
             $result1             = $this->CM->delete_data('Schools', $schoolName);
-            $result2             = $this->CM->delete_data('School_ids', $schoolId);
+            $result2             = $this->CM->delete_data('Indexes/School_codes', $schoolId);
             $deleteStorageResult = $this->CM->delete_folder_from_firebase_storage($schoolName . '/');
 
             if ($result1 && $result2 && $deleteStorageResult) {
-                $currentSchoolCount = $this->CM->get_data('School_ids/Count');
+                $currentSchoolCount = $this->CM->get_data('Indexes/School_codes/Count');
                 $newSchoolCount     = max(0, (int)$currentSchoolCount - 1);
-                $this->CM->addKey_pair_data('School_ids/', ['Count' => $newSchoolCount]);
+                $this->CM->addKey_pair_data('Indexes/School_codes/', ['Count' => $newSchoolCount]);
             }
         }
 
         redirect('schools/manage_school');
     }
 
-    // ── Edit School ───────────────────────────────────────────────────────
+    // ── Edit School (Super Admin only) ──────────────────────────────────
     public function edit_school($schoolId)
     {
+        if ($this->admin_role !== 'Super Admin') {
+            show_error('Access denied. Super Admin only.', 403);
+            return;
+        }
         $session_year  = $this->session_year;
         $schoolDetails = $this->CM->get_school_name_by_id($schoolId);
 
@@ -136,7 +144,7 @@ class Schools extends MY_Controller
                     $res1 = $this->CM->update_data('Schools/' . $newSchoolName . '/' . $session_year, null, $dataToUpdate);
                     if ($res1) {
                         $this->CM->delete_data('Schools/', $oldSchoolName . '/' . $session_year);
-                        $res2 = $this->CM->update_data('', 'School_ids/', [$schoolId => $newSchoolName]);
+                        $res2 = $this->CM->update_data('', 'Indexes/School_codes/', [$schoolId => $newSchoolName]);
                         if (!$res2) { echo '0'; return; }
                     } else { echo '0'; return; }
                 } else { echo '0'; return; }
@@ -144,7 +152,7 @@ class Schools extends MY_Controller
                 $this->CM->update_data('Schools/' . $newSchoolName . '/' . $session_year, null, $dataToUpdate);
             }
 
-            $userData        = $this->CM->select_data('Users/Schools/' . $oldSchoolName);
+            $userData        = $this->CM->select_data('System/Schools/' . $oldSchoolName);
             $userDataToUpdate = $userData ?: [];
 
             foreach ($normalizedData as $key => $value) {
@@ -156,10 +164,10 @@ class Schools extends MY_Controller
             $userDataToUpdate['School Name'] = $newSchoolName;
 
             if ($changeSchoolName) {
-                $this->CM->update_data('Users/Schools/' . $newSchoolName, null, $userDataToUpdate);
-                $this->CM->delete_data('Users/Schools/', $oldSchoolName);
+                $this->CM->update_data('System/Schools/' . $newSchoolName, null, $userDataToUpdate);
+                $this->CM->delete_data('System/Schools/', $oldSchoolName);
             } else {
-                $this->CM->update_data('Users/Schools/' . $oldSchoolName, null, $userDataToUpdate);
+                $this->CM->update_data('System/Schools/' . $oldSchoolName, null, $userDataToUpdate);
             }
 
             echo '1';
@@ -169,7 +177,7 @@ class Schools extends MY_Controller
             $data['school'] = $schoolDetails;
 
             if (!empty($schoolDetails['School Name'])) {
-                $userSchoolData = $this->CM->select_data('Users/Schools/' . $schoolDetails['School Name']);
+                $userSchoolData = $this->CM->select_data('System/Schools/' . $schoolDetails['School Name']);
                 if ($userSchoolData) {
                     $data['schooll'] = $userSchoolData;
                 }
@@ -194,11 +202,68 @@ class Schools extends MY_Controller
         $school_name = $this->school_name;
 
         // BUG FIX #8 — cast to array defensively
-        $schoolData = $this->firebase->get('Users/Schools/' . $school_name);
-        if (!$schoolData) {
+        $schoolData = $this->firebase->get('System/Schools/' . $school_name);
+        if (!$schoolData || !is_array($schoolData)) {
             $schoolData = [];
         }
         $schoolData = (array)$schoolData;
+
+        // Legacy fallback: schools that were not fully migrated to System/Schools
+        // still have their data at Users/Schools/{school_name}.
+        if (empty($schoolData['School Name'])) {
+            $legacy = $this->firebase->get('Users/Schools/' . $school_name);
+            if (is_array($legacy) && !empty($legacy)) {
+                // Merge legacy data under schoolData — legacy fields fill gaps
+                foreach ($legacy as $k => $v) {
+                    if (!isset($schoolData[$k]) || (is_string($schoolData[$k]) && $schoolData[$k] === '')) {
+                        $schoolData[$k] = $v;
+                    }
+                }
+            }
+        }
+
+        // Normalize field name differences between legacy and view expectations
+        if (empty($schoolData['School Principal']) && !empty($schoolData['Principal Name'])) {
+            $schoolData['School Principal'] = $schoolData['Principal Name'];
+        }
+        // Legacy stores plan name at subscription.Plan.Name; view expects subscription.planName
+        if (empty($schoolData['subscription']['planName']) && !empty($schoolData['subscription']['Plan']['Name'])) {
+            $schoolData['subscription']['planName'] = $schoolData['subscription']['Plan']['Name'];
+        }
+
+        // ── Merge School Config profile data if present ──────────────────
+        // School_config writes to Schools/{school}/Config/Profile with
+        // different field names. Map them to the canonical field names so
+        // edits made in School Config show up on this profile page.
+        $configProfile = $this->firebase->get("Schools/{$school_name}/Config/Profile");
+        if (is_array($configProfile) && !empty($configProfile)) {
+            $configToCanonical = [
+                'display_name'      => 'School Name',
+                'address'           => 'Address',
+                'phone'             => 'Phone Number',
+                'email'             => 'Email',
+                'website'           => 'Website',
+                'principal_name'    => 'School Principal',
+                'affiliation_board' => 'Affiliated To',
+                'affiliation_no'    => 'Affiliation Number',
+                'logo_url'          => 'Logo',
+                'city'              => 'City',
+                'state'             => 'State',
+                'pincode'           => 'Pincode',
+            ];
+            foreach ($configToCanonical as $cfgKey => $canonKey) {
+                if (!empty($configProfile[$cfgKey]) && empty($schoolData[$canonKey])) {
+                    $schoolData[$canonKey] = $configProfile[$cfgKey];
+                }
+            }
+            // Document URLs stored in Config/Profile by document upload feature
+            if (!empty($configProfile['holidays_calendar']) && empty($schoolData['Holidays'])) {
+                $schoolData['Holidays'] = $configProfile['holidays_calendar'];
+            }
+            if (!empty($configProfile['academic_calendar']) && empty($schoolData['Academic calendar'])) {
+                $schoolData['Academic calendar'] = $configProfile['academic_calendar'];
+            }
+        }
 
         $startDate = $schoolData['subscription']['duration']['startDate'] ?? null;
         $endDate   = $schoolData['subscription']['duration']['endDate']   ?? null;
@@ -216,13 +281,17 @@ class Schools extends MY_Controller
         $data['daysLeft']   = $daysLeft;
 
         $this->load->view('include/header');
-        $this->load->view('schoolProfile', $data);
+        $this->load->view('schoolprofile', $data);
         $this->load->view('include/footer');
     }
 
-    // ── Manage Schools (list + add) ───────────────────────────────────────
+    // ── Manage Schools (Super Admin only — list + add) ─────────────────
     public function manage_school()
     {
+        if ($this->admin_role !== 'Super Admin') {
+            show_error('Access denied. Super Admin only.', 403);
+            return;
+        }
         if ($this->input->method() === 'post') {
             $formData           = $this->input->post();
             $normalizedFormData = $this->CM->normalizeKeys($formData);
@@ -293,7 +362,7 @@ class Schools extends MY_Controller
                 ['payment'      => $paymentData]
             );
 
-            $resultUsers = $this->CM->addKey_pair_data('Users/Schools/', [$schoolName => $finalFormData]);
+            $resultUsers = $this->CM->addKey_pair_data('System/Schools/', [$schoolName => $finalFormData]);
 
             $defaultValues = [
                 'Activities' => [
@@ -314,13 +383,13 @@ class Schools extends MY_Controller
 
             $result2 = $this->CM->addKey_pair_data("Schools/$schoolName/$session_year/", $schoolDataToInsert);
 
-            $currentSchoolCount = (int)$this->CM->get_data('School_ids/Count');
+            $currentSchoolCount = (int)$this->CM->get_data('Indexes/School_codes/Count');
             $newSchoolId        = 'SCH' . str_pad($currentSchoolCount, 4, '0', STR_PAD_LEFT);
-            $result1            = $this->CM->addKey_pair_data('School_ids/', [$newSchoolId => $schoolName]);
+            $result1            = $this->CM->addKey_pair_data('Indexes/School_codes/', [$newSchoolId => $schoolName]);
 
             if ($resultUsers && $result1 && $result2) {
                 $this->CM->addKey_pair_data("Schools/$schoolName/", ['Session' => $session_year]);
-                $this->CM->addKey_pair_data('School_ids/', ['Count' => $currentSchoolCount + 1]);
+                $this->CM->addKey_pair_data('Indexes/School_codes/', ['Count' => $currentSchoolCount + 1]);
                 echo '1';
             } else {
                 echo '0';
@@ -328,14 +397,14 @@ class Schools extends MY_Controller
 
         } else {
             // BUG FIX #5 — guard against null from select_data
-            $currentSchoolCount = $this->CM->get_data('School_ids/Count');
-            $schoolIds          = $this->CM->select_data('School_ids') ?? [];
+            $currentSchoolCount = $this->CM->get_data('Indexes/School_codes/Count');
+            $schoolIds          = $this->CM->select_data('Indexes/School_codes') ?? [];
             $schools            = [];
 
             foreach ($schoolIds as $schoolId => $schoolName) {
                 if ($schoolId === 'Count') continue;
 
-                $schoolData = $this->CM->select_data('Users/Schools/' . $schoolName);
+                $schoolData = $this->CM->select_data('System/Schools/' . $schoolName);
                 if ($schoolData) {
                     $schoolData['School Id']   = $schoolId;
                     $schoolData['School Name'] = $schoolName;
@@ -363,18 +432,89 @@ class Schools extends MY_Controller
         $this->load->view('include/footer');
     }
 
-    public function fetchGalleryMedia()
+    // ── Gallery: fetch event albums ─────────────────────────────────────
+    public function fetchGalleryAlbums()
     {
         header('Content-Type: application/json');
+        $school_name = $this->school_name;
 
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
+        // 1. Load all events for album listing
+        $events = $this->firebase->get("Schools/$school_name/Events/List") ?? [];
+        if (!is_array($events)) $events = [];
 
-        // BUG FIX #7 — removed leading slash for consistency with rest of app
-        $dbPath = "Schools/$school_name/$session_year/Gallery";
+        // 2. Load all media (shallow keys per event to get counts)
+        $mediaRoot = $this->firebase->get("Schools/$school_name/Events/Media") ?? [];
+        if (!is_array($mediaRoot)) $mediaRoot = [];
 
-        $galleryData = $this->firebase->get($dbPath);
-        if (!$galleryData) {
+        $albums = [];
+        foreach ($events as $id => $evt) {
+            if (!is_array($evt)) continue;
+            $eventMedia = isset($mediaRoot[$id]) && is_array($mediaRoot[$id]) ? $mediaRoot[$id] : [];
+            $imgCount = 0;
+            $vidCount = 0;
+            $cover    = '';
+            foreach ($eventMedia as $m) {
+                if (!is_array($m)) continue;
+                if (($m['type'] ?? '') === 'image') { $imgCount++; if (!$cover) $cover = $m['url'] ?? ''; }
+                else { $vidCount++; }
+            }
+            // Use explicit cover if set
+            if (!empty($evt['cover_image'])) $cover = $evt['cover_image'];
+
+            $albums[] = [
+                'event_id'    => $id,
+                'title'       => $evt['title'] ?? $id,
+                'category'    => $evt['category'] ?? 'event',
+                'start_date'  => $evt['start_date'] ?? '',
+                'status'      => $evt['status'] ?? '',
+                'cover'       => $cover,
+                'image_count' => $imgCount,
+                'video_count' => $vidCount,
+                'total'       => $imgCount + $vidCount,
+            ];
+        }
+
+        // 3. Check for legacy gallery and add as "General Gallery"
+        $legacyPath = "Schools/$school_name/{$this->session_year}/Gallery";
+        $legacy     = $this->firebase->get($legacyPath) ?? [];
+        if (is_array($legacy) && !empty($legacy)) {
+            $lImg = 0; $lVid = 0; $lCover = '';
+            foreach ($legacy as $m) {
+                if (!is_array($m) || empty($m['image'])) continue;
+                if (($m['type'] ?? '') == '1') { $lImg++; if (!$lCover) $lCover = $m['image']; }
+                else { $lVid++; }
+            }
+            if ($lImg + $lVid > 0) {
+                $albums[] = [
+                    'event_id'    => '__legacy__',
+                    'title'       => 'General Gallery',
+                    'category'    => 'general',
+                    'start_date'  => '',
+                    'status'      => '',
+                    'cover'       => $lCover,
+                    'image_count' => $lImg,
+                    'video_count' => $lVid,
+                    'total'       => $lImg + $lVid,
+                ];
+            }
+        }
+
+        // Sort: most recent event first
+        usort($albums, function ($a, $b) {
+            return strcmp($b['start_date'], $a['start_date']);
+        });
+
+        echo json_encode(['albums' => $albums]);
+    }
+
+    // ── Gallery: fetch media for a specific event album ─────────────────
+    public function fetchAlbumMedia()
+    {
+        header('Content-Type: application/json');
+        $school_name = $this->school_name;
+        $eventId     = $this->input->get('event_id');
+
+        if (empty($eventId)) {
             echo json_encode(['images' => [], 'videos' => []]);
             return;
         }
@@ -382,37 +522,67 @@ class Schools extends MY_Controller
         $images = [];
         $videos = [];
 
-        foreach ($galleryData as $key => $media) {
-            if (!isset($media['image'], $media['type'])) continue;
-
-            $mediaItem = [
-                'url'       => $media['image'],
-                'timestamp' => $media['Time_stamp'] ?? 0,
-            ];
-
-            if ($media['type'] == '1') {
-                $images[] = $mediaItem;
-            } elseif ($media['type'] == '2') {
-                $mediaItem['thumbnail'] = $media['thumbnail'] ?? '';
-                $mediaItem['duration']  = $media['duration']  ?? '';
-                $videos[] = $mediaItem;
+        if ($eventId === '__legacy__') {
+            // Legacy flat gallery
+            $galleryData = $this->firebase->get("Schools/$school_name/{$this->session_year}/Gallery") ?? [];
+            if (is_array($galleryData)) {
+                foreach ($galleryData as $key => $media) {
+                    if (!is_array($media) || empty($media['image'])) continue;
+                    $item = [
+                        'media_id'  => $key,
+                        'url'       => $media['image'],
+                        'timestamp' => $media['Time_stamp'] ?? 0,
+                    ];
+                    if (($media['type'] ?? '') == '1') {
+                        $item['type'] = 'image';
+                        $images[] = $item;
+                    } else {
+                        $item['type']      = 'video';
+                        $item['thumbnail'] = $media['thumbnail'] ?? '';
+                        $item['duration']  = $media['duration'] ?? '';
+                        $videos[] = $item;
+                    }
+                }
+            }
+        } else {
+            // Event-based media
+            $mediaData = $this->firebase->get("Schools/$school_name/Events/Media/$eventId") ?? [];
+            if (is_array($mediaData)) {
+                foreach ($mediaData as $key => $media) {
+                    if (!is_array($media) || empty($media['url'])) continue;
+                    $item = [
+                        'media_id'  => $key,
+                        'url'       => $media['url'],
+                        'timestamp' => strtotime($media['uploaded_at'] ?? '') ?: 0,
+                    ];
+                    if (($media['type'] ?? '') === 'image') {
+                        $item['type'] = 'image';
+                        $images[] = $item;
+                    } else {
+                        $item['type']      = 'video';
+                        $item['thumbnail'] = $media['thumbnail'] ?? '';
+                        $item['duration']  = $media['duration'] ?? '';
+                        $videos[] = $item;
+                    }
+                }
             }
         }
 
-        // Sort newest first
-        usort($images, fn($a, $b) => $b['timestamp'] - $a['timestamp']);
-        usort($videos, fn($a, $b) => $b['timestamp'] - $a['timestamp']);
+        usort($images, fn($a, $b) => ($b['timestamp'] ?? 0) - ($a['timestamp'] ?? 0));
+        usort($videos, fn($a, $b) => ($b['timestamp'] ?? 0) - ($a['timestamp'] ?? 0));
 
         echo json_encode(['images' => $images, 'videos' => $videos]);
     }
 
+    // ── Gallery: delete media ───────────────────────────────────────────
     public function deleteMedia()
     {
         header('Content-Type: application/json');
 
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
-        $fileUrl      = $this->input->get('url');
+        $school_name = $this->school_name;
+        $fileUrl     = $this->input->get('url');
+        $eventId     = $this->input->get('event_id');
+        $mediaId     = $this->input->get('media_id');
 
         if (!$fileUrl) {
             echo json_encode(['status' => 'error', 'message' => 'File URL is required']);
@@ -426,42 +596,53 @@ class Schools extends MY_Controller
                 return;
             }
 
-            $deleteStorage = $this->CM->delete_file_from_firebase($filePath);
-            if (!$deleteStorage) {
-                echo json_encode(['status' => 'error', 'message' => 'Failed to delete from Storage']);
-                return;
-            }
+            $this->CM->delete_file_from_firebase($filePath);
 
-            $galleryRef  = "Schools/$school_name/$session_year/Gallery";
-            $galleryData = $this->firebase->get($galleryRef);
-
-            if ($galleryData && is_array($galleryData)) {
-                foreach ($galleryData as $key => $media) {
-                    if (isset($media['image']) && trim($media['image']) === trim($fileUrl)) {
-                        if (isset($media['thumbnail'])) {
-                            $thumbPath = $this->extract_firebase_storage_path($media['thumbnail']);
-                            if ($thumbPath) $this->CM->delete_file_from_firebase($thumbPath);
+            if ($eventId === '__legacy__') {
+                // Legacy gallery — scan by URL match
+                $galleryRef  = "Schools/$school_name/{$this->session_year}/Gallery";
+                $galleryData = $this->firebase->get($galleryRef) ?? [];
+                if (is_array($galleryData)) {
+                    foreach ($galleryData as $key => $media) {
+                        if (isset($media['image']) && trim($media['image']) === trim($fileUrl)) {
+                            if (!empty($media['thumbnail'])) {
+                                $thumbPath = $this->extract_firebase_storage_path($media['thumbnail']);
+                                if ($thumbPath) $this->CM->delete_file_from_firebase($thumbPath);
+                            }
+                            $this->firebase->delete("$galleryRef/$key");
+                            break;
                         }
-                        $this->firebase->delete("$galleryRef/$key");
-                        echo json_encode(['status' => 'success', 'message' => 'File deleted successfully']);
-                        return;
                     }
                 }
+            } else {
+                // Event media — direct path delete
+                $mediaPath = "Schools/$school_name/Events/Media/$eventId/$mediaId";
+                $existing  = $this->firebase->get($mediaPath);
+                if (is_array($existing) && !empty($existing['thumbnail'])) {
+                    $thumbPath = $this->extract_firebase_storage_path($existing['thumbnail']);
+                    if ($thumbPath) $this->CM->delete_file_from_firebase($thumbPath);
+                }
+                $this->firebase->delete("Schools/$school_name/Events/Media/$eventId", $mediaId);
             }
 
-            echo json_encode(['status' => 'error', 'message' => 'File not found in database']);
+            echo json_encode(['status' => 'success', 'message' => 'File deleted successfully']);
         } catch (Exception $e) {
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
         }
     }
 
+    // ── Gallery: upload media to event album ────────────────────────────
     public function uploadMedia()
     {
         header('Content-Type: application/json');
 
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
+        $school_name = $this->school_name;
+        $eventId     = $this->input->post('event_id');
 
+        if (empty($eventId)) {
+            echo json_encode(['status' => 'error', 'message' => 'Event ID is required']);
+            return;
+        }
         if (!isset($_FILES['file'])) {
             echo json_encode(['status' => 'error', 'message' => 'No file uploaded']);
             return;
@@ -488,12 +669,13 @@ class Schools extends MY_Controller
             return;
         }
 
-        $timestamp     = time();
-        $randomString  = substr(md5(uniqid(mt_rand(), true)), 0, 6);
-        $dbPath        = "Schools/$school_name/$session_year/Gallery/";
-        $storagePath   = "$school_name/$session_year/Gallery/";
-        $newFileName   = ($fileType == '1' ? 'img_' : 'vid_') . "{$timestamp}_{$randomString}.{$fileExtension}";
-        $firebasePath  = $storagePath . $newFileName;
+        $timestamp    = time();
+        $randomString = substr(md5(uniqid(mt_rand(), true)), 0, 6);
+        $safeEvent    = preg_replace('/[^A-Za-z0-9_\-]/', '_', $eventId);
+        $storagePath  = "$school_name/Events/Media/$safeEvent/";
+        $prefix       = ($fileType == '1') ? 'img_' : 'vid_';
+        $newFileName  = "{$prefix}{$timestamp}_{$randomString}.{$fileExtension}";
+        $firebasePath = $storagePath . $newFileName;
 
         $uploadResult = $this->firebase->uploadFile($fileTmpPath, $firebasePath);
         if ($uploadResult !== true) {
@@ -502,47 +684,68 @@ class Schools extends MY_Controller
         }
 
         $downloadUrl = $this->firebase->getDownloadUrl($firebasePath);
+        $mediaId     = "{$prefix}{$timestamp}_{$randomString}";
         $mediaData   = [
-            'Time_stamp' => $timestamp,
-            'image'      => $downloadUrl,
-            'type'       => $fileType
+            'media_id'    => $mediaId,
+            'type'        => ($fileType == '1') ? 'image' : 'video',
+            'url'         => $downloadUrl,
+            'uploaded_at' => date('c'),
+            'uploaded_by' => $this->admin_id,
         ];
 
         if ($fileType == '2') {
-            // BUG FIX #9 — configurable ffmpeg path with graceful fallback
             $ffmpeg  = defined('FFMPEG_PATH')  ? FFMPEG_PATH  : 'ffmpeg';
             $ffprobe = defined('FFPROBE_PATH') ? FFPROBE_PATH : 'ffprobe';
 
-            // Duration
             $durationCmd    = "\"$ffprobe\" -v error -select_streams v:0 -show_entries stream=duration -of default=noprint_wrappers=1:nokey=1 " . escapeshellarg($fileTmpPath);
             $durationOutput = shell_exec($durationCmd);
-            $durationSecs   = is_numeric(trim($durationOutput)) ? round((float)trim($durationOutput), 2) : 0;
+            $durationSecs   = is_numeric(trim($durationOutput ?? '')) ? round((float)trim($durationOutput), 2) : 0;
             $minutes        = (int)floor($durationSecs / 60);
             $seconds        = (int)round($durationSecs - ($minutes * 60));
             if ($seconds === 60) { $minutes++; $seconds = 0; }
             $mediaData['duration'] = sprintf('%d:%02d', $minutes, $seconds);
 
-            // Thumbnail
-            $thumbName         = "thumb_{$timestamp}_{$randomString}.jpg";
-            $thumbLocal        = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $thumbName;
-            $thumbCmd          = "\"$ffmpeg\" -i " . escapeshellarg($fileTmpPath) . " -ss 00:00:01.000 -vframes 1 -q:v 2 " . escapeshellarg($thumbLocal);
+            $thumbName  = "thumb_{$timestamp}_{$randomString}.jpg";
+            $thumbLocal = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $thumbName;
+            $thumbCmd   = "\"$ffmpeg\" -i " . escapeshellarg($fileTmpPath) . " -ss 00:00:01.000 -vframes 1 -q:v 2 " . escapeshellarg($thumbLocal);
             shell_exec($thumbCmd);
 
             if (file_exists($thumbLocal)) {
-                $thumbStoragePath       = "$school_name/$session_year/Gallery/thumbnails/" . $thumbName;
+                $thumbStoragePath       = $storagePath . "thumbnails/" . $thumbName;
                 $this->firebase->uploadFile($thumbLocal, $thumbStoragePath);
                 $mediaData['thumbnail'] = $this->firebase->getDownloadUrl($thumbStoragePath);
                 @unlink($thumbLocal);
             }
         }
 
-        $this->firebase->push($dbPath, $mediaData);
+        $dbPath = "Schools/$school_name/Events/Media/$eventId";
+        $this->firebase->update($dbPath, [$mediaId => $mediaData]);
 
         echo json_encode([
             'status'    => 'success',
             'message'   => 'File uploaded successfully',
-            'mediaData' => $mediaData
+            'mediaData' => $mediaData,
         ]);
+    }
+
+    // ── Gallery: set event cover image ──────────────────────────────────
+    public function setEventCover()
+    {
+        header('Content-Type: application/json');
+        $school_name = $this->school_name;
+        $eventId     = $this->input->post('event_id');
+        $coverUrl    = $this->input->post('cover_url');
+
+        if (empty($eventId) || empty($coverUrl)) {
+            echo json_encode(['status' => 'error', 'message' => 'Missing event ID or cover URL']);
+            return;
+        }
+
+        $this->firebase->update("Schools/$school_name/Events/List/$eventId", [
+            'cover_image' => $coverUrl,
+        ]);
+
+        echo json_encode(['status' => 'success', 'message' => 'Cover image set successfully']);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────

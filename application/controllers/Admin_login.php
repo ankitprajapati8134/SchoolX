@@ -22,7 +22,7 @@ defined('BASEPATH') or exit('No direct script access allowed');
  * ║  [S-12]  Security + no-cache headers on every response          ║
  * ║  [S-13]  Log injection prevented — inputs sanitised before log  ║
  * ║  [S-14]  Subscription status + date gating at login time        ║
- * ║  [S-15]  School name resolved safely — no raw ID in path        ║
+ * ║  [S-15]  School ID resolved via Indexes/School_codes index      ║
  * ╠══════════════════════════════════════════════════════════════════╣
  * ║  AUDIT FIXES (this revision)                                     ║
  * ║  [A-01]  Lockout check moved BEFORE bcrypt — saves CPU on lock  ║
@@ -48,13 +48,15 @@ class Admin_login extends CI_Controller
     // [A-02] 'login_csrf' included so logout clears it cleanly.
     public const SESSION_KEYS = [
         'admin_id',
-        'school_id',
+        'school_id',              // now SCH_XXXXXX
+        'school_code',            // login code
         'admin_role',
         'admin_name',
         'session',
         'current_session',
         'session_year',
         'schoolName',
+        'school_display_name',    // human-readable name
         'school_features',
         'available_sessions',
         'subscription_expiry',
@@ -144,12 +146,12 @@ class Admin_login extends CI_Controller
             redirect('admin_login');
         }
 
-        // ── Resolve school name ───────────────────────────────────────────
-        $schoolName = $this->_resolveSchoolName($schoolId);
+        // ── Resolve school ID (SCH_XXXXXX) from login code ────────────────
+        $schoolId_resolved = $this->_resolveSchoolId($schoolId);
 
         // ── Fetch admin record ────────────────────────────────────────────
         $adminData = null;
-        if ($schoolName !== null) {
+        if ($schoolId_resolved !== null) {
             $raw = $firebase->get("Users/Admin/{$schoolId}/{$adminId}");
             $adminData = is_array($raw) ? $raw : null;
         }
@@ -187,7 +189,7 @@ class Admin_login extends CI_Controller
             : self::DUMMY_HASH;
         $credentialsValid = false;
 
-        if ($adminData !== null && $schoolName !== null) {
+        if ($adminData !== null && $schoolId_resolved !== null) {
             $credentialsValid = password_verify($password, $storedHash);
 
             // [S-09] Plain-text migration — remove once all passwords are hashed
@@ -227,13 +229,25 @@ class Admin_login extends CI_Controller
         }
 
         // ── [S-14] Subscription check ─────────────────────────────────────
-        $subPath      = "Users/Schools/{$schoolName}/subscription";
-        $subscription = $firebase->get($subPath);
+        // Try multiple paths: new architecture first, then legacy fallbacks
+        $subscription = null;
+        $subPaths = [
+            "System/Schools/{$schoolId_resolved}/subscription",
+            "Users/Schools/{$schoolId_resolved}/subscription",
+        ];
 
-        log_message('info', 'Sub check school=' . $this->_log_safe($schoolName));
+        log_message('info', 'Sub check school=' . $this->_log_safe($schoolId_resolved));
+
+        foreach ($subPaths as $subPath) {
+            $subscription = $firebase->get($subPath);
+            if ($subscription && is_array($subscription)) {
+                break;
+            }
+            $subscription = null;
+        }
 
         if (! $subscription || ! is_array($subscription)) {
-            log_message('error', 'Subscription missing school=' . $this->_log_safe($schoolName));
+            log_message('error', 'Subscription missing school=' . $this->_log_safe($schoolId_resolved));
             $this->session->set_flashdata('error', 'Subscription record not found. Please contact support.');
             redirect('admin_login');
         }
@@ -246,7 +260,7 @@ class Admin_login extends CI_Controller
         if ($status !== 'Active') {
             log_message(
                 'error',
-                'Subscription inactive school=' . $this->_log_safe($schoolName)
+                'Subscription inactive school=' . $this->_log_safe($schoolId_resolved)
                     . ' status=' . $this->_log_safe($status)
             );
             $this->session->set_flashdata('error', 'Subscription is not active. Please contact support.');
@@ -265,8 +279,13 @@ class Admin_login extends CI_Controller
         }
 
         // Step 3 — Compute timestamps + optional 7-day warning
-        $endTs         = (int) strtotime($endDate . ' 23:59:59');
-        $graceEndTs    = $endTs + (7 * 86400);
+        $endTs      = (int) strtotime($endDate . ' 23:59:59');
+        // Use plan's grace_end from Firebase if available; fall back to 7 days.
+        // grace_end is set by SA onboard/assign_plan using the plan's grace_days field.
+        $graceEndRaw = trim((string)($subscription['grace_end'] ?? ''));
+        $graceEndTs  = ($graceEndRaw !== '' && strtotime($graceEndRaw) !== false)
+            ? (int) strtotime($graceEndRaw . ' 23:59:59')
+            : $endTs + (7 * 86400);
         $daysRemaining = (int) ceil(($endTs - $now) / 86400);
         $subWarning    = ($daysRemaining <= 7)
             ? "Subscription expires in {$daysRemaining} day(s) on {$endDate}. Please renew soon."
@@ -295,7 +314,7 @@ class Admin_login extends CI_Controller
             : ($year - 1) . '-' . substr($year,     -2);  // Jan–Mar → 2024-25
 
         // ── Fetch / initialise available academic sessions ────────────────
-        $sessionsPath      = "Schools/{$schoolName}/Sessions";
+        $sessionsPath      = "Schools/{$schoolId_resolved}/Sessions";
         $storedSessions    = $firebase->get($sessionsPath);
         $availableSessions = (is_array($storedSessions) && !empty($storedSessions))
             ? array_values(array_unique(array_filter($storedSessions, 'is_string')))
@@ -310,24 +329,47 @@ class Admin_login extends CI_Controller
         rsort($availableSessions);              // latest year first
         $financialYear = $availableSessions[0]; // default to most recent
 
-        // Features
-        $featuresRaw    = $firebase->get("Users/Schools/{$schoolName}/subscription/features");
-        $schoolFeatures = is_array($featuresRaw) ? array_values($featuresRaw) : [];
+        // Features — try new path, then legacy
+        $schoolFeatures = [];
+        foreach (["System/Schools/{$schoolId_resolved}/subscription/features", "Users/Schools/{$schoolId_resolved}/subscription/features"] as $fp) {
+            $featuresRaw = $firebase->get($fp);
+            if (is_array($featuresRaw) && !empty($featuresRaw)) {
+                $schoolFeatures = array_values($featuresRaw);
+                break;
+            }
+        }
 
         if (empty($schoolFeatures)) {
-            log_message('error', 'No features found school=' . $this->_log_safe($schoolName));
+            log_message('error', 'No features found school=' . $this->_log_safe($schoolId_resolved));
         }
+
+        // Fetch human-readable school name for display — try multiple sources
+        $displayName = '';
+        foreach (["System/Schools/{$schoolId_resolved}/profile", "Users/Schools/{$schoolId_resolved}/profile"] as $pp) {
+            $profileData = $firebase->get($pp);
+            if (is_array($profileData)) {
+                $displayName = $profileData['school_name'] ?? $profileData['name'] ?? '';
+                if (!empty($displayName)) break;
+            }
+        }
+        // If school_id_resolved is a school name (legacy), use it directly
+        if (empty($displayName) && strpos($schoolId_resolved, 'SCH_') !== 0) {
+            $displayName = $schoolId_resolved;
+        }
+        if (empty($displayName)) $displayName = $schoolId_resolved;
 
         // [S-11] Store all session data — three key aliases for full compatibility
         $this->session->set_userdata([
             'admin_id'               => $adminId,
-            'school_id'              => $schoolId,
-            'admin_role'             => $adminData['Role'] ?? '',
-            'admin_name'             => $adminData['Name'] ?? '',
+            'school_id'              => $schoolId_resolved,   // SCH_XXXXXX (PRIMARY KEY)
+            'school_code'            => $schoolId,            // login code (POST input)
+            'admin_role'             => $adminData['Role'] ?? $adminData['Profile']['role'] ?? '',
+            'admin_name'             => $adminData['Name'] ?? $adminData['Profile']['name'] ?? '',
             'session'                => $financialYear,    // legacy key (MY_Controller reads this)
             'current_session'        => $financialYear,    // Account controller reads this
             'session_year'           => $financialYear,    // Account_model reads this
-            'schoolName'             => $schoolName,
+            'schoolName'             => $schoolId_resolved,   // SCH_XXXXXX (backward compat)
+            'school_display_name'    => $displayName,         // human-readable name
             'school_features'        => $schoolFeatures,
             'available_sessions'     => $availableSessions, // session switcher dropdown
             'subscription_expiry'    => $endTs,
@@ -351,12 +393,12 @@ class Admin_login extends CI_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function logout(): void
     {
-        $adminId  = $this->session->userdata('admin_id');
-        $schoolId = $this->session->userdata('school_id');
+        $adminId    = $this->session->userdata('admin_id');
+        $schoolCode = $this->session->userdata('school_code');
 
-        if ($adminId && $schoolId && $this->_is_safe_id((string)$adminId) && $this->_is_safe_id((string)$schoolId)) {
+        if ($adminId && $schoolCode && $this->_is_safe_id((string)$adminId) && $this->_is_safe_id((string)$schoolCode)) {
             $this->firebase->update(
-                "Users/Admin/{$schoolId}/{$adminId}/AccessHistory",
+                "Users/Admin/{$schoolCode}/{$adminId}/AccessHistory",
                 ['IsLoggedIn' => false, 'LoginIP' => null]
             );
         }
@@ -395,31 +437,33 @@ class Admin_login extends CI_Controller
     }
 
     /**
-     * [S-15] Resolve school name from numeric school ID.
-     * Fast path: School_ids/{id} node (O(1)).
-     * Fallback:  scan Users/Schools for matching "School Id" field.
+     * [S-15] Resolve school identifier from a login code.
+     *
+     * 1. New path: Indexes/School_codes/{code} → SCH_XXXXXX
+     * 2. Legacy fallback: School_ids/{code} → school_name (pre-migration schools)
+     *
+     * Returns the resolved identifier (SCH_XXXXXX or school_name) or null.
      */
-    private function _resolveSchoolName(string $schoolId): ?string
+    private function _resolveSchoolId(string $schoolCode): ?string
     {
         $firebase = $this->firebase;
 
-        $direct = $firebase->get("School_ids/{$schoolId}");
-        if ($direct && is_string($direct) && trim($direct) !== '') {
-            return trim($direct);
+        // ── New architecture: Indexes/School_codes/{code} → SCH_XXXXXX ──
+        $schoolId = $firebase->get("Indexes/School_codes/{$schoolCode}");
+        if ($schoolId && is_array($schoolId)) {
+            $schoolId = reset($schoolId);
         }
-        if ($direct && is_array($direct)) {
-            $val = reset($direct);
-            if (is_string($val) && trim($val) !== '') return trim($val);
+        if ($schoolId && is_string($schoolId) && strpos(trim($schoolId), 'SCH_') === 0) {
+            return trim($schoolId);
         }
 
-        $all = $firebase->get('Users/Schools');
-        if (empty($all) || ! is_array($all)) return null;
-
-        foreach ($all as $name => $data) {
-            if (! is_array($data)) continue;
-            if ((string) ($data['School Id'] ?? '') === $schoolId) {
-                return (string) $name;
-            }
+        // ── Legacy fallback: School_ids/{code} → school_name ──
+        $schoolName = $firebase->get("School_ids/{$schoolCode}");
+        if ($schoolName && is_array($schoolName)) {
+            $schoolName = reset($schoolName);
+        }
+        if ($schoolName && is_string($schoolName) && trim($schoolName) !== '' && $schoolName !== 'Count') {
+            return trim($schoolName);
         }
 
         return null;

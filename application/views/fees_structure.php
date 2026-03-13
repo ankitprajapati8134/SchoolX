@@ -48,12 +48,12 @@
                 <form id="add_fees_title">
                     <div class="fm-grid-form">
                         <div>
-                            <label class="fm-label">Fee Title <span style="color:red">*</span></label>
+                            <label class="fm-label">Fee Title <span class="fm-req">*</span></label>
                             <input type="text" name="fee_title" id="fee_title"
                                 class="fm-input" placeholder="e.g. Tuition Fee" required>
                         </div>
                         <div>
-                            <label class="fm-label">Fee Type <span style="color:red">*</span></label>
+                            <label class="fm-label">Fee Type <span class="fm-req">*</span></label>
                             <select name="fee_type" id="fee_type" class="fm-select" required>
                                 <option value="">Select Fee Type</option>
                                 <option value="Monthly">Monthly</option>
@@ -238,7 +238,7 @@
 
     .fm-page-title {
         font-family: 'Fraunces', serif;
-        font-size: 26px;
+        font-size: 1.35rem;
         font-weight: 700;
         color: var(--fm-navy);
         display: flex;
@@ -255,7 +255,7 @@
         display: flex;
         align-items: center;
         gap: 6px;
-        font-size: 13px;
+        font-size: .78rem;
         color: var(--fm-muted);
         list-style: none;
         margin: 0;
@@ -271,7 +271,7 @@
     .fm-breadcrumb li::before {
         content: '/';
         margin-right: 6px;
-        color: #b0c4c2;
+        color: var(--fm-border);
     }
 
     .fm-breadcrumb li:first-child::before {
@@ -299,7 +299,7 @@
 
     .fm-card-head h3 {
         font-family: 'Fraunces', serif;
-        font-size: 16px;
+        font-size: .92rem;
         font-weight: 700;
         color: var(--fm-navy);
         margin: 0;
@@ -307,8 +307,10 @@
 
     .fm-card-head i {
         color: var(--fm-teal);
-        font-size: 16px;
+        font-size: .92rem;
     }
+
+    .fm-req { color: var(--fm-red); }
 
     .fm-card-body {
         padding: 22px;
@@ -330,7 +332,7 @@
 
     .fm-label {
         display: block;
-        font-size: 11.5px;
+        font-size: .72rem;
         font-weight: 700;
         letter-spacing: .4px;
         text-transform: uppercase;
@@ -346,9 +348,9 @@
         border: 1.5px solid var(--fm-border);
         border-radius: 8px;
         font-family: 'Plus Jakarta Sans', sans-serif;
-        font-size: 14px;
+        font-size: .82rem;
         color: var(--fm-text);
-        background: #fafefe;
+        background: var(--fm-sky);
         outline: none;
         transition: border-color .13s, box-shadow .13s;
     }
@@ -357,7 +359,7 @@
     .fm-select:focus {
         border-color: var(--fm-teal);
         box-shadow: 0 0 0 3px rgba(13, 115, 119, .12);
-        background: #fff;
+        background: var(--fm-card);
     }
 
     /* Buttons */
@@ -368,7 +370,7 @@
         padding: 9px 18px;
         border-radius: 8px;
         font-family: 'Plus Jakarta Sans', sans-serif;
-        font-size: 13.5px;
+        font-size: .82rem;
         font-weight: 600;
         cursor: pointer;
         border: none;
@@ -384,7 +386,8 @@
     }
 
     .fm-btn-primary:hover {
-        background: #0a5c60;
+        background: #0a6d6d;
+        filter: brightness(.92);
     }
 
     .fm-btn-danger {
@@ -393,13 +396,12 @@
     }
 
     .fm-btn-danger:hover {
-        background: #c0392b;
-        color: #fff;
+        filter: brightness(.88);
     }
 
     .fm-btn-sm {
         padding: 5px 11px;
-        font-size: 12px;
+        font-size: .75rem;
     }
 
     /* Stats */
@@ -421,7 +423,7 @@
     }
 
     .fm-stat-label {
-        font-size: 11px;
+        font-size: .68rem;
         font-weight: 700;
         letter-spacing: .6px;
         text-transform: uppercase;
@@ -431,7 +433,7 @@
 
     .fm-stat-value {
         font-family: 'Fraunces', serif;
-        font-size: 26px;
+        font-size: 1.25rem;
         font-weight: 700;
         color: var(--fm-navy);
     }
@@ -452,7 +454,7 @@
     .fm-table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 13.5px;
+        font-size: .82rem;
     }
 
     .fm-table th {
@@ -460,7 +462,7 @@
         color: #fff;
         padding: 10px 14px;
         text-align: left;
-        font-size: 12px;
+        font-size: .72rem;
         letter-spacing: .4px;
         text-transform: uppercase;
         font-weight: 700;
@@ -487,7 +489,7 @@
         align-items: center;
         padding: 3px 10px;
         border-radius: 20px;
-        font-size: 11.5px;
+        font-size: .7rem;
         font-weight: 700;
     }
 
@@ -497,8 +499,8 @@
     }
 
     .fm-badge-gold {
-        background: #fef3db;
-        color: #b5730a;
+        background: rgba(217, 119, 6, .12);
+        color: var(--fm-gold);
     }
 
     /* Empty state */
@@ -509,7 +511,7 @@
     }
 
     .fm-empty i {
-        font-size: 36px;
+        font-size: 2.25rem;
         margin-bottom: 10px;
         display: block;
         opacity: .4;
@@ -531,7 +533,7 @@
         padding: 12px 18px;
         border-radius: 8px;
         color: #fff;
-        font-size: 14px;
+        font-size: .82rem;
         font-weight: 600;
         font-family: 'Plus Jakarta Sans', sans-serif;
         box-shadow: 0 4px 20px rgba(0, 0, 0, .2);

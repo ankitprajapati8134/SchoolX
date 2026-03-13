@@ -11,7 +11,7 @@ class Subjects extends MY_Controller
 
     //     public function manage_subjects()
     //     {
-    //         $school_id    = $this->school_id;
+    //         $school_id    = $this->parent_db_key;
     //         $school_name  = $this->school_name;
     //         $session_year = $this->session_year;
 
@@ -182,7 +182,7 @@ class Subjects extends MY_Controller
 
     public function manage_subjects()
     {
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -334,7 +334,7 @@ class Subjects extends MY_Controller
 
     public function fetch_subjects()
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -457,7 +457,7 @@ class Subjects extends MY_Controller
 
     public function get_class_details()
     {
-        // $school_id = $this->school_id;
+        // $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -725,7 +725,7 @@ class Subjects extends MY_Controller
 
     public function class_profile()
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -814,7 +814,7 @@ class Subjects extends MY_Controller
 
     public function get_class_data($class_name)
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 

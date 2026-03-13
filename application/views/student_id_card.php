@@ -117,11 +117,11 @@ ksort($filterSections);
     $abbr = mb_substr($abbr, 0, 3);
   ?>
   <div class="ic-card-wrap"
-       data-name="<?= mb_strtolower($name) ?>"
-       data-uid="<?= mb_strtolower($uid) ?>"
-       data-father="<?= mb_strtolower($father) ?>"
-       data-class="<?= $class ?>"
-       data-section="<?= $section ?>">
+       data-name="<?= htmlspecialchars(mb_strtolower($name), ENT_QUOTES, 'UTF-8') ?>"
+       data-uid="<?= htmlspecialchars(mb_strtolower($uid), ENT_QUOTES, 'UTF-8') ?>"
+       data-father="<?= htmlspecialchars(mb_strtolower($father), ENT_QUOTES, 'UTF-8') ?>"
+       data-class="<?= htmlspecialchars($class, ENT_QUOTES, 'UTF-8') ?>"
+       data-section="<?= htmlspecialchars($section, ENT_QUOTES, 'UTF-8') ?>">
 
     <!-- ─── THE PHYSICAL ID CARD ─────────────────────────────── -->
     <div class="ic-card" id="card-<?= $safeUid ?>">
@@ -171,7 +171,7 @@ ksort($filterSections);
         <div class="ic-info-row">
           <span class="ic-info-ico"><i class="fa fa-calendar"></i></span>
           <span class="ic-info-lbl">DOB</span>
-          <span class="ic-info-val"><?= $dob ?></span>
+          <span class="ic-info-val"><?= htmlspecialchars($dob, ENT_QUOTES, 'UTF-8') ?></span>
         </div>
         <div class="ic-info-row">
           <span class="ic-info-ico"><i class="fa fa-tint"></i></span>
@@ -200,7 +200,8 @@ ksort($filterSections);
 
     <!-- Print action below card -->
     <button class="ic-print-btn"
-            onclick="icPrintOne('<?= $safeUid ?>','<?= addslashes($name) ?>','<?= addslashes($school_name) ?>','<?= addslashes($session_year) ?>')">
+            data-print="<?= htmlspecialchars(json_encode([$safeUid, $name, $school_name, $session_year]), ENT_QUOTES, 'UTF-8') ?>"
+            onclick="var d=JSON.parse(this.dataset.print);icPrintOne(d[0],d[1],d[2],d[3])">
       <i class="fa fa-print"></i> Print
     </button>
 

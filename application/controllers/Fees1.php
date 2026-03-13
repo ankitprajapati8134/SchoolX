@@ -216,7 +216,7 @@ class Fees extends MY_Controller
 
     private function createDefaultFeesForClass($classSectionKey, $school_name)
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -423,7 +423,7 @@ class Fees extends MY_Controller
 
     public function due_fees_table()
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -550,7 +550,7 @@ class Fees extends MY_Controller
     }
     private function search_by_name($entry)
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
 
         // Fetch data from Firebase based on the name
         $searchResults = [];
@@ -591,7 +591,7 @@ class Fees extends MY_Controller
         // $this->load->library('firebase');
         // $firebase = new Firebase();
 
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -633,7 +633,7 @@ class Fees extends MY_Controller
 
     public function fees_records()
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -709,7 +709,7 @@ class Fees extends MY_Controller
     public function fees_counter()
     {
 
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -1020,7 +1020,7 @@ class Fees extends MY_Controller
     public function fetch_months()
     {
 
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -1078,7 +1078,7 @@ class Fees extends MY_Controller
     {
         $this->load->library('firebase');
 
-        // $school_id = $this->school_id;
+        // $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 

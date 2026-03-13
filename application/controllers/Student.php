@@ -13,7 +13,7 @@ class Student extends MY_Controller
 
     public function all_student()
     {
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -123,111 +123,11 @@ class Student extends MY_Controller
         $this->load->view('include/footer');
     }
 
-    // public function all_student()
-    // {
-
-    //     $school_id = $this->school_id;
-    //     $school_name = $this->school_name;
-    //     $session_year = $this->session_year;
-
-    //     $data['students'] = $this->CM->select_data('Users/Parents/' . $school_id);
-
-
-
-    //     if (!is_array($data['students'])) {
-    //         $data['students'] = []; // Ensure staff is an array
-    //     }
-
-    //     // Remove non-student keys
-    //     $nonStudentKeys = ['Count', 'TC Students', '', null];
-
-    //     foreach ($nonStudentKeys as $key) {
-    //         if (isset($data['students'][$key])) {
-    //             unset($data['students'][$key]);
-    //         }
-    //     }
-
-    //     // Final cleanup: remove any entry that's not an array or missing required keys
-    //     $data['students'] = array_filter($data['students'], function ($student) {
-    //         return is_array($student) && isset($student['User Id']) && !empty($student['User Id']);
-    //     });
-
-    //     // // Filter out students who have been deleted from the school
-    //     // foreach ($data['students'] as $studentId => $studentData) {
-    //     //     $classKey = isset($studentData['Class']) ? $studentData['Class'] : 'Unknown Class';
-    //     //     $schoolName = $studentData['School Name'];
-
-    //     //     // Extract class name and section using regex
-    //     //     if (preg_match("/(\d+(?:st|nd|rd|th)?) '([A-Z])'/", $classKey, $matches)) {
-    //     //         $className = $matches[1]; // e.g., 10th
-    //     //         $sectionName = $matches[2]; // e.g., A
-    //     //     } else {
-    //     //         $className = 'Unknown Class';
-    //     //         $sectionName = 'Unknown Section';
-    //     //     }
-
-    //     //     // Combine class and section if needed
-    //     //     $classSection = "Class $className '$sectionName'";
-
-    //     //     // Check if the student exists in Firebase
-    //     //     $exists = $this->CM->select_data("Schools/$schoolName/$classSection/Students/$studentId");
-    //     //     if (!$exists) {
-    //     //         unset($data['students'][$studentId]);
-    //     //     }
-    //     // }
-
-
-
-    //     // Initialize arrays to store class names and sections
-    //     $classNames = array();
-    //     $classSections = array();
-
-    //     if (!empty($school_name)) {
-    //         // Fetch classes data from Firebase
-    //         $classes = $this->CM->select_data('Schools/' . $school_name . '/' . $session_year . '/Classes');
-    //         foreach ($classes as $className => $classData) {
-
-    //             // Extract the ordinal part from the class name (e.g., 1st, 2nd, 3rd)
-    //             preg_match('/\b\d+(st|nd|rd|th)\b/', $className, $matches);
-
-    //             if (!empty($matches)) {
-    //                 $ordinalPart = $matches[0]; // Get the first match
-    //                 $classNames[] = $ordinalPart; // Add the ordinal part to classNames array
-    //             }
-
-    //             // Store sections for each class
-    //             if (isset($classData['Section'])) {
-    //                 $classSections[$ordinalPart] = $classData['Section'];
-    //             } else {
-    //                 $classSections[$ordinalPart] = array(); // Handle case where sections are not present
-    //             }
-    //         }
-    //     }
-
-    //     // Pass $classNames and $classSections to your view
-    //     $data['classNames'] = $classNames;
-    //     $data['classSections'] = $classSections;
-
-    //     // Remove 'Class ' prefix for view display
-    //     foreach ($data['students'] as &$student) {
-    //         // Ensure $student is an array and has the 'Class' key
-    //         if (is_array($student) && isset($student['Class']) && strpos($student['Class'], 'Class ') === 0) {
-    //             $student['Class'] = substr($student['Class'], 6); // Remove 'Class ' prefix
-    //         } elseif (!is_array($student)) {
-    //             error_log("Invalid student data: " . print_r($student, true)); // Debug invalid data
-    //         }
-    //     }
-
-
-    //     $this->load->view('include/header');
-    //     $this->load->view('all_student', $data);
-    //     $this->load->view('include/footer');
-    // }
 
 
     public function id_card()
     {
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -249,11 +149,13 @@ class Student extends MY_Controller
             $sessionClassKeys = $this->firebase->shallow_get(
                 'Schools/' . $school_name . '/' . $session_year
             );
+            if (!is_array($sessionClassKeys)) $sessionClassKeys = [];
             foreach ($sessionClassKeys as $classKey) {
                 if (strpos($classKey, 'Class ') !== 0) continue;
                 $sectionKeys = $this->firebase->shallow_get(
                     'Schools/' . $school_name . '/' . $session_year . '/' . $classKey
                 );
+                if (!is_array($sectionKeys)) continue;
                 foreach ($sectionKeys as $sectionKey) {
                     if (strpos($sectionKey, 'Section ') !== 0) continue;
                     $list = $this->CM->select_data(
@@ -302,9 +204,9 @@ class Student extends MY_Controller
     {
         try {
 
-            log_message('error', '=== IMPORT FUNCTION STARTED ===');
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) log_message('debug', '=== IMPORT FUNCTION STARTED ===');
 
-            $school_id    = $this->school_id;
+            $school_id    = $this->parent_db_key;
             $school_name  = $this->school_name;
             $session_year = $this->session_year;
 
@@ -503,7 +405,7 @@ class Student extends MY_Controller
                         "Schools/{$school_name}/Subject_list/{$classNumber}"
                     );
 
-                    log_message('error', 'Raw subject list: ' . json_encode($rawList));
+                    if (defined('GRADER_DEBUG') && GRADER_DEBUG) log_message('debug', 'Raw subject list: ' . json_encode($rawList));
 
                     if (is_array($rawList)) {
 
@@ -511,7 +413,7 @@ class Student extends MY_Controller
 
                             if (!is_array($item)) continue;
 
-                            $subName = trim($item['subject_name'] ?? '');
+                            $subName = trim($item['subject_name'] ?? $item['name'] ?? '');
                             if ($subName === '') continue;
 
                             $type = strtolower(trim($item['category'] ?? ''));
@@ -534,9 +436,11 @@ class Student extends MY_Controller
                         }
                     }
 
-                    log_message('error', 'Core subject cache: ' . json_encode($subjectCache[$classNumber]['core']));
-                    log_message('error', 'All subjects cache: ' . json_encode($subjectCache[$classNumber]['allSubjects']));
-                    log_message('error', 'Additional subjects cache: ' . json_encode($subjectCache[$classNumber]['additionalSubjects']));
+                    if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                        log_message('debug', 'Core subject cache: ' . json_encode($subjectCache[$classNumber]['core']));
+                        log_message('debug', 'All subjects cache: ' . json_encode($subjectCache[$classNumber]['allSubjects']));
+                        log_message('debug', 'Additional subjects cache: ' . json_encode($subjectCache[$classNumber]['additionalSubjects']));
+                    }
 
                     // ✅ Insert ALL subjects (except additional) to class path (only once per class)
                     if (!empty($subjectCache[$classNumber]['allSubjects'])) {
@@ -589,7 +493,7 @@ class Student extends MY_Controller
 
     public function studentAdmission()
     {
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -605,7 +509,7 @@ class Student extends MY_Controller
             $studentIdCount = 1;
         }
 
-        $userId = 'STU000' . $studentIdCount;
+        $userId = 'STU' . str_pad($studentIdCount, 4, '0', STR_PAD_LEFT);
         $data['user_Id'] = $userId;
 
         /* ===============================
@@ -642,6 +546,7 @@ class Student extends MY_Controller
        HANDLE POST
         =============================== */
         if ($this->input->method() === 'post') {
+            header('Content-Type: application/json');
 
             $postData = $this->input->post();
             $normalizedPostData = [];
@@ -669,7 +574,11 @@ class Student extends MY_Controller
                 return;
             }
 
-            // $combinedClassPath  = "{$className}/Section {$section}";
+            // Validate path segments
+            $classNameRaw = $this->safe_path_segment($classNameRaw, 'class');
+            $section      = $this->safe_path_segment($section, 'section');
+            $studentId    = $this->safe_path_segment($studentId, 'user_id');
+
             $combinedClassPath = "{$classNameRaw}/Section {$section}";
 
             // log_message('error', 'Combined Path: ' . $combinedClassPath);
@@ -871,7 +780,7 @@ class Student extends MY_Controller
                     "Schools/{$schoolName}/Subject_list/{$classNumber}"
                 );
 
-                log_message('error', 'Raw subject list (admission): ' . json_encode($rawList));
+                if (defined('GRADER_DEBUG') && GRADER_DEBUG) log_message('debug', 'Raw subject list (admission): ' . json_encode($rawList));
 
                 $coreSubjects = [];
                 $allSubjects  = [];
@@ -882,7 +791,7 @@ class Student extends MY_Controller
 
                         if (!is_array($item)) continue;
 
-                        $subName = trim($item['subject_name'] ?? '');
+                        $subName = trim($item['subject_name'] ?? $item['name'] ?? '');
                         if ($subName === '') continue;
 
                         $type = strtolower(trim($item['category'] ?? ''));
@@ -904,8 +813,10 @@ class Student extends MY_Controller
                     }
                 }
 
-                log_message('error', 'Core subjects (admission): ' . json_encode($coreSubjects));
-                log_message('error', 'All subjects (admission): ' . json_encode($allSubjects));
+                if (defined('GRADER_DEBUG') && GRADER_DEBUG) {
+                    log_message('debug', 'Core subjects (admission): ' . json_encode($coreSubjects));
+                    log_message('debug', 'All subjects (admission): ' . json_encode($allSubjects));
+                }
 
                 // ✅ Insert ALL subjects to class path
                 if (!empty($allSubjects)) {
@@ -1161,6 +1072,7 @@ class Student extends MY_Controller
             return;
         }
 
+        $className = $this->safe_path_segment($className, 'class_name');
         // Shallow fetch — reads only section key names under the class node
         $keys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}/{$className}");
 
@@ -1178,10 +1090,16 @@ class Student extends MY_Controller
 
     public function fetch_subjects()
     {
+        header('Content-Type: application/json');
+
         $school_name = $this->school_name;
 
-        $input = json_decode(file_get_contents('php://input'), true);
-        $rawClass = trim($input['class_name'] ?? '');
+        // Use CI input to benefit from CSRF check; fall back to raw JSON body
+        $rawClass = trim((string) $this->input->post('class_name'));
+        if ($rawClass === '') {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $rawClass = trim($input['class_name'] ?? '');
+        }
 
         if ($rawClass === '') {
             echo json_encode([]);
@@ -1207,7 +1125,7 @@ class Student extends MY_Controller
                 if (!is_array($item)) continue;
 
                 $category = strtolower(trim($item['category'] ?? ''));
-                $name     = trim($item['subject_name'] ?? '');
+                $name     = trim($item['subject_name'] ?? $item['name'] ?? '');
 
                 if ($name === '') continue;
 
@@ -1222,10 +1140,10 @@ class Student extends MY_Controller
     }
 
 
-    public function add_student($data)
+    private function add_student($data)
     {
 
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
@@ -1328,11 +1246,15 @@ class Student extends MY_Controller
 
     public function delete_student($id)
     {
-        if (empty($id)) {
+        if ($this->input->method() !== 'post') {
             redirect('student/all_student');
             return;
         }
-        $school_id = $this->school_id;
+        if (empty($id) || !preg_match('/^[A-Za-z0-9_]+$/', $id)) {
+            redirect('student/all_student');
+            return;
+        }
+        $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session_year = $this->session_year;
         $studentPath = "Users/Parents/{$school_id}/{$id}";
@@ -1368,11 +1290,16 @@ class Student extends MY_Controller
 
     public function edit_student($userId)
     {
-        $school_id    = $this->school_id;
+        if (empty($userId) || !preg_match('/^[A-Za-z0-9_]+$/', $userId)) {
+            show_404();
+            return;
+        }
+
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
-        $studentPath = "Users/Parents/$school_id/$userId";
+        $studentPath = "Users/Parents/{$school_id}/{$userId}";
         $existing    = $this->CM->select_data($studentPath);
 
         if (!$existing) {
@@ -1424,7 +1351,7 @@ class Student extends MY_Controller
                     foreach ($subjectData as $code => $item) {
                         if (!is_array($item)) continue;
                         $category = strtolower(trim($item['category'] ?? ''));
-                        $name     = trim($item['subject_name'] ?? '');
+                        $name     = trim($item['subject_name'] ?? $item['name'] ?? '');
                         if ($name === '') continue;
                         if (in_array($category, ['additional', 'skill-based'], true)) {
                             $allSubjects[] = $name;
@@ -1445,6 +1372,7 @@ class Student extends MY_Controller
 
 
         /* ===================== POST MODE ===================== */
+        header('Content-Type: application/json');
 
         $post = $this->input->post();
 
@@ -1696,8 +1624,8 @@ class Student extends MY_Controller
             return;
         }
 
-        // ✅ Get filename safely
-        $fileName = basename($parts['path']);
+        // ✅ Get filename safely — sanitize for Content-Disposition header
+        $fileName = preg_replace('/[^a-zA-Z0-9._\-]/', '_', basename($parts['path']));
 
         // ✅ Stream download (no memory overload)
         $ch = curl_init($fileUrl);
@@ -1762,14 +1690,19 @@ class Student extends MY_Controller
 
     public function student_profile($userId)
     {
-        $school_id    = $this->school_id;
+        if (empty($userId) || !preg_match('/^[A-Za-z0-9_]+$/', $userId)) {
+            show_404();
+            return;
+        }
+
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
         /* ===============================
            FETCH STUDENT DATA
         =============================== */
-        $firebasePath = "Users/Parents/$school_id/$userId";
+        $firebasePath = "Users/Parents/{$school_id}/{$userId}";
         $studentData  = $this->firebase->get($firebasePath);
 
         if (!$studentData) {
@@ -1798,8 +1731,9 @@ class Student extends MY_Controller
 
             if (!empty($subjects) && is_array($subjects)) {
                 foreach ($subjects as $subjectCode => $subjectData) {
-                    if (isset($subjectData['subject_name'])) {
-                        $subjectsList[] = $subjectData['subject_name'];
+                    $sn = $subjectData['subject_name'] ?? $subjectData['name'] ?? '';
+                    if ($sn !== '') {
+                        $subjectsList[] = $sn;
                     }
                 }
             }
@@ -1875,12 +1809,12 @@ class Student extends MY_Controller
     }
 
 
-    function getFees($className, $section)
+    private function getFees($className, $section)
     {
         $school_name = $this->school_name;
         $session_year = $this->session_year;
 
-        $path = "Schools/$school_name/$session_year/Accounts/Fees/Classes Fees/Class $className/Section $section";
+        $path = "Schools/{$school_name}/{$session_year}/Accounts/Fees/Classes Fees/{$className} '{$section}'";
 
         // Fetching data from Firebase
         $feesData = $this->CM->get_data($path);
@@ -1918,7 +1852,7 @@ class Student extends MY_Controller
                     $rowTotal = array_sum($fees); // Sum all fee categories for the month
                     $monthlyTotals[$month] = $rowTotal; // Store monthly total
                 } else {
-                    log_message('error', "Fees for month $month is not an array: " . print_r($fees, true));
+                    log_message('warning', "Fees for month {$month} is not an array");
                 }
             }
 
@@ -1980,6 +1914,8 @@ class Student extends MY_Controller
 
     public function fetchAttendance()
     {
+        header('Content-Type: application/json');
+
         $school_name  = $this->school_name;
         $session_year = $this->session_year;   // e.g. "2025-2026"
 
@@ -2018,7 +1954,7 @@ class Student extends MY_Controller
 
         $monthNumber = $monthToNumber[trim($month)] ?? 0;
         if ($monthNumber === 0) {
-            echo json_encode(["error" => "Invalid month name: $month"]);
+            echo json_encode(["error" => "Invalid month name."]);
             return;
         }
 
@@ -2035,14 +1971,16 @@ class Student extends MY_Controller
            new Firebase() creates a second unauthenticated instance,
            bypasses the singleton, and may use stale/wrong credentials.
         ───────────────────────────────────────────────────────── */
+        $class       = $this->safe_path_segment($class, 'class');
+        $section     = $this->safe_path_segment($section, 'section');
         $sectionNode = "Section " . $section;
-        $basePath    = "Schools/$school_name/$session_year/$class/$sectionNode/Students";
+        $basePath    = "Schools/{$school_name}/{$session_year}/{$class}/{$sectionNode}/Students";
 
         $studentsListPath = "$basePath/List";
         $studentsList     = $this->firebase->get($studentsListPath);
 
         if (empty($studentsList) || !is_array($studentsList)) {
-            echo json_encode(["error" => "No students found for $class - Section $section."]);
+            echo json_encode(["error" => "No students found for this class/section."]);
             return;
         }
 

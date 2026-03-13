@@ -997,7 +997,12 @@ $accounts          = $accounts          ?? [];
             })
             .then(function(resp) {
                 if (resp.status === 'success') {
-                    showToast('Fees submitted successfully! 🎉', 'success');
+                    showToast('Fees submitted successfully!', 'success');
+
+                    /* Open printable receipt in new tab */
+                    if (resp.receipt_no) {
+                        window.open(SITE_URL + '/fees/print_receipt/' + resp.receipt_no, '_blank');
+                    }
 
                     document.getElementById('breakdownCard').style.display = 'none';
                     document.getElementById('paymentCard').style.display = 'none';
