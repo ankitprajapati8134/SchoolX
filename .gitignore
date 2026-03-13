@@ -62,3 +62,12 @@ user_guide_src/cilexer/pycilexer.egg-info/*
 *.stTheme.cache
 *.sublime-workspace
 *.sublime-project
+
+# -----------------------------
+# Runtime & generated files
+# -----------------------------
+.claude/
+.phpunit.result.cache
+application/backups/
+uploads/
+tools/image/
