@@ -32,6 +32,7 @@ class Communication_helper
         'admission_approved', 'admission_rejected',
         'salary_processed', 'leave_approved',
         'event_created', 'event_updated',
+        'assignment_created', 'assignment_graded', 'quiz_result',
     ];
 
     const MAX_QUEUE_PER_EVENT = 200;

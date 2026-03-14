@@ -706,3 +706,72 @@ $route['events/remove_participant']                  = 'Events/remove_participan
 $route['events/mark_attendance']                     = 'Events/mark_attendance';
 $route['events/search_people']                       = 'Events/search_people';
 
+// ─── Learning Management System (LMS) ──────────────────────────────────────────
+// Page — clean URLs for each tab
+$route['lms']                                        = 'Lms/index';
+$route['lms/classes']                                = 'Lms/index/classes';
+$route['lms/materials']                              = 'Lms/index/materials';
+$route['lms/assignments']                            = 'Lms/index/assignments';
+$route['lms/quizzes']                                = 'Lms/index/quizzes';
+
+// Shared data
+$route['lms/get_classes_subjects']                   = 'Lms/get_classes_subjects';
+$route['lms/get_dashboard']                          = 'Lms/get_dashboard';
+
+// Online Classes
+$route['lms/get_classes']                            = 'Lms/get_classes';
+$route['lms/save_class']                             = 'Lms/save_class';
+$route['lms/delete_class']                           = 'Lms/delete_class';
+
+// Study Materials
+$route['lms/get_materials']                          = 'Lms/get_materials';
+$route['lms/save_material']                          = 'Lms/save_material';
+$route['lms/delete_material']                        = 'Lms/delete_material';
+
+// Assignments
+$route['lms/get_assignments']                        = 'Lms/get_assignments';
+$route['lms/save_assignment']                        = 'Lms/save_assignment';
+$route['lms/delete_assignment']                      = 'Lms/delete_assignment';
+$route['lms/get_submissions']                        = 'Lms/get_submissions';
+$route['lms/grade_submission']                       = 'Lms/grade_submission';
+
+// Quizzes
+$route['lms/get_quizzes']                            = 'Lms/get_quizzes';
+$route['lms/get_quiz']                               = 'Lms/get_quiz';
+$route['lms/save_quiz']                              = 'Lms/save_quiz';
+$route['lms/delete_quiz']                            = 'Lms/delete_quiz';
+$route['lms/get_quiz_attempts']                      = 'Lms/get_quiz_attempts';
+
+// Student View & Submissions
+$route['lms/get_student_classes']                    = 'Lms/get_student_classes';
+$route['lms/get_student_materials']                  = 'Lms/get_student_materials';
+$route['lms/get_student_assignments']                = 'Lms/get_student_assignments';
+$route['lms/get_student_quizzes']                    = 'Lms/get_student_quizzes';
+$route['lms/get_student_quiz']                       = 'Lms/get_student_quiz';
+$route['lms/submit_assignment']                      = 'Lms/submit_assignment';
+$route['lms/delete_submission']                      = 'Lms/delete_submission';
+$route['lms/submit_quiz_attempt']                    = 'Lms/submit_quiz_attempt';
+$route['lms/rebuild_submission_count']               = 'Lms/rebuild_submission_count';
+$route['lms/rebuild_attempt_count']                  = 'Lms/rebuild_attempt_count';
+
+// ── Certificate Management ─────────────────────────────────────────────
+// Pages — clean URLs for each tab
+$route['certificates']                               = 'Certificates/index';
+$route['certificates/templates']                     = 'Certificates/index/templates';
+$route['certificates/generate']                      = 'Certificates/index/generate';
+$route['certificates/issued']                        = 'Certificates/index/issued';
+
+// AJAX endpoints
+$route['certificates/get_dashboard']                 = 'Certificates/get_dashboard';
+$route['certificates/get_classes']                   = 'Certificates/get_classes';
+$route['certificates/get_templates']                 = 'Certificates/get_templates';
+$route['certificates/save_template']                 = 'Certificates/save_template';
+$route['certificates/delete_template']               = 'Certificates/delete_template';
+$route['certificates/get_students']                  = 'Certificates/get_students';
+$route['certificates/get_student_details']           = 'Certificates/get_student_details';
+$route['certificates/generate_certificate']          = 'Certificates/generate_certificate';
+$route['certificates/get_issued']                    = 'Certificates/get_issued';
+$route['certificates/get_certificate']               = 'Certificates/get_certificate';
+$route['certificates/revoke_certificate']            = 'Certificates/revoke_certificate';
+$route['certificates/get_school_profile']            = 'Certificates/get_school_profile';
+

@@ -246,7 +246,7 @@
            Shared base styles for ALL module modals (ev-, cm-, ast-, inv-, hst-, lib-, trn-)
            so fixed positioning, centering, close buttons, and fonts
            are consistent everywhere. */
-        .ev-modal-bg,.cm-modal-bg,.ast-modal-bg,.inv-modal-bg,.hst-modal-bg,.lib-modal-bg,.trn-modal-bg {
+        .ev-modal-bg,.cm-modal-bg,.ast-modal-bg,.inv-modal-bg,.hst-modal-bg,.lib-modal-bg,.trn-modal-bg,.lms-modal-bg,.cert-modal-bg {
             position: fixed !important;
             top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
             background: rgba(0,0,0,.55) !important;
@@ -255,7 +255,7 @@
             align-items: center !important;
             justify-content: center !important;
         }
-        .ev-modal-bg.show,.cm-modal-bg.show,.ast-modal-bg.show,.inv-modal-bg.show,.hst-modal-bg.show,.lib-modal-bg.show,.trn-modal-bg.show { display: flex !important; }
+        .ev-modal-bg.show,.cm-modal-bg.show,.ast-modal-bg.show,.inv-modal-bg.show,.hst-modal-bg.show,.lib-modal-bg.show,.trn-modal-bg.show,.lms-modal-bg.show,.cert-modal-bg.show { display: flex !important; }
 
         .ev-modal,.cm-modal,.ast-modal,.inv-modal,.hst-modal,.lib-modal,.trn-modal {
             background: var(--bg2) !important;
@@ -737,6 +737,19 @@
             <li class="sidebar-single"><a href="<?= base_url('academic') ?>"><i class="fa fa-university"></i><span>Academic Planner</span></a></li>
             <?php endif; ?>
 
+            <?php if (isset($school_features) && in_array('Class Management', $school_features)): ?>
+            <li class="treeview">
+                <a href="#"><i class="fa fa-laptop"></i><span>LMS</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
+                <ul class="treeview-menu">
+                    <li><a href="<?= base_url('lms') ?>"><i class="fa fa-circle-o"></i>Dashboard</a></li>
+                    <li><a href="<?= base_url('lms/classes') ?>"><i class="fa fa-circle-o"></i>Online Classes</a></li>
+                    <li><a href="<?= base_url('lms/materials') ?>"><i class="fa fa-circle-o"></i>Study Materials</a></li>
+                    <li><a href="<?= base_url('lms/assignments') ?>"><i class="fa fa-circle-o"></i>Assignments</a></li>
+                    <li><a href="<?= base_url('lms/quizzes') ?>"><i class="fa fa-circle-o"></i>Quizzes</a></li>
+                </ul>
+            </li>
+            <?php endif; ?>
+
             <?php if (isset($school_features) && in_array('Exam Management', $school_features)): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-pencil-square-o"></i><span>Examinations</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
@@ -800,6 +813,17 @@
                 </ul>
             </li>
             <?php endif; ?>
+
+            <!-- Certificate Management -->
+            <li class="treeview">
+                <a href="#"><i class="fa fa-certificate"></i><span>Certificates</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
+                <ul class="treeview-menu">
+                    <li><a href="<?= base_url('certificates') ?>"><i class="fa fa-circle-o"></i>Dashboard</a></li>
+                    <li><a href="<?= base_url('certificates/templates') ?>"><i class="fa fa-circle-o"></i>Templates</a></li>
+                    <li><a href="<?= base_url('certificates/generate') ?>"><i class="fa fa-circle-o"></i>Generate</a></li>
+                    <li><a href="<?= base_url('certificates/issued') ?>"><i class="fa fa-circle-o"></i>Issued</a></li>
+                </ul>
+            </li>
 
             <?php if (isset($school_features) && in_array('Staff Management', $school_features)): ?>
             <li class="treeview">
