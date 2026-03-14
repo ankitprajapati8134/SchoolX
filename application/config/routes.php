@@ -206,6 +206,14 @@ $route['academic/save_substitute']               = 'Academic/save_substitute';
 $route['academic/update_substitute']             = 'Academic/update_substitute';
 $route['academic/delete_substitute']             = 'Academic/delete_substitute';
 $route['academic/get_teacher_schedule']          = 'Academic/get_teacher_schedule';
+$route['academic/get_subject_assignments']       = 'Academic/get_subject_assignments';
+$route['academic/save_subject_assignments']      = 'Academic/save_subject_assignments';
+$route['academic/copy_subject_assignments']      = 'Academic/copy_subject_assignments';
+$route['academic/get_timetable_settings']        = 'Academic/get_timetable_settings';
+$route['academic/save_timetable_settings']       = 'Academic/save_timetable_settings';
+$route['academic/get_section_timetable']         = 'Academic/get_section_timetable';
+$route['academic/save_section_timetable']        = 'Academic/save_section_timetable';
+$route['academic/get_class_subjects']            = 'Academic/get_class_subjects';
 
 // ─── Result Management
 $route['result']                                          = 'result/index';

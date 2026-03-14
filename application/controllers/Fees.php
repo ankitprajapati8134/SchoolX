@@ -437,6 +437,7 @@ class Fees extends MY_Controller
             echo json_encode(['success' => false, 'message' => 'Invalid discount value.']);
             return;
         }
+        $userId = $this->safe_path_segment($userId, 'userId');
 
         $base = $this->studentPath($class, $section, $userId);
 
@@ -481,6 +482,7 @@ class Fees extends MY_Controller
             $this->output->set_output(json_encode([]));
             return;
         }
+        $userId = $this->safe_path_segment($userId, 'userId');
 
         $userInfo = $this->firebase->get("Users/Parents/$school_id/$userId");
         if (empty($userInfo)) {
@@ -574,6 +576,7 @@ class Fees extends MY_Controller
             echo json_encode(['error' => 'No user ID provided']);
             return;
         }
+        $userId = $this->safe_path_segment($userId, 'user_id');
 
         $student = $this->CM->get_data("Users/Parents/{$this->parent_db_key}/$userId");
         if (empty($student)) {
@@ -611,6 +614,7 @@ class Fees extends MY_Controller
             echo json_encode(['error' => 'No user ID provided']);
             return;
         }
+        $userId = $this->safe_path_segment($userId, 'user_id');
 
         $student = $this->CM->get_data("Users/Parents/$school_id/$userId");
         if (empty($student)) {
@@ -851,6 +855,9 @@ class Fees extends MY_Controller
         $receiptNo      = $this->input->post('receiptNo');
         $paymentMode    = $this->input->post('paymentMode') ?: 'N/A';
         $userId         = trim($this->input->post('userId') ?? '');
+        if ($userId !== '') {
+            $userId = $this->safe_path_segment($userId, 'userId');
+        }
         $schoolFees     = floatval(str_replace(',', '', $this->input->post('schoolFees')     ?? '0'));
         $discountFees   = floatval(str_replace(',', '', $this->input->post('discountAmount') ?? '0'));
         $fineAmount     = floatval(str_replace(',', '', $this->input->post('fineAmount')     ?? '0'));
@@ -1042,26 +1049,59 @@ class Fees extends MY_Controller
         }
 
         // ── Accounting integration via Operations_accounting library
+        $journalParams = [
+            'school_name'  => $school_name,
+            'session_year' => $session_year,
+            'date'         => date('Y-m-d'),
+            'amount'       => (float) $schoolFees,
+            'payment_mode' => $paymentMode ?? 'Cash',
+            'bank_code'    => '',
+            'receipt_no'   => $receiptNo ?? '',
+            'student_name' => $student['Name'] ?? $userId,
+            'student_id'   => $userId,
+            'class'        => $class ?? '',
+            'admin_id'     => $this->admin_id,
+        ];
         try {
             $this->load->library('Operations_accounting', null, 'ops_acct');
             $this->ops_acct->init(
                 $this->firebase, $school_name, $session_year, $this->admin_id, $this
             );
-            $this->ops_acct->create_fee_journal([
-                'school_name'  => $school_name,
-                'session_year' => $session_year,
-                'date'         => date('Y-m-d'),
-                'amount'       => (float) $schoolFees,
-                'payment_mode' => $paymentMode ?? 'Cash',
-                'bank_code'    => '',
-                'receipt_no'   => $receiptNo ?? '',
-                'student_name' => $student['Name'] ?? $userId,
-                'student_id'   => $userId,
-                'class'        => $class ?? '',
-                'admin_id'     => $this->admin_id,
-            ]);
+            $entryId = $this->ops_acct->create_fee_journal($journalParams);
+
+            // If journal creation failed (returns null), queue for reconciliation
+            if ($entryId === null) {
+                log_message('error', "Fee journal returned null for receipt {$receiptNo} — queued to Pending_journals");
+                $this->firebase->set(
+                    "Schools/{$school_name}/{$session_year}/Accounts/Pending_journals/{$receiptNo}",
+                    array_merge($journalParams, ['queued_at' => date('c'), 'reason' => 'journal_returned_null'])
+                );
+            }
         } catch (\Exception $e) {
             log_message('error', 'Accounting integration failed in submit_fees: ' . $e->getMessage());
+            // Queue failed journal for later reconciliation
+            $this->firebase->set(
+                "Schools/{$school_name}/{$session_year}/Accounts/Pending_journals/{$receiptNo}",
+                array_merge($journalParams, ['queued_at' => date('c'), 'reason' => $e->getMessage()])
+            );
+        }
+
+        // ── Communication: notify fee received
+        try {
+            $this->load->library('Communication_helper', null, 'comm');
+            $this->comm->init($this->firebase, $school_name, $session_year);
+            $this->comm->fire_event('fee_received', [
+                'student_id'   => $userId,
+                'student_name' => $student['Name'] ?? $userId,
+                'class'        => $class,
+                'section'      => $section,
+                'amount'       => $schoolFees,
+                'receipt_no'   => $receiptNo,
+                'date'         => $date,
+                'payment_mode' => $paymentMode,
+            ]);
+        } catch (\Exception $e) {
+            log_message('error', 'Communication fire_event failed in submit_fees: ' . $e->getMessage());
         }
 
         $this->output->set_output(json_encode([

@@ -384,9 +384,10 @@ class Events extends MY_Controller
         $event = $this->firebase->get($this->_evt("List/{$id}"));
         if (!is_array($event)) $this->json_error('Event not found.');
 
-        // Delete event and its participants
+        // Delete event, participants, and gallery media
         $this->firebase->delete($this->_evt('List'), $id);
         $this->firebase->delete($this->_evt('Participants'), $id);
+        $this->firebase->delete($this->_evt('Media'), $id);
 
         $this->json_success(['message' => 'Event deleted.']);
     }

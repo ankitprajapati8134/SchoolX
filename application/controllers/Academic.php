@@ -4,19 +4,21 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 /**
  * Academic Management Controller
  *
- * Unified hub for curriculum planning, academic calendar,
- * master timetable grid, and substitute teacher management.
+ * Unified hub for subject assignment, period scheduling, curriculum planning,
+ * academic calendar, master timetable grid, and substitute teacher management.
  *
- * Firebase paths (new):
+ * Firebase paths:
+ *   Schools/{school}/{session}/Academic/Subject_Assignments/{class}   (per-class subject assignments)
  *   Schools/{school}/{session}/Academic/Curriculum/{classSection}/{subject}/topics/
  *   Schools/{school}/{session}/Academic/Calendar/{eventId}
  *   Schools/{school}/{session}/Academic/Substitutes/{id}
+ *   Schools/{school}/{session}/Time_table_settings   (periods, timings, recesses, working_days)
  *
  * Reads existing paths:
- *   Schools/{school}/{session}/Time_table_settings
+ *   Schools/{school}/Config/Classes          (structural class list from School Config)
+ *   Schools/{school}/Subject_list/{classNum} (master subject catalog from School Config)
  *   Schools/{school}/{session}/Class {n}/Section {X}/Time_table
  *   Schools/{school}/{session}/Teachers
- *   Schools/{school}/Subject_list/{classNum}
  */
 class Academic extends MY_Controller
 {
@@ -31,9 +33,12 @@ class Academic extends MY_Controller
 
     public function index()
     {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'academic_view');
+
         $data['session_year'] = $this->session_year;
         $data['school_name']  = $this->school_name;
         $data['school_id']    = $this->school_id;
+        $data['admin_role']   = $this->admin_role ?? '';
 
         $this->load->view('include/header');
         $this->load->view('academic/index', $data);
@@ -49,6 +54,7 @@ class Academic extends MY_Controller
      */
     public function get_classes_subjects()
     {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'academic_data');
         $school  = $this->school_name;
         $session = $this->session_year;
 
@@ -81,6 +87,7 @@ class Academic extends MY_Controller
      */
     public function get_all_teachers()
     {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'academic_data');
         $school    = $this->school_name;
         $school_id = $this->school_id;
         $session   = $this->session_year;
@@ -105,11 +112,176 @@ class Academic extends MY_Controller
     }
 
     /* ══════════════════════════════════════════════════════════════════════
+       SUBJECT ASSIGNMENT
+       Reads classes from  Schools/{school}/Config/Classes  (structural data in School Config)
+       Reads subjects from Schools/{school}/Subject_list    (master catalog in School Config)
+       Stores assignments  Schools/{school}/{session}/Academic/Subject_Assignments/{class}
+    ══════════════════════════════════════════════════════════════════════ */
+
+    /**
+     * Get available subjects from global Subject_list, Config/Classes list,
+     * and current session assignments per class.
+     */
+    public function get_subject_assignments()
+    {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'view_subject_assignments');
+
+        $school  = $this->school_name;
+        $session = $this->session_year;
+
+        // 1. Read class list from Config/Classes (structural, managed in School Config)
+        $configClasses = $this->firebase->get("Schools/{$school}/Config/Classes") ?? [];
+        if (!is_array($configClasses)) $configClasses = [];
+
+        // If Config/Classes is empty, fall back to live enumeration
+        $classes = [];
+        if (!empty($configClasses)) {
+            foreach ($configClasses as $cls) {
+                if (!is_array($cls)) continue;
+                if (!empty($cls['deleted'])) continue;
+                $classes[] = [
+                    'key'   => $cls['key'] ?? $cls['name'] ?? '',
+                    'label' => $cls['label'] ?? $cls['name'] ?? $cls['key'] ?? '',
+                ];
+            }
+        }
+        if (empty($classes)) {
+            // Fallback: enumerate from session root
+            $sessionClasses = $this->_get_session_classes();
+            $seen = [];
+            foreach ($sessionClasses as $sc) {
+                $k = $sc['class_key'];
+                if (isset($seen[$k])) continue;
+                $seen[$k] = true;
+                $classes[] = ['key' => $k, 'label' => $k];
+            }
+        }
+
+        // 2. Global Subject_list (master catalog, created in School Config)
+        $subjectList = $this->firebase->get("Schools/{$school}/Subject_list") ?? [];
+        $catalog = [];
+        if (is_array($subjectList)) {
+            foreach ($subjectList as $classNum => $subs) {
+                if ($classNum === 'pattern_type' || !is_array($subs)) continue;
+                foreach ($subs as $code => $sub) {
+                    if ($code === 'pattern_type' || !is_array($sub)) continue;
+                    $catalog[$classNum][] = [
+                        'code'     => (string)$code,
+                        'name'     => $sub['subject_name'] ?? $sub['name'] ?? (string)$code,
+                        'category' => $sub['category'] ?? 'Core',
+                        'stream'   => $sub['stream'] ?? '',
+                    ];
+                }
+            }
+        }
+
+        // 3. Current session assignments per class
+        $assignPath = "Schools/{$school}/{$session}/Academic/Subject_Assignments";
+        $allAssignments = $this->firebase->get($assignPath) ?? [];
+        if (!is_array($allAssignments)) $allAssignments = [];
+
+        $assignments = [];
+        foreach ($classes as $cls) {
+            $classKey = $this->_class_to_firebase_key($cls['key']);
+            $assigned = [];
+            if (isset($allAssignments[$classKey]) && is_array($allAssignments[$classKey])) {
+                foreach ($allAssignments[$classKey] as $code => $info) {
+                    if (!is_array($info)) continue;
+                    $assigned[] = [
+                        'code'         => (string)$code,
+                        'name'         => $info['name'] ?? '',
+                        'category'     => $info['category'] ?? 'Core',
+                        'periods_week' => (int)($info['periods_week'] ?? 0),
+                        'teacher_id'   => $info['teacher_id'] ?? '',
+                        'teacher_name' => $info['teacher_name'] ?? '',
+                    ];
+                }
+            }
+            $assignments[$classKey] = $assigned;
+        }
+
+        return $this->json_success([
+            'classes'     => $classes,
+            'catalog'     => $catalog,
+            'assignments' => $assignments,
+        ]);
+    }
+
+    /**
+     * Save subject assignments for a class.
+     * POST: class_key, subjects (JSON array)
+     */
+    public function save_subject_assignments()
+    {
+        $this->_require_role(['Admin', 'Principal'], 'save_subject_assignments');
+
+        $classKey = trim($this->input->post('class_key') ?? '');
+        $rawSubs  = $this->input->post('subjects');
+
+        if (empty($classKey)) {
+            return $this->json_error('Class is required');
+        }
+
+        $fbKey = $this->safe_path_segment($this->_class_to_firebase_key($classKey), 'class_key');
+
+        $subjects = is_string($rawSubs) ? json_decode($rawSubs, true) : $rawSubs;
+        if (!is_array($subjects)) $subjects = [];
+
+        $data = [];
+        foreach ($subjects as $s) {
+            if (!is_array($s) || empty($s['code'])) continue;
+            $code = $this->safe_path_segment(trim($s['code']), 'subject_code');
+            $data[$code] = [
+                'name'         => trim($s['name'] ?? ''),
+                'category'     => trim($s['category'] ?? 'Core'),
+                'periods_week' => max(0, (int)($s['periods_week'] ?? 0)),
+                'teacher_id'   => trim($s['teacher_id'] ?? ''),
+                'teacher_name' => trim($s['teacher_name'] ?? ''),
+            ];
+        }
+
+        $path = "Schools/{$this->school_name}/{$this->session_year}/Academic/Subject_Assignments/{$fbKey}";
+        $this->firebase->set($path, empty($data) ? null : $data);
+
+        return $this->json_success(['class' => $fbKey, 'count' => count($data)]);
+    }
+
+    /**
+     * Copy subject assignments from one class to another.
+     */
+    public function copy_subject_assignments()
+    {
+        $this->_require_role(['Admin', 'Principal'], 'copy_subject_assignments');
+
+        $fromKey = $this->safe_path_segment(trim($this->input->post('from_key') ?? ''), 'from_key');
+        $toKey   = $this->safe_path_segment(trim($this->input->post('to_key') ?? ''), 'to_key');
+
+        if (empty($fromKey) || empty($toKey)) {
+            return $this->json_error('Source and destination are required');
+        }
+        if ($fromKey === $toKey) {
+            return $this->json_error('Source and destination cannot be the same');
+        }
+
+        $basePath = "Schools/{$this->school_name}/{$this->session_year}/Academic/Subject_Assignments";
+        $source = $this->firebase->get("{$basePath}/{$fromKey}");
+        if (!is_array($source) || empty($source)) {
+            return $this->json_error('No assignments found in source class');
+        }
+
+        $this->firebase->set("{$basePath}/{$toKey}", $source);
+
+        return $this->json_success(['from' => $fromKey, 'to' => $toKey, 'count' => count($source)]);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
        CURRICULUM PLANNING
     ══════════════════════════════════════════════════════════════════════ */
 
     public function get_curriculum()
     {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'view_curriculum');
+
         $classSection = trim($this->input->post('class_section') ?? '');
         $subject      = trim($this->input->post('subject') ?? '');
 
@@ -118,8 +290,8 @@ class Academic extends MY_Controller
         }
 
         // Sanitize path segments to prevent traversal
-        $classSection = str_replace(['/', '\\', '..'], '', $classSection);
-        $subject      = str_replace(['/', '\\', '..'], '', $subject);
+        $classSection = $this->safe_path_segment($classSection, 'class_section');
+        $subject      = $this->safe_path_segment($subject, 'subject');
 
         $path = "Schools/{$this->school_name}/{$this->session_year}/Academic/Curriculum/{$classSection}/{$subject}";
         $data = $this->firebase->get($path) ?? [];
@@ -138,6 +310,8 @@ class Academic extends MY_Controller
 
     public function save_curriculum()
     {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'save_curriculum');
+
         $classSection = trim($this->input->post('class_section') ?? '');
         $subject      = trim($this->input->post('subject') ?? '');
         $topicsRaw    = $this->input->post('topics');
@@ -146,8 +320,8 @@ class Academic extends MY_Controller
             return $this->json_error('Class and subject required');
         }
 
-        $classSection = str_replace(['/', '\\', '..'], '', $classSection);
-        $subject      = str_replace(['/', '\\', '..'], '', $subject);
+        $classSection = $this->safe_path_segment($classSection, 'class_section');
+        $subject      = $this->safe_path_segment($subject, 'subject');
 
         $topics = is_string($topicsRaw) ? json_decode($topicsRaw, true) : $topicsRaw;
         if (!is_array($topics)) $topics = [];
@@ -175,8 +349,9 @@ class Academic extends MY_Controller
 
     public function update_topic_status()
     {
-        $classSection = str_replace(['/', '\\', '..'], '', trim($this->input->post('class_section') ?? ''));
-        $subject      = str_replace(['/', '\\', '..'], '', trim($this->input->post('subject') ?? ''));
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'update_curriculum');
+        $classSection = $this->safe_path_segment(trim($this->input->post('class_section') ?? ''), 'class_section');
+        $subject      = $this->safe_path_segment(trim($this->input->post('subject') ?? ''), 'subject');
         $index        = (int)($this->input->post('index') ?? -1);
         $status       = trim($this->input->post('status') ?? '');
 
@@ -199,8 +374,9 @@ class Academic extends MY_Controller
 
     public function delete_topic()
     {
-        $classSection = str_replace(['/', '\\', '..'], '', trim($this->input->post('class_section') ?? ''));
-        $subject      = str_replace(['/', '\\', '..'], '', trim($this->input->post('subject') ?? ''));
+        $this->_require_role(['Admin', 'Principal'], 'delete_curriculum');
+        $classSection = $this->safe_path_segment(trim($this->input->post('class_section') ?? ''), 'class_section');
+        $subject      = $this->safe_path_segment(trim($this->input->post('subject') ?? ''), 'subject');
         $index        = (int)($this->input->post('index') ?? -1);
 
         if (empty($classSection) || empty($subject) || $index < 0) {
@@ -232,6 +408,7 @@ class Academic extends MY_Controller
 
     public function get_calendar_events()
     {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'view_calendar');
         $month = trim($this->input->post('month') ?? '');  // YYYY-MM or empty for all
         $path  = "Schools/{$this->school_name}/{$this->session_year}/Academic/Calendar";
         $raw   = $this->firebase->get($path) ?? [];
@@ -262,6 +439,7 @@ class Academic extends MY_Controller
 
     public function save_event()
     {
+        $this->_require_role(['Admin', 'Principal'], 'manage_calendar');
         $id         = trim($this->input->post('id') ?? '');
         $title      = trim($this->input->post('title') ?? '');
         $type       = trim($this->input->post('type') ?? 'event');
@@ -311,6 +489,7 @@ class Academic extends MY_Controller
 
     public function delete_event()
     {
+        $this->_require_role(['Admin', 'Principal'], 'manage_calendar');
         $id = trim($this->input->post('id') ?? '');
         if (empty($id)) return $this->json_error('Event ID required');
 
@@ -327,6 +506,7 @@ class Academic extends MY_Controller
 
     public function get_master_timetable()
     {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'view_timetable');
         $school  = $this->school_name;
         $session = $this->session_year;
 
@@ -344,12 +524,18 @@ class Academic extends MY_Controller
             }
         }
 
+        // Working days for conflict scanning scope
+        $defaultDays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        $workingDays = isset($settings['Working_days']) && is_array($settings['Working_days'])
+            ? $settings['Working_days'] : $defaultDays;
+
         $settingsClean = [
             'start_time'       => $settings['Start_time'] ?? '9:00AM',
             'end_time'         => $settings['End_time'] ?? '3:00PM',
             'no_of_periods'    => (int)($settings['No_of_periods'] ?? 6),
             'length_of_period' => (float)($settings['Length_of_period'] ?? 45),
             'recesses'         => $recesses,
+            'working_days'     => $workingDays,
         ];
 
         // 2. All class-section timetables
@@ -365,20 +551,29 @@ class Academic extends MY_Controller
             $timetables[$label] = is_array($tt) ? $tt : [];
         }
 
+        // 3. Subject assignments for period-limit conflict checks (client-side)
+        $assignPath = "Schools/{$school}/{$session}/Academic/Subject_Assignments";
+        $assignments = $this->firebase->get($assignPath) ?? [];
+        if (!is_array($assignments)) $assignments = [];
+
         return $this->json_success([
-            'settings'   => $settingsClean,
-            'timetables' => $timetables,
-            'classes'    => $classes,
+            'settings'            => $settingsClean,
+            'timetables'          => $timetables,
+            'classes'             => $classes,
+            'subject_assignments' => $assignments,
         ]);
     }
 
     public function save_period()
     {
-        $classKey   = str_replace(['/', '\\', '..'], '', trim($this->input->post('class_key') ?? ''));
-        $section    = str_replace(['/', '\\', '..'], '', trim($this->input->post('section') ?? ''));
+        $this->_require_role(['Admin', 'Principal'], 'edit_timetable');
+        $classKey   = $this->safe_path_segment(trim($this->input->post('class_key') ?? ''), 'class_key');
+        $section    = $this->safe_path_segment(trim($this->input->post('section') ?? ''), 'section');
         $day        = trim($this->input->post('day') ?? '');
         $periodIdx  = (int)($this->input->post('period_index') ?? -1);
         $subject    = trim($this->input->post('subject') ?? '');
+        $teacherId  = trim($this->input->post('teacher_id') ?? '');
+        $teacherName = trim($this->input->post('teacher_name') ?? '');
 
         $validDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
         if (empty($classKey) || empty($section) || !in_array($day, $validDays) || $periodIdx < 0) {
@@ -388,49 +583,158 @@ class Academic extends MY_Controller
         $school  = $this->school_name;
         $session = $this->session_year;
 
-        // Read only the specific day's timetable (not full timetable) to reduce race window
-        $dayPath = "Schools/{$school}/{$session}/{$classKey}/Section {$section}/Time_table/{$day}";
-        $dayTt   = $this->firebase->get($dayPath) ?? [];
-        if (!is_array($dayTt)) $dayTt = [];
+        // ── CONFLICT CHECKS (before any write) ──
+
+        $warnings = [];
+
+        if ($subject !== '') {
+            $classes = $this->_get_session_classes();
+
+            // 1. Teacher conflict: same teacher in same day+period in another class (HARD BLOCK)
+            if ($teacherId !== '') {
+                foreach ($classes as $cls) {
+                    if ($cls['class_key'] === $classKey && $cls['section'] === $section) continue;
+                    $otherPath = "Schools/{$school}/{$session}/{$cls['class_key']}/Section {$cls['section']}/Time_table/{$day}";
+                    $otherPeriods = $this->firebase->get($otherPath);
+                    if (!is_array($otherPeriods)) continue;
+                    $otherCell = $otherPeriods[$periodIdx] ?? '';
+                    $otherTeacherId = is_array($otherCell) ? ($otherCell['teacher_id'] ?? '') : '';
+                    if ($otherTeacherId !== '' && $otherTeacherId === $teacherId) {
+                        return $this->json_error(
+                            "Teacher conflict: {$teacherName} is already assigned to {$cls['label']} on {$day} period " . ($periodIdx + 1) . ". Remove that assignment first."
+                        );
+                    }
+                }
+            }
+
+            // 2. Duplicate subject in same class on same day (WARNING only — double periods are valid)
+            $dayPath = "Schools/{$school}/{$session}/{$classKey}/Section {$section}/Time_table/{$day}";
+            $dayTt   = $this->firebase->get($dayPath) ?? [];
+            if (!is_array($dayTt)) $dayTt = [];
+
+            $subjectCountToday = 0;
+            foreach ($dayTt as $i => $cell) {
+                if ((int)$i === $periodIdx) continue; // skip the cell being edited
+                $cellSub = is_array($cell) ? ($cell['subject'] ?? '') : (string)$cell;
+                if ($cellSub !== '' && strcasecmp($cellSub, $subject) === 0) {
+                    $subjectCountToday++;
+                }
+            }
+            if ($subjectCountToday > 0) {
+                $warnings[] = "{$subject} already appears {$subjectCountToday} other time(s) on {$day}";
+            }
+
+            // 3. Weekly period-limit check from Subject_Assignments
+            $fbClassKey = $this->_class_to_firebase_key($classKey);
+            $assignData = $this->firebase->get(
+                "Schools/{$school}/{$session}/Academic/Subject_Assignments/{$fbClassKey}"
+            );
+            if (is_array($assignData)) {
+                // Find the limit for this subject
+                $limit = 0;
+                foreach ($assignData as $code => $info) {
+                    if (!is_array($info)) continue;
+                    $aName = $info['name'] ?? '';
+                    if (strcasecmp($aName, $subject) === 0) {
+                        $limit = (int)($info['periods_week'] ?? 0);
+                        break;
+                    }
+                }
+
+                if ($limit > 0) {
+                    // Count this subject across all days for this class-section
+                    $ttPath = "Schools/{$school}/{$session}/{$classKey}/Section {$section}/Time_table";
+                    $fullTt = $this->firebase->get($ttPath) ?? [];
+                    $weekCount = 0;
+                    if (is_array($fullTt)) {
+                        foreach ($fullTt as $d => $periods) {
+                            if (!is_array($periods)) continue;
+                            foreach ($periods as $pi => $cell) {
+                                // Skip the cell being edited (it will be replaced)
+                                if ($d === $day && (int)$pi === $periodIdx) continue;
+                                $cellSub = is_array($cell) ? ($cell['subject'] ?? '') : (string)$cell;
+                                if ($cellSub !== '' && strcasecmp($cellSub, $subject) === 0) {
+                                    $weekCount++;
+                                }
+                            }
+                        }
+                    }
+                    $newTotal = $weekCount + 1; // +1 for the period being saved
+                    if ($newTotal > $limit) {
+                        $warnings[] = "{$subject} will have {$newTotal} periods/week (limit: {$limit})";
+                    }
+                }
+            }
+        } else {
+            // Clearing a cell — just read the day
+            $dayPath = "Schools/{$school}/{$session}/{$classKey}/Section {$section}/Time_table/{$day}";
+            $dayTt   = $this->firebase->get($dayPath) ?? [];
+            if (!is_array($dayTt)) $dayTt = [];
+        }
+
+        // ── WRITE ──
 
         // Pad array if needed
         while (count($dayTt) <= $periodIdx) {
             $dayTt[] = '';
         }
 
-        $dayTt[$periodIdx] = $subject;
+        // Store as object {subject, teacher_id, teacher_name} when teacher_id provided,
+        // or plain string for backward compat when no teacher specified
+        if ($subject === '') {
+            $dayTt[$periodIdx] = '';
+        } elseif ($teacherId !== '') {
+            $dayTt[$periodIdx] = [
+                'subject'      => $subject,
+                'teacher_id'   => $teacherId,
+                'teacher_name' => $teacherName,
+            ];
+        } else {
+            $dayTt[$periodIdx] = $subject;
+        }
 
         // Write only the specific day back (narrower write = less race risk)
+        $dayPath = "Schools/{$school}/{$session}/{$classKey}/Section {$section}/Time_table/{$day}";
         $this->firebase->set($dayPath, $dayTt);
 
-        return $this->json_success(['day' => $day, 'period_index' => $periodIdx, 'subject' => $subject]);
+        return $this->json_success([
+            'day'          => $day,
+            'period_index' => $periodIdx,
+            'subject'      => $subject,
+            'teacher_id'   => $teacherId,
+            'teacher_name' => $teacherName,
+            'warnings'     => $warnings,
+        ]);
     }
 
     /**
-     * Detect timetable conflicts: checks if a subject is already assigned
-     * to another class-section in the same period on the same day.
+     * Pre-save conflict check for a single cell.
      *
-     * NOTE: Timetable cells store subject names, not teacher names.
-     * So we check if the same subject is double-booked in the same period.
-     * For true teacher conflict detection, timetable would need to store
-     * teacher assignments per cell.
+     * Checks: (1) teacher double-booked in another class for same day/period,
+     *         (2) weekly period-limit exceeded for the subject in this class.
+     *
+     * Returns {conflict:bool, type, message, severity} or {conflict:false, warnings:[]}.
      */
     public function detect_conflicts()
     {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'view_timetable');
         $subject   = trim($this->input->post('subject') ?? '');
+        $teacherId = trim($this->input->post('teacher_id') ?? '');
         $day       = trim($this->input->post('day') ?? '');
         $periodIdx = (int)($this->input->post('period_index') ?? -1);
         $excludeClass   = trim($this->input->post('exclude_class') ?? '');
         $excludeSection = trim($this->input->post('exclude_section') ?? '');
 
-        if (empty($subject) || empty($day) || $periodIdx < 0) {
-            return $this->json_success(['conflict' => false]);
+        if ((empty($subject) && empty($teacherId)) || empty($day) || $periodIdx < 0) {
+            return $this->json_success(['conflict' => false, 'warnings' => []]);
         }
 
         $school  = $this->school_name;
         $session = $this->session_year;
         $classes = $this->_get_session_classes();
+        $warnings = [];
 
+        // ── 1. Teacher conflict (HARD — blocks save) ──
         foreach ($classes as $cls) {
             if ($cls['class_key'] === $excludeClass && $cls['section'] === $excludeSection) continue;
 
@@ -438,16 +742,80 @@ class Academic extends MY_Controller
             $periods = $this->firebase->get($path);
             if (!is_array($periods)) continue;
 
-            $subjectAtPeriod = $periods[$periodIdx] ?? '';
-            if ($subjectAtPeriod !== '' && strcasecmp($subjectAtPeriod, $subject) === 0) {
+            $cell = $periods[$periodIdx] ?? '';
+            $cellTeacherId = is_array($cell) ? ($cell['teacher_id'] ?? '') : '';
+
+            if ($teacherId !== '' && $cellTeacherId !== '' && $cellTeacherId === $teacherId) {
                 return $this->json_success([
                     'conflict' => true,
-                    'message'  => "{$subject} is already assigned to {$cls['label']} on {$day} period " . ($periodIdx + 1),
+                    'type'     => 'teacher',
+                    'severity' => 'error',
+                    'message'  => "Teacher conflict: already assigned to {$cls['label']} on {$day} P" . ($periodIdx + 1),
                 ]);
             }
         }
 
-        return $this->json_success(['conflict' => false]);
+        // ── 2. Duplicate subject same day (SOFT warning) ──
+        if ($excludeClass !== '' && $subject !== '') {
+            $ownPath = "Schools/{$school}/{$session}/{$excludeClass}/Section {$excludeSection}/Time_table/{$day}";
+            $ownPeriods = $this->firebase->get($ownPath);
+            if (is_array($ownPeriods)) {
+                $dupCount = 0;
+                foreach ($ownPeriods as $i => $cell) {
+                    if ((int)$i === $periodIdx) continue;
+                    $cellSub = is_array($cell) ? ($cell['subject'] ?? '') : (string)$cell;
+                    if ($cellSub !== '' && strcasecmp($cellSub, $subject) === 0) $dupCount++;
+                }
+                if ($dupCount > 0) {
+                    $warnings[] = [
+                        'type'    => 'duplicate',
+                        'message' => "{$subject} already has {$dupCount} other period(s) on {$day}",
+                    ];
+                }
+            }
+        }
+
+        // ── 3. Weekly period-limit from Subject_Assignments (SOFT warning) ──
+        if ($excludeClass !== '' && $subject !== '') {
+            $fbKey = $this->_class_to_firebase_key($excludeClass);
+            $assignData = $this->firebase->get(
+                "Schools/{$school}/{$session}/Academic/Subject_Assignments/{$fbKey}"
+            );
+            if (is_array($assignData)) {
+                $limit = 0;
+                foreach ($assignData as $code => $info) {
+                    if (!is_array($info)) continue;
+                    if (strcasecmp($info['name'] ?? '', $subject) === 0) {
+                        $limit = (int)($info['periods_week'] ?? 0);
+                        break;
+                    }
+                }
+                if ($limit > 0) {
+                    $ttPath = "Schools/{$school}/{$session}/{$excludeClass}/Section {$excludeSection}/Time_table";
+                    $fullTt = $this->firebase->get($ttPath) ?? [];
+                    $weekCount = 0;
+                    if (is_array($fullTt)) {
+                        foreach ($fullTt as $d => $pds) {
+                            if (!is_array($pds)) continue;
+                            foreach ($pds as $pi => $cell) {
+                                if ($d === $day && (int)$pi === $periodIdx) continue;
+                                $cellSub = is_array($cell) ? ($cell['subject'] ?? '') : (string)$cell;
+                                if ($cellSub !== '' && strcasecmp($cellSub, $subject) === 0) $weekCount++;
+                            }
+                        }
+                    }
+                    $newTotal = $weekCount + 1;
+                    if ($newTotal > $limit) {
+                        $warnings[] = [
+                            'type'    => 'period_limit',
+                            'message' => "{$subject}: {$newTotal} periods/week exceeds limit of {$limit}",
+                        ];
+                    }
+                }
+            }
+        }
+
+        return $this->json_success(['conflict' => false, 'warnings' => $warnings]);
     }
 
     /* ══════════════════════════════════════════════════════════════════════
@@ -456,6 +824,7 @@ class Academic extends MY_Controller
 
     public function get_substitutes()
     {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'view_substitutes');
         $date     = trim($this->input->post('date') ?? '');     // YYYY-MM-DD
         $dateFrom = trim($this->input->post('date_from') ?? ''); // range start
         $dateTo   = trim($this->input->post('date_to') ?? '');   // range end
@@ -489,6 +858,7 @@ class Academic extends MY_Controller
 
     public function save_substitute()
     {
+        $this->_require_role(['Admin', 'Principal'], 'manage_substitutes');
         $id             = trim($this->input->post('id') ?? '');
         $dateStart      = trim($this->input->post('date') ?? '');
         $dateEnd        = trim($this->input->post('date_end') ?? '') ?: $dateStart;
@@ -496,7 +866,7 @@ class Academic extends MY_Controller
         $absentName     = trim($this->input->post('absent_teacher_name') ?? '');
         $substituteId   = trim($this->input->post('substitute_teacher_id') ?? '');
         $substituteName = trim($this->input->post('substitute_teacher_name') ?? '');
-        $classSection   = str_replace(['/', '\\', '..'], '', trim($this->input->post('class_section') ?? ''));
+        $classSection   = $this->safe_path_segment(trim($this->input->post('class_section') ?? ''), 'class_section');
         $periodsRaw     = $this->input->post('periods');
         $subject        = trim($this->input->post('subject') ?? '');
         $reason         = trim($this->input->post('reason') ?? '');
@@ -606,6 +976,7 @@ class Academic extends MY_Controller
 
     public function update_substitute()
     {
+        $this->_require_role(['Admin', 'Principal'], 'manage_substitutes');
         $id     = trim($this->input->post('id') ?? '');
         $status = trim($this->input->post('status') ?? '');
 
@@ -627,6 +998,7 @@ class Academic extends MY_Controller
 
     public function delete_substitute()
     {
+        $this->_require_role(['Admin', 'Principal'], 'manage_substitutes');
         $id = trim($this->input->post('id') ?? '');
         if (empty($id)) return $this->json_error('Substitute ID required');
 
@@ -642,6 +1014,7 @@ class Academic extends MY_Controller
      */
     public function get_teacher_schedule()
     {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'view_schedule');
         $teacherId = trim($this->input->post('teacher_id') ?? '');
         $date      = trim($this->input->post('date') ?? '');
 
@@ -692,33 +1065,295 @@ class Academic extends MY_Controller
     }
 
     /* ══════════════════════════════════════════════════════════════════════
-       HELPERS
+       PERIOD SCHEDULING  (timings, periods, recesses, working days)
     ══════════════════════════════════════════════════════════════════════ */
 
-    private function _get_session_classes()
+    /**
+     * Get timetable settings + working days for the current session
+     */
+    public function get_timetable_settings()
     {
-        $school  = $this->school_name;
-        $session = $this->session_year;
-        $classes = [];
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'view_tt_settings');
 
-        $keys = $this->firebase->shallow_get("Schools/{$school}/{$session}");
-        if (!is_array($keys)) return $classes;
+        $path     = "Schools/{$this->school_name}/{$this->session_year}/Time_table_settings";
+        $settings = $this->firebase->get($path) ?? [];
+        if (!is_array($settings)) $settings = [];
 
-        foreach ($keys as $key) {
-            if (strpos($key, 'Class ') !== 0) continue;
-            $sectionKeys = $this->firebase->shallow_get("Schools/{$school}/{$session}/{$key}");
-            if (!is_array($sectionKeys)) continue;
-            foreach ($sectionKeys as $sk) {
-                if (strpos($sk, 'Section ') !== 0) continue;
-                $secLetter = str_replace('Section ', '', $sk);
-                $classes[] = [
-                    'class_key'     => $key,
-                    'section'       => $secLetter,
-                    'label'         => $key . ' / Section ' . $secLetter,
-                    'class_section' => $key . " '" . $secLetter . "'",
-                ];
+        // Normalize recesses (handle both new and legacy format)
+        $recesses = [];
+        if (isset($settings['Recesses']) && is_array($settings['Recesses'])) {
+            foreach ($settings['Recesses'] as $r) {
+                if (is_array($r) && isset($r['after_period'], $r['duration'])) {
+                    $recesses[] = ['after_period' => (int)$r['after_period'], 'duration' => (int)$r['duration']];
+                }
+            }
+        } elseif (isset($settings['Recess_breaks']) && is_array($settings['Recess_breaks'])) {
+            // Legacy backward compat
+            foreach ($settings['Recess_breaks'] as $range) {
+                if (!is_string($range) || strpos($range, '-') === false) continue;
+                $parts = array_map('trim', explode('-', $range));
+                $fromMin = $this->_time_to_minutes($parts[0]);
+                $toMin   = $this->_time_to_minutes($parts[1]);
+                if ($toMin > $fromMin) {
+                    $recesses[] = ['after_period' => null, 'duration' => $toMin - $fromMin];
+                }
             }
         }
-        return $classes;
+
+        // Working days (default Mon-Sat)
+        $defaultDays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        $workingDays = isset($settings['Working_days']) && is_array($settings['Working_days'])
+            ? $settings['Working_days'] : $defaultDays;
+
+        return $this->json_success([
+            'start_time'       => $settings['Start_time'] ?? '9:00AM',
+            'end_time'         => $settings['End_time'] ?? '3:00PM',
+            'no_of_periods'    => (int)($settings['No_of_periods'] ?? 6),
+            'length_of_period' => (float)($settings['Length_of_period'] ?? 45),
+            'recesses'         => $recesses,
+            'working_days'     => $workingDays,
+        ]);
     }
+
+    /**
+     * Save period scheduling (periods, times, recesses, working days)
+     */
+    public function save_timetable_settings()
+    {
+        $this->_require_role(['Admin', 'Principal'], 'save_tt_settings');
+
+        $startRaw = trim($this->input->post('start_time') ?? ''); // HH:mm (24h)
+        $endRaw   = trim($this->input->post('end_time') ?? '');   // HH:mm (24h)
+        $periods  = (int)($this->input->post('no_of_periods') ?? 0);
+        $recessRaw = $this->input->post('recesses') ?? '[]';
+        $recesses  = is_string($recessRaw) ? json_decode($recessRaw, true) : $recessRaw;
+        if (!is_array($recesses)) $recesses = [];
+
+        // Working days
+        $daysRaw     = $this->input->post('working_days') ?? '[]';
+        $workingDays = is_string($daysRaw) ? json_decode($daysRaw, true) : $daysRaw;
+        $allDays     = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+        if (!is_array($workingDays) || empty($workingDays)) {
+            $workingDays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        }
+        $workingDays = array_values(array_intersect($workingDays, $allDays));
+
+        if (empty($startRaw) || empty($endRaw) || $periods <= 0) {
+            return $this->json_error('Start time, end time, and number of periods are required');
+        }
+
+        $startMin = $this->_time_to_minutes($startRaw);
+        $endMin   = $this->_time_to_minutes($endRaw);
+
+        if ($endMin <= $startMin) {
+            return $this->json_error('End time must be after start time');
+        }
+
+        // Validate and total recess minutes
+        $cleanRecesses = [];
+        $recessMinutes = 0;
+        foreach ($recesses as $r) {
+            if (!is_array($r)) continue;
+            $dur   = (int)($r['duration'] ?? 0);
+            $after = (int)($r['after_period'] ?? 0);
+            if ($dur > 0 && $after > 0 && $after < $periods) {
+                $cleanRecesses[] = ['after_period' => $after, 'duration' => $dur];
+                $recessMinutes += $dur;
+            }
+        }
+
+        $available = $endMin - $startMin - $recessMinutes;
+        if ($available <= 0) {
+            return $this->json_error('Recess duration exceeds available time');
+        }
+
+        $periodLength = round($available / $periods, 1);
+
+        // Convert 24h to AM/PM for Firebase storage (matches existing format)
+        $startAmPm = $this->_to_ampm($startRaw);
+        $endAmPm   = $this->_to_ampm($endRaw);
+
+        $data = [
+            'Start_time'       => $startAmPm,
+            'End_time'         => $endAmPm,
+            'No_of_periods'    => $periods,
+            'Length_of_period'  => $periodLength,
+            'Recesses'         => array_values($cleanRecesses),
+            'Working_days'     => $workingDays,
+        ];
+
+        $path = "Schools/{$this->school_name}/{$this->session_year}/Time_table_settings";
+        $this->firebase->set($path, $data);
+
+        return $this->json_success(['length_of_period' => $periodLength, 'settings' => $data]);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       PRIVATE HELPERS
+    ══════════════════════════════════════════════════════════════════════ */
+
+    private function _time_to_minutes(string $time): int
+    {
+        // Accept both "HH:mm" (24h) and "h:mmAM/PM" formats
+        $time = strtoupper(trim($time));
+        // Try AM/PM first
+        if (preg_match('/^(\d{1,2}):(\d{2})\s*(AM|PM)$/', $time, $m)) {
+            $h = (int)$m[1];
+            $min = (int)$m[2];
+            if ($m[3] === 'PM' && $h !== 12) $h += 12;
+            if ($m[3] === 'AM' && $h === 12) $h = 0;
+            return $h * 60 + $min;
+        }
+        // 24h format
+        if (strpos($time, ':') !== false) {
+            $parts = explode(':', $time);
+            return ((int)$parts[0] * 60) + (int)$parts[1];
+        }
+        return 0;
+    }
+
+    private function _to_ampm(string $time24): string
+    {
+        $dt = \DateTime::createFromFormat('H:i', trim($time24));
+        return $dt ? $dt->format('g:iA') : $time24;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       SECTION-LEVEL TIMETABLE ENDPOINTS
+       Used by section_students.php for single class-section timetable view
+    ══════════════════════════════════════════════════════════════════════ */
+
+    /**
+     * Get timetable for a single class-section.
+     * POST: class_name, section_name
+     */
+    public function get_section_timetable()
+    {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'view_timetable');
+
+        $class   = $this->safe_path_segment(trim($this->input->post('class_name') ?? ''), 'class_name');
+        $section = $this->safe_path_segment(trim($this->input->post('section_name') ?? ''), 'section_name');
+
+        if (empty($class) || empty($section)) {
+            return $this->json_error('Class and section are required');
+        }
+
+        $path = "Schools/{$this->school_name}/{$this->session_year}/{$class}/{$section}/Time_table";
+        $data = $this->firebase->get($path);
+
+        if (is_object($data)) $data = json_decode(json_encode($data), true);
+
+        return $this->json_success(is_array($data) ? $data : []);
+    }
+
+    /**
+     * Save full timetable for a single class-section (bulk write).
+     * POST: class_name, section_name, timetable (JSON string)
+     */
+    public function save_section_timetable()
+    {
+        $this->_require_role(['Admin', 'Principal'], 'edit_timetable');
+
+        $class   = $this->safe_path_segment(trim($this->input->post('class_name') ?? ''), 'class_name');
+        $section = $this->safe_path_segment(trim($this->input->post('section_name') ?? ''), 'section_name');
+        $raw     = $this->input->post('timetable');
+
+        if (empty($class) || empty($section)) {
+            return $this->json_error('Class and section are required');
+        }
+
+        $timetable = is_string($raw) ? json_decode($raw, true) : $raw;
+        if (!is_array($timetable)) {
+            return $this->json_error('Invalid timetable data');
+        }
+
+        // Validate day keys
+        $validDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        $clean = [];
+        foreach ($timetable as $day => $periods) {
+            if (!in_array($day, $validDays)) continue;
+            $clean[$day] = is_array($periods) ? $periods : [];
+        }
+
+        $path = "Schools/{$this->school_name}/{$this->session_year}/{$class}/{$section}/Time_table";
+        $this->firebase->set($path, !empty($clean) ? $clean : new \stdClass());
+
+        return $this->json_success(['message' => 'Timetable saved successfully']);
+    }
+
+    /**
+     * Get subjects for a given class (for timetable subject picker).
+     * POST: class_name (e.g. "Class 8th")
+     * Returns: {class_subjects: [{name,code}], all_subjects: [{name,code}]}
+     */
+    public function get_class_subjects()
+    {
+        $this->_require_role(['Admin', 'Principal', 'Teacher'], 'academic_data');
+
+        $className = trim($this->input->post('class_name') ?? '');
+
+        if (!$className) {
+            return $this->json_success(['class_subjects' => [], 'all_subjects' => []]);
+        }
+
+        // Extract numeric class key or text key (Nursery/LKG/UKG)
+        $requestedKey = null;
+        if (preg_match('/(\d+)/', $className, $m)) {
+            $requestedKey = (int)$m[1];
+        } elseif (preg_match('/(Nursery|LKG|UKG)/i', $className, $m2)) {
+            $requestedKey = ucfirst(strtolower($m2[1]));
+        }
+
+        $path = "Schools/{$this->school_name}/Subject_list";
+        $data = $this->firebase->get($path);
+        if (is_object($data)) $data = (array)$data;
+        if (!is_array($data)) $data = [];
+
+        $classSubjects = [];
+        $allSubjects   = [];
+
+        foreach ($data as $classNum => $subjects) {
+            if (is_object($subjects)) $subjects = (array)$subjects;
+            if (!is_array($subjects) || empty($subjects)) continue;
+
+            foreach ($subjects as $code => $subject) {
+                if (is_object($subject)) $subject = (array)$subject;
+                $name = trim($subject['subject_name'] ?? $subject['name'] ?? '');
+                if (empty($name)) continue;
+
+                $allSubjects[$name] = ['name' => $name, 'code' => (string)$code];
+
+                // Match requested class
+                if ($requestedKey !== null) {
+                    if (is_int($requestedKey) && is_numeric($classNum) && (int)$classNum === $requestedKey) {
+                        $classSubjects[$name] = ['name' => $name, 'code' => (string)$code];
+                    } elseif (is_string($requestedKey) && strcasecmp($classNum, $requestedKey) === 0) {
+                        $classSubjects[$name] = ['name' => $name, 'code' => (string)$code];
+                    }
+                }
+            }
+        }
+
+        return $this->json_success([
+            'class_subjects' => array_values($classSubjects),
+            'all_subjects'   => array_values($allSubjects),
+        ]);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       PRIVATE HELPERS
+    ══════════════════════════════════════════════════════════════════════ */
+
+    /**
+     * Convert a class key (e.g. "Class 9th") to a Firebase-safe path segment.
+     * Config/Classes stores keys like "Class 9th" which are valid Firebase keys.
+     */
+    private function _class_to_firebase_key(string $key): string
+    {
+        $key = trim($key);
+        // Firebase keys cannot contain . $ # [ ] /
+        return str_replace(['.', '$', '#', '[', ']', '/'], '_', $key);
+    }
+
+    // _get_session_classes() is inherited from MY_Controller (protected)
 }

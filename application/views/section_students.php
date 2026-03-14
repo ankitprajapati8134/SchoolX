@@ -718,25 +718,73 @@
     ============================================================ */
     function loadTimetable() {
         TIMETABLE_READY = false;
-        var _d = { class_name: CLASS_NAME, section_name: SECTION_NAME };
-        _d[CSRF_NAME] = CSRF_HASH;
-        $.post(
-            BASE_URL + 'classes/load_timetable_partial', _d,
-            html => {
-                $('#sectionContent').html(html);
-                fetchTimetableSettingsAndBuild();
-            }
-        );
+        // Inline the timetable container HTML (no AJAX needed)
+        $('#sectionContent').html(`
+            <div class="timetable-wrapper">
+                <div class="timetable-scroll">
+                    <div class="timetable-grid" id="timetableGrid"></div>
+                </div>
+                <div class="timetable-footer">
+                    <div id="timetableEditActions" class="hidden" style="gap:10px;">
+                        <button class="btn btn-outline-secondary" id="cancelTimetableEdit">
+                            <i class="fa fa-times"></i> Cancel
+                        </button>
+                        <button class="btn btn-success" id="saveTimetableEdit">
+                            <i class="fa fa-save"></i> Save
+                        </button>
+                    </div>
+                    <button class="btn btn-warning" id="editTimetableBtn">
+                        <i class="fa fa-pencil"></i> Edit Timetable
+                    </button>
+                </div>
+            </div>
+            <div class="modal fade" id="subjectSelectModal" tabindex="-1">
+                <div class="modal-dialog modal-xl modal-dialog-centered subject-dialog">
+                    <div class="modal-content subject-modal">
+                        <div class="modal-header subject-modal-header">
+                            <button type="button" class="close subject-close" data-dismiss="modal">&times;</button>
+                            <h4 class="modal-title">Subjects</h4>
+                            <div class="subject-search-wrap" style="margin-top:12px;">
+                                <input type="text" class="form-control subject-search-input"
+                                    placeholder="Search subjects" id="subjectSearch">
+                                <i class="fa fa-search subject-search-icon"></i>
+                            </div>
+                        </div>
+                        <div class="modal-body subject-modal-body">
+                            <h3 class="subject-section-title" id="classSubjectTitle"></h3>
+                            <div class="subject-grid class-subjects"></div>
+                            <h3 class="subject-section-title mt-3">All Subjects
+                                <small class="text-muted" id="allSubjectCount"></small>
+                            </h3>
+                            <div class="subject-grid all-subjects"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `);
+        fetchTimetableSettingsAndBuild();
     }
 
     function fetchTimetableSettingsAndBuild() {
-        $.getJSON(
-            BASE_URL + 'classes/get_timetable_settings',
-            res => {
-                if (!res?.Start_time || !res?.End_time) return;
-                buildTimetable(res);
+        var _d = {};
+        _d[CSRF_NAME] = CSRF_HASH;
+        $.post(
+            BASE_URL + 'academic/get_timetable_settings', _d,
+            function(res) {
+                if (!res || !res.success || !res.data) return;
+                var s = res.data;
+                if (!s.start_time || !s.end_time) return;
+                // Map to the format buildTimetable expects
+                buildTimetable({
+                    Start_time: s.start_time,
+                    End_time: s.end_time,
+                    No_of_periods: s.no_of_periods,
+                    Length_of_period: s.length_of_period,
+                    Recesses: s.recesses
+                });
                 loadSavedTimetable();
-            }
+            },
+            'json'
         );
     }
 
@@ -851,52 +899,15 @@
         var _d = { class_name: CLASS_NAME, section_name: SECTION_NAME };
         _d[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/load_timetable', _d,
-            saved => saved && TIMETABLE_READY && applySavedTimetable(saved),
+            BASE_URL + 'academic/get_section_timetable', _d,
+            function(res) {
+                if (res && res.success && res.data && TIMETABLE_READY) {
+                    applySavedTimetable(res.data);
+                }
+            },
             'json'
         );
     }
-
-
-
-    //   function applySavedTimetable(saved) {
-
-    //     if (!saved || typeof saved !== 'object') return;
-
-    //     $('.tt-row:not(.tt-head)').each(function () {
-
-    //         const day = $(this).find('.day').text().trim();
-    //         const daySlots = saved[day];
-    //         if (!Array.isArray(daySlots)) return;
-
-    //         const map = {};
-    //         daySlots.forEach(s => {
-    //             map[s.time] = s.subject;
-    //         });
-
-    //         let slotIndex = 0;
-    //         const slots = getTimeSlots();
-
-    //         $(this).find('.tt-cell').each(function (idx) {
-
-    //             if (idx === 0) return;
-
-    //             if ($(this).hasClass('break-cell')) {
-    //                 const t = slots[slotIndex];
-    //                 if (map[t]) {
-    //                     $(this).text('BREAK');
-    //                 }
-    //                 return;
-    //             }
-
-    //             const time = slots[slotIndex++];
-    //             if (map[time]) {
-    //                 $(this).text(map[time]);
-    //             }
-    //         });
-    //     });
-    // }
-
 
 
 
@@ -921,12 +932,12 @@
         };
         _ttData[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/save_timetable', _ttData,
+            BASE_URL + 'academic/save_section_timetable', _ttData,
             function(res) {
 
-                if (res.status === 'success') {
+                if (res && res.success) {
 
-                    // ✅ Exit edit mode
+                    // Exit edit mode
                     TIMETABLE_EDIT_MODE = false;
                     TIMETABLE_BACKUP = null;
                     window.CURRENT_CELL = null;
@@ -935,11 +946,11 @@
                     $('#editTimetableBtn').removeClass('hidden');
                     $('.timetable-wrapper').removeClass('edit-mode');
 
-                    // ✅ Reload saved timetable
+                    // Reload saved timetable
                     loadSavedTimetable();
 
                 } else {
-                    alert(res.message || 'Failed to save timetable');
+                    alert((res && res.message) || 'Failed to save timetable');
                 }
             },
             'json'
@@ -1063,52 +1074,16 @@
         var _d = { class_name: CLASS_NAME };
         _d[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/fetch_subjects_for_timetable', _d,
-            renderSubjectModal,
+            BASE_URL + 'academic/get_class_subjects', _d,
+            function(res) {
+                if (res && res.success && res.data) {
+                    renderSubjectModal(res.data);
+                }
+            },
             'json'
         );
     }
 
-
-
-    // function renderSubjectModal(data) {
-
-    //     if (!data || typeof data !== 'object') return;
-
-    //     // ✅ SET CLASS TITLE (🔥 THIS WAS MISSING)
-    //     $('#classSubjectTitle').text(CURRENT_CLASS_NAME);
-
-    //     window.ALL_SUBJECTS_CACHE = data.all_subjects || [];
-    //     $('#allSubjectCount').text(
-    //         `(${window.ALL_SUBJECTS_CACHE.length})`
-    //     );
-
-    //     const $classBox = $('.class-subjects').empty();
-    //     const $allBox = $('.all-subjects').empty();
-
-    //     /* ==============================
-    //        CLASS SUBJECTS
-    //     ============================== */
-    //     if (Array.isArray(data.class_subjects) && data.class_subjects.length) {
-
-    //         data.class_subjects.forEach(sub => {
-    //             $classBox.append(`
-    //             <button type="button"
-    //                     class="subject-item outline class-subject">
-    //                 ${sub.name}
-    //             </button>
-    //         `);
-    //         });
-
-    //     } else {
-    //         $classBox.html('<span class="text-muted">No class subjects</span>');
-    //     }
-
-    //     /* ==============================
-    //        ALL SUBJECTS
-    //     ============================== */
-    //     renderAllSubjects(window.ALL_SUBJECTS_CACHE);
-    // }
 
 
     function renderSubjectModal(data) {
@@ -1151,23 +1126,6 @@
     }
 
 
-
-
-    // function renderAllSubjects(subjects) {
-
-    //     const $grid = $('.all-subjects').empty();
-
-    //     if (!Array.isArray(subjects) || !subjects.length) {
-    //         $grid.html('<span class="text-muted">No subjects found</span>');
-    //         return;
-    //     }
-
-    //     subjects.forEach(sub => {
-    //         $grid.append(
-    //             `<button type="button" class="subject-item outline">${sub.name}</button>`
-    //         );
-    //     });
-    // }
 
 
     function renderAllSubjects(subjects) {
@@ -1325,58 +1283,25 @@
     /* ============================================================
        TIMETABLE SETTINGS (FETCH + SAVE)
     ============================================================ */
-    // function fetchTimetableSettings() {
-    //     $.getJSON(
-    //         BASE_URL + 'classes/get_timetable_settings',
-    //         function(res) {
-
-    //             if (!res || typeof res !== 'object') return;
-
-    //             // ✅ Set core fields
-    //             $('#ttStartTime').val(ampmTo24(res.Start_time || ''));
-    //             $('#ttEndTime').val(ampmTo24(res.End_time || ''));
-    //             $('#ttPeriodLength').val(res.Length_of_period || '');
-    //             $('#ttNoOfPeriod').val(res.No_of_periods || '');
-
-    //             // ✅ CRITICAL FIX: clear before append
-    //             $('#recessContainer').empty();
-
-    //             // ✅ Load recesses from Firebase
-    //             if (Array.isArray(res.Recess_breaks)) {
-    //                 res.Recess_breaks.forEach(range => {
-
-    //                     if (!range || !range.includes(' - ')) return;
-
-    //                     const [from, to] = range.split(' - ');
-
-    //                     addRecessRow(
-    //                         ampmTo24(from.trim()),
-    //                         ampmTo24(to.trim())
-    //                     );
-    //                 });
-    //             }
-    //         }
-    //     );
-    // }
-
     function fetchTimetableSettings() {
-
-        $.getJSON(
-            BASE_URL + 'classes/get_timetable_settings',
+        var _d = {};
+        _d[CSRF_NAME] = CSRF_HASH;
+        $.post(
+            BASE_URL + 'academic/get_timetable_settings', _d,
             function(res) {
 
-                if (!res) return;
+                if (!res || !res.success || !res.data) return;
+                var s = res.data;
 
-                $('#ttStartTime').val(ampmTo24(res.Start_time || ''));
-                $('#ttEndTime').val(ampmTo24(res.End_time || ''));
-                $('#ttNoOfPeriod').val(res.No_of_periods || '');
-                $('#ttPeriodLength').val(res.Length_of_period || '');
+                $('#ttStartTime').val(ampmTo24(s.start_time || ''));
+                $('#ttEndTime').val(ampmTo24(s.end_time || ''));
+                $('#ttNoOfPeriod').val(s.no_of_periods || '');
+                $('#ttPeriodLength').val(s.length_of_period || '');
 
                 $('#recessContainer').empty();
 
-                // ✅ FIX: load recess AFTER PERIOD correctly
-                if (Array.isArray(res.Recesses)) {
-                    res.Recesses.forEach(r => {
+                if (Array.isArray(s.recesses)) {
+                    s.recesses.forEach(r => {
                         addRecessRow(
                             r.after_period ?? '',
                             r.duration ?? ''
@@ -1384,9 +1309,10 @@
                     });
                 }
 
-                // 🔁 recalc period length after load
+                // recalc period length after load
                 calculatePeriodLength();
-            }
+            },
+            'json'
         );
     }
 
@@ -1464,17 +1390,17 @@
             start_time: $('#ttStartTime').val(),
             end_time: $('#ttEndTime').val(),
             no_of_periods: $('#ttNoOfPeriod').val(),
-            recesses: recesses
+            recesses: JSON.stringify(recesses)
         };
         _settData[CSRF_NAME] = CSRF_HASH;
         $.post(
-            BASE_URL + 'classes/save_timetable_settings', _settData,
+            BASE_URL + 'academic/save_timetable_settings', _settData,
             function(res) {
-                if (res.status === 'success') {
+                if (res && res.success) {
                     $('#timetableSettingsModal').modal('hide');
                     fetchTimetableSettingsAndBuild();
                 } else {
-                    alert(res.message || 'Failed to save timetable');
+                    alert((res && res.message) || 'Failed to save timetable');
                 }
             },
             'json'
@@ -1483,82 +1409,53 @@
 
 
 
-    /* ============================================================
-       UTILITIES
-    ============================================================ */
-    //     function getTimeSlots() {
-    //     return $('.tt-head .tt-cell')
-    //         .filter((i, e) => !$(e).hasClass('break-head'))
-    //         .map((i, e) => $(e).text().trim())
-    //         .get();
-    // }
-
-
-    /* ============================================================
-       COLLECT TIMETABLE DATA (🔥 REQUIRED FOR EDIT MODE)
-    ============================================================ */
-    // function collectTimetableData() {
-
-    //     const table = {};
-    //     const slots = getTimeSlots();
-
-    //     $('.tt-row:not(.tt-head)').each(function() {
-
-    //         const day = $(this).find('.day').text().trim();
-    //         const row = {};
-    //         let hasValue = false;
-    //         let i = 0;
-
-    //         $(this).find('.tt-cell').each(function(idx) {
-
-    //             if (idx === 0 || $(this).hasClass('break-cell')) return;
-
-    //             const value = $(this).text().trim();
-    //             const slot = slots[i++];
-
-    //             if (value && value !== 'Select subject') {
-    //                 row[slot] = value;
-    //                 hasValue = true;
-    //             }
-    //         });
-
-
-    //         if (hasValue) {
-    //             table[day] = row;
-    //         }
-    //     });
-
-    //     return table;
-    // }
-
     function applySavedTimetable(saved) {
 
         if (!saved || typeof saved !== 'object') return;
 
-        const headerCells = $('.tt-head .tt-cell');
-
         $('.tt-row:not(.tt-head)').each(function() {
 
             const day = $(this).find('.day').text().trim();
-            const daySlots = saved[day];
-            if (!Array.isArray(daySlots)) return;
+            const dayData = saved[day];
+            if (!dayData) return;
 
-            const map = {};
-            daySlots.forEach(s => {
-                map[s.time] = s.subject;
-            });
+            // Handle both formats:
+            // New: {Monday: ["English", "Math", ...]} or [{subject:"English"}, ...]
+            // Legacy: {Monday: [{time:"...", subject:"English"}, ...]}
+            let isLegacy = Array.isArray(dayData) && dayData.length > 0 &&
+                           typeof dayData[0] === 'object' && dayData[0] !== null && 'time' in dayData[0];
 
-            $(this).find('.tt-cell').each(function(colIndex) {
+            if (isLegacy) {
+                // Legacy format — match by time header
+                const headerCells = $('.tt-head .tt-cell');
+                const map = {};
+                dayData.forEach(s => { if (s.time && s.subject) map[s.time] = s.subject; });
 
-                if (colIndex === 0) return;
+                $(this).find('.tt-cell').each(function(colIndex) {
+                    if (colIndex === 0) return;
+                    const time = $(headerCells[colIndex]).text().trim();
+                    if (time && map[time] && map[time] !== 'BREAK') {
+                        $(this).text(map[time]).attr('data-subject-name', map[time]);
+                    }
+                });
+            } else {
+                // New format — period-indexed array (skip break cells)
+                let periodIdx = 0;
+                $(this).find('.tt-cell').each(function(colIndex) {
+                    if (colIndex === 0) return;
+                    if ($(this).hasClass('break-cell')) return;
 
-                const time = $(headerCells[colIndex]).text().trim();
-                if (!time) return;
-
-                if (map[time]) {
-                    $(this).text(map[time]);
-                }
-            });
+                    if (Array.isArray(dayData) && periodIdx < dayData.length) {
+                        const cell = dayData[periodIdx];
+                        const subject = (typeof cell === 'object' && cell !== null)
+                            ? (cell.subject || '') : (cell || '');
+                        if (subject && subject !== 'BREAK') {
+                            $(this).text(subject).attr('data-subject-name', subject);
+                        }
+                    }
+                    periodIdx++;
+                });
+            }
         });
     }
 
@@ -1567,42 +1464,25 @@
 
         const table = {};
 
-        // cache header cells (time columns)
-        const headerCells = $('.tt-head .tt-cell');
-
         $('.tt-row:not(.tt-head)').each(function() {
 
             const day = $(this).find('.day').text().trim();
-            const rows = [];
+            const periods = [];
 
             $(this).find('.tt-cell').each(function(colIndex) {
 
                 // skip day column (col 0)
                 if (colIndex === 0) return;
 
-                const time = $(headerCells[colIndex]).text().trim();
-                if (!time) return;
-
-                // BREAK cell
-                if ($(this).hasClass('break-cell')) {
-                    rows.push({
-                        time,
-                        subject: 'BREAK'
-                    });
-                    return;
-                }
+                // skip break cells — breaks are derived from settings, not stored
+                if ($(this).hasClass('break-cell')) return;
 
                 const subject = $(this).text().trim();
-                if (subject && subject !== 'Select subject') {
-                    rows.push({
-                        time,
-                        subject
-                    });
-                }
+                periods.push((subject && subject !== 'Select subject') ? subject : '');
             });
 
-            if (rows.length) {
-                table[day] = rows;
+            if (periods.some(p => p !== '')) {
+                table[day] = periods;
             }
         });
 
