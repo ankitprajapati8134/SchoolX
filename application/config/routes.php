@@ -63,6 +63,7 @@ $route['accounts/get'] = 'AccountController/getAccounts';
 $route['fees/lookup_student']      = 'fees/lookup_student';
 $route['fees/fetch_fee_details']   = 'fees/fetch_fee_details';
 $route['fees/print_receipt/(:any)'] = 'Fees/print_receipt/$1';
+$route['fees/get_receipt_no']       = 'Fees/get_receipt_no';
 
 // ─── Super Admin SaaS Control Panel ──────────────────────────────────────────
 // Auth

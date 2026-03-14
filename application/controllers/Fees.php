@@ -792,6 +792,18 @@ class Fees extends MY_Controller
     }
 
     // ══════════════════════════════════════════════════════════════════
+    //  GET RECEIPT NUMBER
+    // ══════════════════════════════════════════════════════════════════
+
+    public function get_receipt_no()
+    {
+        header('Content-Type: application/json');
+        $receiptPath = "Schools/{$this->school_name}/{$this->session_year}/Accounts/Fees/Receipt No";
+        $receiptNo   = $this->CM->get_data($receiptPath) ?: '1';
+        echo json_encode(['receiptNo' => $receiptNo]);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     //  SEARCH STUDENT
     // ══════════════════════════════════════════════════════════════════
 
