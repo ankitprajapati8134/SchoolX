@@ -481,6 +481,105 @@ class Result extends MY_Controller
         $this->load->view('result/report_card', $data);
     }
 
+    /**
+     * Batch report cards — render all students in a class/section as a single
+     * multi-page HTML document with CSS page-break-before per student.
+     *
+     * URL: result/batch_report_cards/{examId}/{classKey}/{sectionKey}
+     */
+    public function batch_report_cards($examId = null, $classKey = null, $sectionKey = null)
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'batch report cards');
+
+        $school = $this->school_name;
+        $year   = $this->session_year;
+
+        if (!$examId || !$classKey || !$sectionKey) {
+            redirect('result/class_result');
+        }
+        $examId     = urldecode($examId);
+        $classKey   = urldecode($classKey);
+        $sectionKey = urldecode($sectionKey);
+
+        // Load exam
+        $exam = $this->firebase->get("Schools/{$school}/{$year}/Exams/{$examId}");
+        if (!$exam || !is_array($exam)) {
+            redirect('result/class_result');
+        }
+        $exam = array_merge(['id' => $examId], $exam);
+
+        // Load all templates for this exam/class/section
+        $templates = $this->firebase->get(
+            "Schools/{$school}/{$year}/Results/Templates/{$examId}/{$classKey}/{$sectionKey}"
+        ) ?? [];
+        if (!is_array($templates)) $templates = [];
+
+        // Load all computed results
+        $computed = $this->firebase->get(
+            "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}"
+        ) ?? [];
+        if (!is_array($computed)) $computed = [];
+        unset($computed['_stale']);
+
+        // Load all marks for all subjects and students in one batch
+        $allMarks = $this->firebase->get(
+            "Schools/{$school}/{$year}/Results/Marks/{$examId}/{$classKey}/{$sectionKey}"
+        ) ?? [];
+        if (!is_array($allMarks)) $allMarks = [];
+
+        // Load student roster
+        $roster = $this->exam_engine->get_student_names($classKey, $sectionKey);
+
+        // Load school info
+        $schoolInfo = $this->firebase->get("Schools/{$school}/Info") ?? [];
+        if (!is_array($schoolInfo)) $schoolInfo = [];
+
+        // Build per-student data using the parent_db_key for profile lookups
+        $school_id = $this->parent_db_key;
+        $students  = [];
+        $userIds   = array_unique(array_merge(array_keys($computed), array_keys($roster)));
+        sort($userIds);
+
+        foreach ($userIds as $userId) {
+            if (!isset($computed[$userId])) continue; // Only students with computed results
+
+            $profile = $this->firebase->get("Users/Parents/{$school_id}/{$userId}") ?? [];
+            if (!is_array($profile)) $profile = [];
+
+            // Per-student marks
+            $stuMarks = [];
+            foreach ($templates as $subject => $tmp) {
+                $stuMarks[$subject] = $allMarks[$subject][$userId] ?? [];
+            }
+
+            $students[] = [
+                'userId'      => $userId,
+                'examId'      => $examId,
+                'exam'        => $exam,
+                'profile'     => $profile,
+                'classKey'    => $classKey,
+                'sectionKey'  => $sectionKey,
+                'computed'    => $computed[$userId],
+                'templates'   => $templates,
+                'marks'       => $stuMarks,
+                'schoolInfo'  => $schoolInfo,
+                'schoolName'  => $school,
+                'sessionYear' => $year,
+            ];
+        }
+
+        // Render batch view — reuses report_card view in a loop
+        $data = [
+            'students'    => $students,
+            'schoolInfo'  => $schoolInfo,
+            'exam'        => $exam,
+            'classKey'    => $classKey,
+            'sectionKey'  => $sectionKey,
+            'sessionYear' => $year,
+        ];
+
+        $this->load->view('result/batch_report_cards', $data);
+    }
 
     public function cumulative()
     {
@@ -639,28 +738,62 @@ class Result extends MY_Controller
             $this->json_error('Students data must be an array.', 400);
         }
 
+        // ── Fix H1: Load template to enforce marks upper bound ──────────
+        $tmplPath = "Schools/{$school}/{$year}/Results/Templates/{$examId}/{$classKey}/{$sectionKey}/{$subject}";
+        $template = $this->firebase->get($tmplPath);
+        if (!is_array($template) || empty($template['Components'])) {
+            $this->json_error('No template found for this subject. Design a template first.', 400);
+        }
+        $compMaxMap = [];
+        foreach ($template['Components'] as $c) {
+            if (is_array($c) && !empty($c['Name'])) {
+                $compMaxMap[$c['Name']] = (int) ($c['MaxMarks'] ?? 0);
+            }
+        }
+        $templateTotalMax = (int) ($template['TotalMaxMarks'] ?? 0);
+
+        // ── Fix M1: Load student roster for enrollment validation ───────
+        $roster = $this->firebase->get(
+            "Schools/{$school}/{$year}/{$classKey}/{$sectionKey}/Students/List"
+        ) ?? [];
+        if (!is_array($roster)) $roster = [];
+
         $savedAt  = (int) round(microtime(true) * 1000);
         $savedBy  = $this->admin_id ?? '';
         $basePath = "Schools/{$school}/{$year}/Results/Marks/{$examId}/{$classKey}/{$sectionKey}/{$subject}";
         $count    = 0;
+        $warnings = [];
 
         foreach ($students as $stu) {
             $userId = trim((string) ($stu['userId'] ?? ''));
             if (!$userId) continue;
             $userId = $this->safe_path_segment($userId, 'userId');
 
+            // Fix M1: Validate student belongs to this class/section roster
+            if (!empty($roster) && !isset($roster[$userId])) {
+                $warnings[] = "Student {$userId} not in class roster — skipped.";
+                continue;
+            }
+
             $absent   = !empty($stu['absent']);
             $rawMarks = is_array($stu['marks'] ?? null) ? $stu['marks'] : [];
-            $total    = $absent ? 0 : (int) ($stu['total'] ?? 0);
 
-            // Sanitize component marks
-            $marksClean = [];
+            // Sanitize component marks + enforce upper bound (Fix H1)
+            $marksClean  = [];
+            $computeTotal = 0;
             foreach ($rawMarks as $comp => $val) {
                 $comp = strip_tags(trim((string) $comp));
-                if ($comp) {
-                    $marksClean[$comp] = $absent ? 0 : max(0, (int) $val);
+                if (!$comp) continue;
+                $markVal = $absent ? 0 : max(0, (int) $val);
+                // Clamp to component MaxMarks if template defines it
+                if (isset($compMaxMap[$comp]) && $markVal > $compMaxMap[$comp]) {
+                    $markVal = $compMaxMap[$comp];
                 }
+                $marksClean[$comp] = $markVal;
+                $computeTotal += $markVal;
             }
+
+            $total = $absent ? 0 : $computeTotal;
 
             $entry = array_merge($marksClean, [
                 'Total'   => $total,
@@ -673,7 +806,15 @@ class Result extends MY_Controller
             $count++;
         }
 
-        $this->json_success(['message' => "Marks saved for {$count} student(s)."]);
+        // ── Fix H4: Mark computed results as stale ──────────────────────
+        $stalePath = "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}/_stale";
+        $this->firebase->set($stalePath, true);
+
+        $result = ['message' => "Marks saved for {$count} student(s)."];
+        if (!empty($warnings)) {
+            $result['warnings'] = $warnings;
+        }
+        $this->json_success($result);
     }
 
     /**
@@ -695,6 +836,14 @@ class Result extends MY_Controller
             return;
         }
         extract($this->_safe_result_params(compact('examId', 'classKey', 'sectionKey', 'subject')));
+
+        // Fix M3: Teachers can only view marks for their assigned classes/subjects
+        if (($this->admin_role ?? '') === 'Teacher') {
+            if (!$this->_teacher_can_access($classKey, $sectionKey, $subject)) {
+                echo json_encode(['marks' => (object)[]]);
+                return;
+            }
+        }
 
         $path  = "Schools/{$school}/{$year}/Results/Marks/{$examId}/{$classKey}/{$sectionKey}/{$subject}";
         $marks = $this->firebase->get($path) ?? [];
@@ -814,6 +963,24 @@ class Result extends MY_Controller
         $basePath = "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}";
         foreach ($studentResults as $uid => $res) {
             $this->firebase->set("{$basePath}/{$uid}", $res);
+        }
+
+        // ── Fix H4: Clear stale flag after fresh computation ────────────
+        $this->firebase->delete("{$basePath}", '_stale');
+
+        // ── Fix H3: Notify parents/students via Communication module ────
+        try {
+            $this->load->library('Communication_helper', null, 'comm');
+            $this->comm->init($this->firebase, $school, $year);
+            $this->comm->fire_event('exam_result', [
+                'exam_id'        => $examId,
+                'exam_name'      => $exam['Name'] ?? $examId,
+                'class'          => $classKey,
+                'section'        => $sectionKey,
+                'students_count' => count($studentResults),
+            ]);
+        } catch (\Exception $e) {
+            log_message('error', "Communication fire_event failed after compute_results: " . $e->getMessage());
         }
 
         $this->json_success([
@@ -1011,6 +1178,14 @@ class Result extends MY_Controller
         }
         extract($this->_safe_result_params(compact('classKey', 'sectionKey')));
 
+        // Fix M3: Teachers can only view cumulative data for their assigned classes
+        if (($this->admin_role ?? '') === 'Teacher') {
+            if (!$this->_teacher_can_access($classKey, $sectionKey)) {
+                echo json_encode(['students' => [], 'subjects' => []]);
+                return;
+            }
+        }
+
         $cumulative = $this->firebase->get(
             "Schools/{$school}/{$year}/Results/Cumulative/{$classKey}/{$sectionKey}"
         ) ?? [];
@@ -1073,13 +1248,24 @@ class Result extends MY_Controller
         }
         extract($this->_safe_result_params(compact('examId', 'classKey', 'sectionKey')));
 
-        $computed = $this->firebase->get(
-            "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}"
-        ) ?? [];
+        $computedPath = "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}";
+        $computed = $this->firebase->get($computedPath) ?? [];
 
         if (!is_array($computed) || empty($computed)) {
             echo json_encode(['students' => [], 'subjects' => []]);
             return;
+        }
+
+        // Fix H4: Extract and remove stale flag from results
+        $stale = !empty($computed['_stale']);
+        unset($computed['_stale']);
+
+        // Fix M3: Teachers can only view their assigned classes
+        if (($this->admin_role ?? '') === 'Teacher') {
+            if (!$this->_teacher_can_access($classKey, $sectionKey)) {
+                echo json_encode(['students' => [], 'subjects' => []]);
+                return;
+            }
         }
 
         $studentList = $this->firebase->get(
@@ -1115,7 +1301,7 @@ class Result extends MY_Controller
         }
         usort($rows, fn($a, $b) => ($a['rank'] ?? 999) <=> ($b['rank'] ?? 999));
 
-        echo json_encode(['students' => $rows, 'subjects' => $subjects]);
+        echo json_encode(['students' => $rows, 'subjects' => $subjects, 'stale' => $stale]);
     }
 
     /**
@@ -1137,6 +1323,14 @@ class Result extends MY_Controller
         }
         extract($this->_safe_result_params(compact('examId', 'classKey', 'sectionKey')));
 
+        // Fix M3: Teachers can only view their assigned classes
+        if (($this->admin_role ?? '') === 'Teacher') {
+            if (!$this->_teacher_can_access($classKey, $sectionKey)) {
+                echo json_encode(['status' => null]);
+                return;
+            }
+        }
+
         // Templates
         $templatesNode = $this->firebase->shallow_get(
             "Schools/{$school}/{$year}/Results/Templates/{$examId}/{$classKey}/{$sectionKey}"
@@ -1157,12 +1351,18 @@ class Result extends MY_Controller
             "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}"
         );
         $computedCount = count($computedNode);
+        // Fix H4: Don't count _stale as a computed student
+        if (isset($computedNode['_stale'])) $computedCount--;
+
+        // Fix H4: Check stale flag
+        $stale = isset($computedNode['_stale']);
 
         echo json_encode([
             'status' => [
                 'templates' => $templateCount,
                 'marks'     => $marksCount,
                 'computed'  => $computedCount,
+                'stale'     => $stale,
             ],
         ]);
     }

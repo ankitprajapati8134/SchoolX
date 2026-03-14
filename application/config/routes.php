@@ -227,6 +227,7 @@ $route['result/class_result']                             = 'result/class_result
 $route['result/class_result/(:any)']                      = 'result/class_result/$1';
 $route['result/student_result/(:any)']                    = 'result/student_result/$1';
 $route['result/report_card/(:any)/(:any)']                = 'result/report_card/$1/$2';
+$route['result/batch_report_cards/(:any)/(:any)/(:any)']  = 'result/batch_report_cards/$1/$2/$3';
 $route['result/cumulative']                               = 'result/cumulative';
 $route['result/save_template']                            = 'result/save_template';
 $route['result/get_template']                             = 'result/get_template';

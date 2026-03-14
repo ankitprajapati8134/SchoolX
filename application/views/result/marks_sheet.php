@@ -129,53 +129,22 @@ $passingPct  = (int) ($exam['PassingPercent'] ?? 33);
 (function () {
   'use strict';
 
-  // ── Grading constants (must match PHP compute_grade / compute_pass_fail) ──
-  var GRADING_SCALE = <?= json_encode($scale) ?>;
-  var PASSING_PCT   = <?= json_encode($passingPct) ?>;
+  // ── Grading constants — thresholds auto-generated from Exam_engine.php ──
+  var GRADING_SCALE    = <?= json_encode($scale) ?>;
+  var PASSING_PCT      = <?= json_encode($passingPct) ?>;
+  var GRADE_THRESHOLDS = <?= json_encode($this->exam_engine->get_grade_thresholds()) ?>;
 
-  /** computeGrade — mirrors PHP Result::compute_grade() */
+  /** computeGrade — driven by PHP-generated thresholds (never out of sync) */
   function computeGrade(pct, scale) {
-    switch (scale) {
-      case 'Percentage':
-        if (pct >= 90) return 'A+';
-        if (pct >= 80) return 'A';
-        if (pct >= 70) return 'B+';
-        if (pct >= 60) return 'B';
-        if (pct >= 50) return 'C';
-        if (pct >= 33) return 'D';
-        return 'F';
-      case 'A-F Grades':
-        if (pct >= 90) return 'A';
-        if (pct >= 80) return 'B';
-        if (pct >= 70) return 'C';
-        if (pct >= 60) return 'D';
-        if (pct >= 50) return 'E';
-        return 'F';
-      case 'O-E Grades':
-        if (pct >= 91) return 'O';
-        if (pct >= 81) return 'E1';
-        if (pct >= 71) return 'E2';
-        if (pct >= 61) return 'B1';
-        if (pct >= 51) return 'B2';
-        if (pct >= 41) return 'C1';
-        if (pct >= 33) return 'C2';
-        return 'D';
-      case '10-Point':
-        if (pct >= 91) return '10';
-        if (pct >= 81) return '9';
-        if (pct >= 71) return '8';
-        if (pct >= 61) return '7';
-        if (pct >= 51) return '6';
-        if (pct >= 41) return '5';
-        if (pct >= 33) return '4';
-        return 'F';
-      case 'Pass/Fail':
-        return '';
+    var thresholds = GRADE_THRESHOLDS[scale];
+    if (!thresholds || !thresholds.length) return '';
+    for (var i = 0; i < thresholds.length; i++) {
+      if (pct >= thresholds[i][0]) return thresholds[i][1];
     }
-    return '';
+    return thresholds[thresholds.length - 1][1];
   }
 
-  /** computePassFail — mirrors PHP Result::compute_pass_fail() */
+  /** computePassFail — mirrors PHP Exam_engine::compute_pass_fail() */
   function computePassFail(pct, passingPct) {
     return pct >= passingPct ? 'Pass' : 'Fail';
   }

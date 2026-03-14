@@ -88,25 +88,49 @@ class Academic extends MY_Controller
     public function get_all_teachers()
     {
         $this->_require_role(['Admin', 'Principal', 'Teacher'], 'academic_data');
-        $school    = $this->school_name;
-        $school_id = $this->school_id;
-        $session   = $this->session_year;
+        $school  = $this->school_name;
+        $session = $this->session_year;
 
-        $teacherIds = $this->firebase->get("Schools/{$school}/{$session}/Teachers") ?? [];
-        if (!is_array($teacherIds)) $teacherIds = [];
+        // 1. Try session roster first (teachers assigned to current session)
+        $sessionRoster = $this->firebase->get("Schools/{$school}/{$session}/Teachers") ?? [];
+        if (!is_array($sessionRoster)) $sessionRoster = [];
 
-        // Batch read — single Firebase call instead of N+1
-        $allProfiles = $this->firebase->get("Users/Teachers/{$school_id}") ?? [];
+        // 2. Load all teacher profiles (single batch read)
+        //    Staff.php stores profiles under school_id which equals school_name
+        //    for both legacy ("Demo") and new ("SCH_XXXXXX") schools.
+        $allProfiles = $this->firebase->get("Users/Teachers/{$school}") ?? [];
         if (!is_array($allProfiles)) $allProfiles = [];
 
         $teachers = [];
-        foreach ($teacherIds as $id => $val) {
-            $profile = $allProfiles[$id] ?? [];
-            $teachers[] = [
-                'id'   => $id,
-                'name' => is_array($profile) ? ($profile['Name'] ?? $id) : $id,
-            ];
+
+        if (!empty($sessionRoster)) {
+            // Session roster exists — use it (preferred: only teachers in this session)
+            foreach ($sessionRoster as $id => $val) {
+                if ($id === 'Count') continue;
+                $profile = $allProfiles[$id] ?? [];
+                $name    = is_array($val) ? ($val['Name'] ?? '') : '';
+                if (!$name && is_array($profile)) {
+                    $name = $profile['Name'] ?? '';
+                }
+                $teachers[] = [
+                    'id'   => $id,
+                    'name' => $name ?: $id,
+                ];
+            }
+        } else {
+            // Fallback: session roster empty — load from master profiles
+            // This handles new sessions where teachers haven't been assigned yet
+            foreach ($allProfiles as $id => $profile) {
+                if ($id === 'Count' || !is_array($profile)) continue;
+                $teachers[] = [
+                    'id'   => $id,
+                    'name' => $profile['Name'] ?? $id,
+                ];
+            }
         }
+
+        // Sort alphabetically by name
+        usort($teachers, fn($a, $b) => strcasecmp($a['name'], $b['name']));
 
         return $this->json_success(['teachers' => $teachers]);
     }

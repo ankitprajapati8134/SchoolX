@@ -756,6 +756,25 @@ class Examination extends MY_Controller
 
         $totalProcessed = array_sum(array_column($processed, 'count'));
 
+        // Fix H3: Notify parents/students via Communication module
+        if ($totalProcessed > 0) {
+            try {
+                $this->load->library('Communication_helper', null, 'comm');
+                $this->comm->init($this->firebase, $school, $year);
+                foreach ($processed as $p) {
+                    $this->comm->fire_event('exam_result', [
+                        'exam_id'        => $examId,
+                        'exam_name'      => $exam['Name'] ?? $examId,
+                        'class'          => $p['class'],
+                        'section'        => $p['section'],
+                        'students_count' => $p['count'],
+                    ]);
+                }
+            } catch (\Exception $e) {
+                log_message('error', "Communication fire_event failed after bulk_compute: " . $e->getMessage());
+            }
+        }
+
         $this->json_success([
             'message'   => "Bulk compute complete. {$totalProcessed} student(s) across " . count($processed) . " section(s).",
             'processed' => $processed,
@@ -964,6 +983,9 @@ class Examination extends MY_Controller
         // Write to Computed node — single batch update instead of per-student writes
         $basePath = "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}";
         $this->firebase->update($basePath, $studentResults);
+
+        // Fix H4: Clear stale flag after fresh computation
+        $this->firebase->delete("{$basePath}", '_stale');
 
         return ['success' => true, 'count' => count($studentResults), 'reason' => ''];
     }

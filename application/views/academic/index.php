@@ -706,34 +706,36 @@ AC.sa = {
             AC.sa._catalog=d.catalog||{};
             AC.sa._assignments=d.assignments||{};
 
-            // Also load teachers
-            if(_teachers.length===0){
-                post('academic/get_all_teachers').then(function(td){
+            // Load teachers BEFORE enabling the class selector (fixes empty dropdown race)
+            var teacherReady=(_teachers.length>0)
+                ? Promise.resolve()
+                : post('academic/get_all_teachers').then(function(td){
                     if(td.status==='success') _teachers=td.teachers||[];
                 });
-            }
 
-            var sel=document.getElementById('saClassSelect');
-            sel.innerHTML='<option value="">Select Class...</option>';
-            AC.sa._classes.forEach(function(c){
-                var fbKey=AC.sa._toFbKey(c.key);
-                var assigned=AC.sa._assignments[fbKey]||[];
-                var count=Array.isArray(assigned)?assigned.length:0;
-                var badge=count>0?' ('+count+' subjects)':'';
-                sel.innerHTML+='<option value="'+esc(fbKey)+'" data-label="'+esc(c.label)+'" data-key="'+esc(c.key)+'">'+esc(c.label)+badge+'</option>';
+            teacherReady.then(function(){
+                var sel=document.getElementById('saClassSelect');
+                sel.innerHTML='<option value="">Select Class...</option>';
+                AC.sa._classes.forEach(function(c){
+                    var fbKey=AC.sa._toFbKey(c.key);
+                    var assigned=AC.sa._assignments[fbKey]||[];
+                    var count=Array.isArray(assigned)?assigned.length:0;
+                    var badge=count>0?' ('+count+' subjects)':'';
+                    sel.innerHTML+='<option value="'+esc(fbKey)+'" data-label="'+esc(c.label)+'" data-key="'+esc(c.key)+'">'+esc(c.label)+badge+'</option>';
+                });
+                sel.onchange=function(){
+                    var opt=sel.options[sel.selectedIndex];
+                    if(!sel.value){
+                        document.getElementById('saContent').innerHTML='<div class="ac-empty"><i class="fa fa-book"></i>Select a class to manage subject assignments</div>';
+                        document.getElementById('saAssignArea').style.display='none';
+                        return;
+                    }
+                    AC.sa._currentKey=sel.value;
+                    AC.sa._currentLabel=opt.dataset.label||'';
+                    AC.sa._loadClass(sel.value,opt.dataset.key||'');
+                };
+                document.getElementById('saContent').innerHTML='';
             });
-            sel.onchange=function(){
-                var opt=sel.options[sel.selectedIndex];
-                if(!sel.value){
-                    document.getElementById('saContent').innerHTML='<div class="ac-empty"><i class="fa fa-book"></i>Select a class to manage subject assignments</div>';
-                    document.getElementById('saAssignArea').style.display='none';
-                    return;
-                }
-                AC.sa._currentKey=sel.value;
-                AC.sa._currentLabel=opt.dataset.label||'';
-                AC.sa._loadClass(sel.value,opt.dataset.key||'');
-            };
-            document.getElementById('saContent').innerHTML='';
         });
     },
 

@@ -121,11 +121,13 @@ $resultText = ($grandPass === 'Pass')
   ? 'RESULT : PROMOTED' . $nextClass
   : 'RESULT : NOT PROMOTED — FURTHER IMPROVEMENT NEEDED';
 ?>
-<!-- ══ Screen toolbar ══════════════════════════════════════════════════ -->
+<!-- ══ Screen toolbar (hidden in batch mode) ═════════════════════════ -->
+<?php if (empty($batch_mode)): ?>
 <div class="rc-toolbar">
   <a href="javascript:history.back()" class="rc-btn-back">&#8592; Back</a>
   <button class="rc-btn-print" onclick="window.print()">&#128438; Print Report Card</button>
 </div>
+<?php endif; ?>
 
 <div class="rc-wrapper">
   <div class="rc-page">

@@ -344,4 +344,36 @@ class Exam_engine
         }
         return $names;
     }
+
+    // =========================================================================
+    //  GRADE THRESHOLDS (single source of truth for PHP + JS)
+    // =========================================================================
+
+    /**
+     * Return all grading thresholds as a structured array.
+     *
+     * Each scale maps to an ordered list of [minPct, grade] pairs (descending).
+     * The JS mirror in marks_sheet.php consumes this via json_encode() so that
+     * threshold changes in PHP automatically propagate to the client.
+     *
+     * @return array
+     */
+    public function get_grade_thresholds(): array
+    {
+        return [
+            'Percentage' => [
+                [90, 'A+'], [80, 'A'], [70, 'B+'], [60, 'B'], [50, 'C'], [33, 'D'], [0, 'F'],
+            ],
+            'A-F Grades' => [
+                [90, 'A'], [80, 'B'], [70, 'C'], [60, 'D'], [50, 'E'], [0, 'F'],
+            ],
+            'O-E Grades' => [
+                [91, 'O'], [81, 'E1'], [71, 'E2'], [61, 'B1'], [51, 'B2'], [41, 'C1'], [33, 'C2'], [0, 'D'],
+            ],
+            '10-Point' => [
+                [91, '10'], [81, '9'], [71, '8'], [61, '7'], [51, '6'], [41, '5'], [33, '4'], [0, 'F'],
+            ],
+            'Pass/Fail' => [],
+        ];
+    }
 }
