@@ -198,7 +198,7 @@ class Admin extends MY_Controller
         if ($this->input->method() === 'post') {
             header('Content-Type: application/json');
 
-            $adminId = trim((string) $this->input->post('admin_id'));
+            $adminId = $this->safe_path_segment(trim((string) $this->input->post('admin_id')), 'admin_id');
 
             // ── Password update ───────────────────────────────────────────
             if ($this->input->post('newPassword') && $this->input->post('confirmPassword') && $adminId) {
@@ -336,6 +336,7 @@ class Admin extends MY_Controller
         if (!$admin_id) {
             $this->json_error('Admin ID required.', 400);
         }
+        $admin_id = $this->safe_path_segment($admin_id, 'admin_id');
 
         // [FIX-2] Use session school_id; strip credentials fields from update
         $update_data = [
@@ -475,6 +476,7 @@ class Admin extends MY_Controller
         if (!$modalId || !is_array($userData)) {
             $this->json_error('Invalid input data.', 400);
         }
+        $modalId = $this->safe_path_segment($modalId, 'modal_id');
 
         // Prevent updating Credentials via this endpoint
         unset($userData['Credentials'], $userData['AccessHistory']);

@@ -26,7 +26,7 @@ class Hostel extends MY_Controller
         parent::__construct();
         $this->load->library('operations_accounting');
         $this->operations_accounting->init(
-            $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this
+            $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this, $this->parent_db_key
         );
     }
 
@@ -116,6 +116,11 @@ class Hostel extends MY_Controller
             $id = $this->operations_accounting->next_id($this->_counters('Building'), 'BLD');
         } else {
             $id = $this->safe_path_segment($id, 'building_id');
+            // Preserve warden_id from Firebase (not in form — future staff integration)
+            if ($wardenId === '') {
+                $existing = $this->firebase->get($this->_buildings($id));
+                $wardenId = is_array($existing) ? ($existing['warden_id'] ?? '') : '';
+            }
         }
 
         $data = [
@@ -257,8 +262,8 @@ class Hostel extends MY_Controller
         $roomId    = $this->safe_path_segment(trim($this->input->post('room_id') ?? ''), 'room_id');
         $bedNo     = max(1, (int) ($this->input->post('bed_no') ?? 1));
 
-        // Verify student
-        $student = $this->firebase->get("Users/Parents/{$this->school_name}/{$studentId}");
+        // Verify student (use parent_db_key — legacy schools key by school_code, not school_id)
+        $student = $this->firebase->get("Users/Parents/{$this->parent_db_key}/{$studentId}");
         if (!is_array($student)) $this->json_error('Student not found.');
 
         // Verify room and check capacity
@@ -319,8 +324,8 @@ class Hostel extends MY_Controller
             );
         }
 
-        // ── Fee Integration: create/update hostel fee component ──
-        $feePath = "Schools/{$this->school_name}/Fees/Student_Fee_Items/{$studentId}/Hostel";
+        // ── Fee Integration: create/update hostel fee component (session-scoped) ──
+        $feePath = "Schools/{$this->school_name}/{$this->session_year}/Fees/Student_Fee_Items/{$studentId}/Hostel";
         $this->firebase->set($feePath, [
             'building_id'    => $room['building_id'] ?? '',
             'building_name'  => $buildingName,
@@ -355,13 +360,15 @@ class Hostel extends MY_Controller
             }
         }
 
-        // ── Fee Integration: deactivate hostel fee component ──
-        $feePath = "Schools/{$this->school_name}/Fees/Student_Fee_Items/{$studentId}/Hostel";
+        // ── Fee Integration: deactivate hostel fee component (session-scoped) ──
+        $feePath = "Schools/{$this->school_name}/{$this->session_year}/Fees/Student_Fee_Items/{$studentId}/Hostel";
         $existingFee = $this->firebase->get($feePath);
         if (is_array($existingFee)) {
             $this->firebase->update($feePath, [
-                'status'     => 'inactive',
-                'removed_at' => date('c'),
+                'monthly_fee' => 0,
+                'status'      => 'inactive',
+                'removed_at'  => date('c'),
+                'updated_at'  => date('c'),
             ]);
         }
 

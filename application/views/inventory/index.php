@@ -26,13 +26,13 @@ $tab_map = [
 .inv-btn-danger{background:var(--rose);color:#fff} .inv-btn-sm{padding:6px 12px;font-size:12px}
 .inv-table{width:100%;border-collapse:collapse;font-size:13px;font-family:var(--font-b)}
 .inv-table th,.inv-table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border)}
-.inv-table th{color:var(--t3);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.inv-table th{color:var(--t3);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
 .inv-table td{color:var(--t1)} .inv-table tr:hover td{background:var(--gold-dim)}
-.inv-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;font-family:var(--font-b)}
+.inv-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;font-family:var(--font-b)}
 .inv-badge-green{background:rgba(34,197,94,.12);color:#22c55e} .inv-badge-red{background:rgba(239,68,68,.12);color:#ef4444}
 .inv-badge-amber{background:rgba(234,179,8,.12);color:#eab308} .inv-badge-blue{background:rgba(59,130,246,.12);color:#3b82f6}
 .inv-form-group{margin-bottom:14px}
-.inv-form-group label{display:block;font-size:11px;font-weight:600;color:var(--t3);margin-bottom:4px;font-family:var(--font-b);text-transform:uppercase;letter-spacing:.3px}
+.inv-form-group label{display:block;font-size:12px;font-weight:600;color:var(--t3);margin-bottom:4px;font-family:var(--font-b);text-transform:uppercase;letter-spacing:.3px}
 .inv-form-group input,.inv-form-group select,.inv-form-group textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--t1);font-size:13px;font-family:var(--font-b)}
 .inv-form-group input:focus,.inv-form-group select:focus{border-color:var(--gold);outline:none}
 .inv-form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}

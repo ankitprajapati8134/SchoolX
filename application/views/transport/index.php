@@ -25,13 +25,15 @@ $tab_map = [
 .trn-btn-danger{background:var(--rose);color:#fff} .trn-btn-sm{padding:6px 12px;font-size:12px}
 .trn-table{width:100%;border-collapse:collapse;font-size:13px;font-family:var(--font-b)}
 .trn-table th,.trn-table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border)}
-.trn-table th{color:var(--t3);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.trn-table th{color:var(--t3);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
 .trn-table td{color:var(--t1)} .trn-table tr:hover td{background:var(--gold-dim)}
-.trn-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;font-family:var(--font-b)}
+.trn-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;font-family:var(--font-b)}
 .trn-badge-green{background:rgba(34,197,94,.12);color:#22c55e}
 .trn-badge-blue{background:rgba(59,130,246,.12);color:#3b82f6}
+.trn-badge-amber{background:rgba(245,158,11,.12);color:#f59e0b}
+.trn-badge-red{background:rgba(239,68,68,.12);color:#ef4444}
 .trn-form-group{margin-bottom:14px}
-.trn-form-group label{display:block;font-size:11px;font-weight:600;color:var(--t3);margin-bottom:4px;font-family:var(--font-b);text-transform:uppercase;letter-spacing:.3px}
+.trn-form-group label{display:block;font-size:12px;font-weight:600;color:var(--t3);margin-bottom:4px;font-family:var(--font-b);text-transform:uppercase;letter-spacing:.3px}
 .trn-form-group input,.trn-form-group select{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--t1);font-size:13px;font-family:var(--font-b)}
 .trn-form-group input:focus,.trn-form-group select:focus{border-color:var(--gold);outline:none}
 .trn-form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -86,7 +88,7 @@ $tab_map = [
   <div class="trn-panel<?= $at === 'assignments' ? ' active' : '' ?>" id="panelAssignments">
     <div class="trn-card">
       <div class="trn-card-title"><span>Student Transport Assignments</span><button class="trn-btn trn-btn-primary" onclick="TRN.openAsnModal()"><i class="fa fa-plus"></i> Assign Student</button></div>
-      <table class="trn-table"><thead><tr><th>Student</th><th>Class</th><th>Route</th><th>Fee/Month</th><th>Assigned</th><th>Actions</th></tr></thead><tbody id="asnTbody"></tbody></table>
+      <table class="trn-table"><thead><tr><th>Student</th><th>Class</th><th>Route</th><th>Stop</th><th>Type</th><th>Fee/Month</th><th>Assigned</th><th>Actions</th></tr></thead><tbody id="asnTbody"></tbody></table>
     </div>
   </div>
 </div></section></div>
@@ -97,7 +99,9 @@ $tab_map = [
   <input type="hidden" id="vhId">
   <div class="trn-form-row"><div class="trn-form-group"><label>Vehicle Number *</label><input type="text" id="vhNumber"></div><div class="trn-form-group"><label>Type</label><select id="vhType"><option>Bus</option><option>Van</option><option>Auto</option><option>Car</option></select></div></div>
   <div class="trn-form-row"><div class="trn-form-group"><label>Capacity</label><input type="number" id="vhCapacity" value="40" min="1"></div><div class="trn-form-group"><label>Driver Name</label><input type="text" id="vhDriverName"></div></div>
-  <div class="trn-form-row"><div class="trn-form-group"><label>Driver Phone</label><input type="text" id="vhDriverPhone"></div><div class="trn-form-group"><label>Insurance Expiry</label><input type="date" id="vhInsExp"></div></div>
+  <div class="trn-form-row"><div class="trn-form-group"><label>Driver Phone</label><input type="text" id="vhDriverPhone"></div><div class="trn-form-group"><label>GPS Enabled</label><select id="vhGps"><option value="0">No</option><option value="1">Yes</option></select></div></div>
+  <div class="trn-form-row"><div class="trn-form-group"><label>Insurance No.</label><input type="text" id="vhInsNo"></div><div class="trn-form-group"><label>Insurance Expiry</label><input type="date" id="vhInsExp"></div></div>
+  <div class="trn-form-row"><div class="trn-form-group"><label>Fitness Expiry</label><input type="date" id="vhFitExp"></div><div class="trn-form-group"><label>Status</label><select id="vhStatus"><option value="Active">Active</option><option value="Inactive">Inactive</option><option value="Maintenance">Maintenance</option></select></div></div>
   <button class="trn-btn trn-btn-primary" onclick="TRN.saveVehicle()" style="width:100%;margin-top:8px">Save Vehicle</button>
 </div></div>
 
@@ -124,9 +128,9 @@ $tab_map = [
 </div></div>
 
 <!-- ASSIGNMENT MODAL -->
-<div class="trn-modal-bg" id="asnModal"><div class="trn-modal" style="width:480px">
+<div class="trn-modal-bg" id="asnModal"><div class="trn-modal" style="width:480px;overflow:visible">
   <div class="trn-modal-title"><span>Assign Student</span><button class="trn-modal-close" onclick="TRN.closeAsnModal()">&times;</button></div>
-  <div class="trn-form-group trn-search-box"><label>Student</label><input type="text" id="asnStudentSearch" placeholder="Search by name..." autocomplete="off"><input type="hidden" id="asnStudentId"><div class="trn-search-results" id="asnStudentResults"></div></div>
+  <div class="trn-form-group trn-search-box"><label>Student</label><input type="text" id="asnStudentSearch" placeholder="Search by name or ID..." autocomplete="off"><input type="hidden" id="asnStudentId"><div class="trn-search-results" id="asnStudentResults"></div></div>
   <div class="trn-form-group"><label>Route *</label><select id="asnRouteId"></select></div>
   <div class="trn-form-row"><div class="trn-form-group"><label>Stop</label><select id="asnStopId"><option value="">-- Select --</option></select></div><div class="trn-form-group"><label>Type</label><select id="asnType"><option value="both">Both (Pickup & Drop)</option><option value="pickup">Pickup Only</option><option value="drop">Drop Only</option></select></div></div>
   <button class="trn-btn trn-btn-primary" onclick="TRN.saveAssignment()" style="width:100%;margin-top:8px">Assign</button>
@@ -152,7 +156,8 @@ document.addEventListener('DOMContentLoaded', function(){
     getJSON('transport/get_vehicles').done(function(r){
       if(r.status!=='success') return; vehicles=r.vehicles||[];
       var html=''; vehicles.forEach(function(v){
-        html+='<tr><td>'+escH(v.id)+'</td><td>'+escH(v.number)+'</td><td>'+escH(v.type)+'</td><td>'+v.capacity+'</td><td>'+escH(v.driver_name)+'</td><td>'+escH(v.driver_phone)+'</td><td><span class="trn-badge trn-badge-green">'+v.status+'</span></td>';
+        var stCls=v.status==='Active'?'trn-badge-green':v.status==='Maintenance'?'trn-badge-amber':'trn-badge-red';
+        html+='<tr><td>'+escH(v.id)+'</td><td>'+escH(v.number)+'</td><td>'+escH(v.type)+'</td><td>'+v.capacity+'</td><td>'+escH(v.driver_name)+'</td><td>'+escH(v.driver_phone)+'</td><td><span class="trn-badge '+stCls+'">'+v.status+'</span></td>';
         html+='<td><button class="trn-btn trn-btn-sm trn-btn-primary" onclick="TRN.editVeh(\''+v.id+'\')"><i class="fa fa-pencil"></i></button> <button class="trn-btn trn-btn-sm trn-btn-danger" onclick="TRN.delVeh(\''+v.id+'\')"><i class="fa fa-trash"></i></button></td></tr>';
       });
       $('#vehTbody').html(html||'<tr><td colspan="8" style="text-align:center;color:var(--t3)">No vehicles</td></tr>');
@@ -160,10 +165,10 @@ document.addEventListener('DOMContentLoaded', function(){
       $('#rtVehicleId').html(opts);
     });
   }
-  TRN.openVehModal=function(){$('#vhId,#vhNumber,#vhDriverName,#vhDriverPhone,#vhInsExp').val('');$('#vhCapacity').val(40);$('#vhType').val('Bus');$('#vehModalTitle').text('Add Vehicle');$('#vehModal').addClass('show')};
+  TRN.openVehModal=function(){$('#vhId,#vhNumber,#vhDriverName,#vhDriverPhone,#vhInsNo,#vhInsExp,#vhFitExp').val('');$('#vhCapacity').val(40);$('#vhType').val('Bus');$('#vhGps').val('0');$('#vhStatus').val('Active');$('#vehModalTitle').text('Add Vehicle');$('#vehModal').addClass('show')};
   TRN.closeVehModal=function(){$('#vehModal').removeClass('show')};
-  TRN.editVeh=function(id){var v=vehicles.find(function(x){return x.id===id});if(!v)return;$('#vhId').val(v.id);$('#vhNumber').val(v.number);$('#vhType').val(v.type);$('#vhCapacity').val(v.capacity);$('#vhDriverName').val(v.driver_name);$('#vhDriverPhone').val(v.driver_phone);$('#vhInsExp').val(v.insurance_expiry);$('#vehModalTitle').text('Edit Vehicle');$('#vehModal').addClass('show')};
-  TRN.saveVehicle=function(){post('transport/save_vehicle',{id:$('#vhId').val(),number:$('#vhNumber').val(),type:$('#vhType').val(),capacity:$('#vhCapacity').val(),driver_name:$('#vhDriverName').val(),driver_phone:$('#vhDriverPhone').val(),insurance_expiry:$('#vhInsExp').val()}).done(function(r){r=typeof r==='string'?JSON.parse(r):r;if(r.status==='success'){toast(r.message,true);TRN.closeVehModal();loadVehicles()}else toast(r.message,false)})};
+  TRN.editVeh=function(id){var v=vehicles.find(function(x){return x.id===id});if(!v)return;$('#vhId').val(v.id);$('#vhNumber').val(v.number);$('#vhType').val(v.type);$('#vhCapacity').val(v.capacity);$('#vhDriverName').val(v.driver_name);$('#vhDriverPhone').val(v.driver_phone);$('#vhGps').val(v.gps_enabled?'1':'0');$('#vhInsNo').val(v.insurance_no);$('#vhInsExp').val(v.insurance_expiry);$('#vhFitExp').val(v.fitness_expiry);$('#vhStatus').val(v.status||'Active');$('#vehModalTitle').text('Edit Vehicle');$('#vehModal').addClass('show')};
+  TRN.saveVehicle=function(){post('transport/save_vehicle',{id:$('#vhId').val(),number:$('#vhNumber').val(),type:$('#vhType').val(),capacity:$('#vhCapacity').val(),driver_name:$('#vhDriverName').val(),driver_phone:$('#vhDriverPhone').val(),gps_enabled:$('#vhGps').val(),insurance_no:$('#vhInsNo').val(),insurance_expiry:$('#vhInsExp').val(),fitness_expiry:$('#vhFitExp').val(),status:$('#vhStatus').val()}).done(function(r){r=typeof r==='string'?JSON.parse(r):r;if(r.status==='success'){toast(r.message,true);TRN.closeVehModal();loadVehicles()}else toast(r.message,false)})};
   TRN.delVeh=function(id){if(!confirm('Delete vehicle?'))return;post('transport/delete_vehicle',{id:id}).done(function(r){r=typeof r==='string'?JSON.parse(r):r;if(r.status==='success'){toast(r.message,true);loadVehicles()}else toast(r.message,false)})};
 
   // ── Routes ──
@@ -208,33 +213,65 @@ document.addEventListener('DOMContentLoaded', function(){
   TRN.delStop=function(id){if(!confirm('Delete stop?'))return;post('transport/delete_stop',{id:id}).done(function(r){r=typeof r==='string'?JSON.parse(r):r;if(r.status==='success'){toast(r.message,true);loadStops()}else toast(r.message,false)})};
 
   // ── Assignments ──
+  var assignments=[];
   function loadAssignments(){
     getJSON('transport/get_assignments').done(function(r){
-      if(r.status!=='success') return;
-      var html='';(r.assignments||[]).forEach(function(a){
-        html+='<tr><td>'+escH(a.student_name)+'</td><td>'+escH(a.student_class)+'</td><td>'+escH(a.route_name)+'</td><td>Rs '+a.monthly_fee+'</td><td>'+escH(a.assigned_date)+'</td>';
-        html+='<td><button class="trn-btn trn-btn-sm trn-btn-danger" onclick="TRN.delAsn(\''+a.student_id+'\')"><i class="fa fa-times"></i> Remove</button></td></tr>';
+      if(r.status!=='success') return; assignments=r.assignments||[];
+      var html=''; assignments.forEach(function(a){
+        var typeBadge=a.type==='both'?'Pickup & Drop':a.type==='pickup'?'Pickup Only':'Drop Only';
+        html+='<tr><td>'+escH(a.student_name)+'</td><td>'+escH(a.student_class)+'</td><td>'+escH(a.route_name)+'</td><td>'+escH(a.stop_name||'—')+'</td><td><span class="trn-badge trn-badge-blue">'+typeBadge+'</span></td><td>Rs '+a.monthly_fee+'</td><td>'+escH(a.assigned_date)+'</td>';
+        html+='<td><button class="trn-btn trn-btn-sm trn-btn-primary" onclick="TRN.editAsn(\''+a.student_id+'\')"><i class="fa fa-pencil"></i></button> <button class="trn-btn trn-btn-sm trn-btn-danger" onclick="TRN.delAsn(\''+a.student_id+'\')"><i class="fa fa-times"></i></button></td></tr>';
       });
-      $('#asnTbody').html(html||'<tr><td colspan="6" style="text-align:center;color:var(--t3)">No assignments</td></tr>');
+      $('#asnTbody').html(html||'<tr><td colspan="8" style="text-align:center;color:var(--t3)">No assignments</td></tr>');
     });
   }
-  TRN.openAsnModal=function(){$('#asnStudentSearch,#asnStudentId').val('');$('#asnType').val('both');$('#asnModal').addClass('show')};
-  TRN.closeAsnModal=function(){$('#asnModal').removeClass('show')};
+  TRN.openAsnModal=function(editData){
+    $('#asnStudentSearch,#asnStudentId').val('');$('#asnType').val('both');$('#asnStopId').html('<option value="">-- Select --</option>');
+    if(editData){
+      // Edit mode: pre-fill fields
+      $('#asnStudentId').val(editData.student_id);$('#asnStudentSearch').val(editData.student_name).prop('disabled',true);
+      $('#asnRouteId').val(editData.route_id);$('#asnType').val(editData.type||'both');
+      // Load stops for selected route, then select the stop
+      loadStopsForAssignment(editData.route_id,editData.stop_id);
+    } else {
+      $('#asnStudentSearch').prop('disabled',false);
+      // Load stops for first route in dropdown
+      var firstRoute=$('#asnRouteId').val();
+      if(firstRoute) loadStopsForAssignment(firstRoute);
+    }
+    $('#asnModal').addClass('show');
+  };
+  TRN.editAsn=function(sid){var a=assignments.find(function(x){return x.student_id===sid});if(!a)return;TRN.openAsnModal(a)};
+  TRN.closeAsnModal=function(){$('#asnStudentSearch').prop('disabled',false);$('#asnModal').removeClass('show')};
+
+  // Load stops for a route and optionally pre-select a stop
+  function loadStopsForAssignment(routeId,selectStopId){
+    if(!routeId)return;
+    getJSON('transport/get_stops?route_id='+routeId).done(function(r){
+      if(r.status!=='success')return;
+      var o='<option value="">-- Select --</option>';
+      (r.stops||[]).forEach(function(s){o+='<option value="'+s.id+'"'+(selectStopId===s.id?' selected':'')+'>'+escH(s.name)+'</option>'});
+      $('#asnStopId').html(o);
+    });
+  }
+
   // Student search for assignments
   var asnTimer;
   $('#asnStudentSearch').on('input',function(){clearTimeout(asnTimer);var q=$(this).val();if(q.length<2){$('#asnStudentResults').removeClass('show');return}
-    asnTimer=setTimeout(function(){getJSON('transport/search_students?q='+encodeURIComponent(q)).done(function(r){if(r.status!=='success'||!r.students.length){$('#asnStudentResults').removeClass('show');return}var h='';r.students.forEach(function(s){h+='<div class="trn-search-item" data-id="'+s.id+'" data-name="'+escH(s.name)+'">'+escH(s.name)+' <small>'+escH(s.class)+'</small></div>'});$('#asnStudentResults').html(h).addClass('show')})},300)});
+    asnTimer=setTimeout(function(){getJSON('transport/search_students?q='+encodeURIComponent(q)).done(function(r){if(r.status!=='success'||!r.students.length){$('#asnStudentResults').html('<div class="trn-search-item" style="color:var(--t3);cursor:default">No students found</div>').addClass('show');return}var h='';r.students.forEach(function(s){h+='<div class="trn-search-item" data-id="'+s.id+'" data-name="'+escH(s.name)+'">'+escH(s.name)+' <small style="opacity:.6">'+escH(s.id)+'</small> <small>'+escH(s.class)+'</small></div>'});$('#asnStudentResults').html(h).addClass('show')}).fail(function(xhr){$('#asnStudentResults').html('<div class="trn-search-item" style="color:var(--rose);cursor:default">Search failed: '+(xhr.responseJSON?xhr.responseJSON.message:xhr.statusText)+'</div>').addClass('show')})},300)});
   $(document).on('click','#asnStudentResults .trn-search-item',function(){$('#asnStudentId').val($(this).data('id'));$('#asnStudentSearch').val($(this).data('name'));$('#asnStudentResults').removeClass('show')});
   $(document).on('click',function(e){if(!$(e.target).closest('.trn-search-box').length) $('#asnStudentResults').removeClass('show')});
   // Route change → load stops for assignment
-  $('#asnRouteId').on('change',function(){var rid=$(this).val();if(!rid)return;getJSON('transport/get_stops?route_id='+rid).done(function(r){if(r.status!=='success')return;var o='<option value="">-- Select --</option>';(r.stops||[]).forEach(function(s){o+='<option value="'+s.id+'">'+escH(s.name)+'</option>'});$('#asnStopId').html(o)})});
-  TRN.saveAssignment=function(){post('transport/save_assignment',{student_id:$('#asnStudentId').val(),route_id:$('#asnRouteId').val(),stop_id:$('#asnStopId').val(),type:$('#asnType').val()}).done(function(r){r=typeof r==='string'?JSON.parse(r):r;if(r.status==='success'){toast(r.message,true);TRN.closeAsnModal();loadAssignments()}else toast(r.message,false)})};
+  $('#asnRouteId').on('change',function(){loadStopsForAssignment($(this).val())});
+  TRN.saveAssignment=function(){
+    var sid=$('#asnStudentId').val();if(!sid){toast('Please select a student.',false);return}
+    var rid=$('#asnRouteId').val();if(!rid){toast('Please select a route.',false);return}
+    post('transport/save_assignment',{student_id:sid,route_id:rid,stop_id:$('#asnStopId').val(),type:$('#asnType').val()}).done(function(r){r=typeof r==='string'?JSON.parse(r):r;if(r.status==='success'){toast(r.message,true);TRN.closeAsnModal();loadAssignments()}else toast(r.message,false)})};
   TRN.delAsn=function(sid){if(!confirm('Remove transport assignment?'))return;post('transport/delete_assignment',{student_id:sid}).done(function(r){r=typeof r==='string'?JSON.parse(r):r;if(r.status==='success'){toast(r.message,true);loadAssignments()}else toast(r.message,false)})};
 
   // Init
   loadVehicles();loadRoutes();
-  setTimeout(function(){loadStops();if(_TRN_CFG.activeTab==='assignments') loadAssignments()},500);
-  $('.trn-tab').on('click',function(){var h=$(this).attr('href');if(h.indexOf('/assignments')>-1) loadAssignments()});
+  setTimeout(function(){loadStops();loadAssignments()},500);
 })();
 });
 </script>

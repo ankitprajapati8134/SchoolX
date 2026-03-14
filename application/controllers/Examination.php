@@ -151,9 +151,9 @@ class Examination extends MY_Controller
 
         $school     = $this->school_name;
         $year       = $this->session_year;
-        $examId     = strip_tags(trim((string) $this->input->post('examId')));
-        $classKey   = strip_tags(trim((string) $this->input->post('classKey')));
-        $sectionKey = strip_tags(trim((string) $this->input->post('sectionKey')));
+        $examId     = $this->safe_path_segment(trim((string) $this->input->post('examId')), 'examId');
+        $classKey   = $this->safe_path_segment(trim((string) $this->input->post('classKey')), 'classKey');
+        $sectionKey = $this->safe_path_segment(trim((string) $this->input->post('sectionKey')), 'sectionKey');
         $topN       = max(1, min(100, (int) ($this->input->post('topN') ?: 10)));
 
         if (!$examId || !$classKey) {
@@ -273,9 +273,9 @@ class Examination extends MY_Controller
 
         $school     = $this->school_name;
         $year       = $this->session_year;
-        $examId     = strip_tags(trim((string) $this->input->post('examId')));
-        $classKey   = strip_tags(trim((string) $this->input->post('classKey')));
-        $sectionKey = strip_tags(trim((string) $this->input->post('sectionKey')));
+        $examId     = $this->safe_path_segment(trim((string) $this->input->post('examId')), 'examId');
+        $classKey   = $this->safe_path_segment(trim((string) $this->input->post('classKey')), 'classKey');
+        $sectionKey = $this->safe_path_segment(trim((string) $this->input->post('sectionKey')), 'sectionKey');
 
         if (!$examId || !$classKey) {
             $this->json_error('Exam and class are required.', 400);
@@ -428,10 +428,10 @@ class Examination extends MY_Controller
 
         $school     = $this->school_name;
         $year       = $this->session_year;
-        $examId1    = strip_tags(trim((string) $this->input->post('examId1')));
-        $examId2    = strip_tags(trim((string) $this->input->post('examId2')));
-        $classKey   = strip_tags(trim((string) $this->input->post('classKey')));
-        $sectionKey = strip_tags(trim((string) $this->input->post('sectionKey')));
+        $examId1    = $this->safe_path_segment(trim((string) $this->input->post('examId1')), 'examId1');
+        $examId2    = $this->safe_path_segment(trim((string) $this->input->post('examId2')), 'examId2');
+        $classKey   = $this->safe_path_segment(trim((string) $this->input->post('classKey')), 'classKey');
+        $sectionKey = $this->safe_path_segment(trim((string) $this->input->post('sectionKey')), 'sectionKey');
 
         if (!$examId1 || !$examId2 || !$classKey || !$sectionKey) {
             $this->json_error('All fields are required for comparison.', 400);
@@ -571,9 +571,9 @@ class Examination extends MY_Controller
 
         $school     = $this->school_name;
         $year       = $this->session_year;
-        $examId     = strip_tags(trim((string) $this->input->post('examId')));
-        $classKey   = strip_tags(trim((string) $this->input->post('classKey')));
-        $sectionKey = strip_tags(trim((string) $this->input->post('sectionKey')));
+        $examId     = $this->safe_path_segment(trim((string) $this->input->post('examId')), 'examId');
+        $classKey   = $this->safe_path_segment(trim((string) $this->input->post('classKey')), 'classKey');
+        $sectionKey = $this->safe_path_segment(trim((string) $this->input->post('sectionKey')), 'sectionKey');
 
         if (!$examId || !$classKey || !$sectionKey) {
             $this->json_error('Exam, class, and section are required.', 400);
@@ -699,8 +699,8 @@ class Examination extends MY_Controller
 
         $school     = $this->school_name;
         $year       = $this->session_year;
-        $examId     = strip_tags(trim((string) $this->input->post('examId')));
-        $classKey   = strip_tags(trim((string) $this->input->post('classKey')));
+        $examId     = $this->safe_path_segment(trim((string) $this->input->post('examId')), 'examId');
+        $classKey   = $this->safe_path_segment(trim((string) $this->input->post('classKey')), 'classKey');
         $allClasses = (bool) $this->input->post('allClasses');
 
         if (!$examId) {
@@ -777,9 +777,9 @@ class Examination extends MY_Controller
 
         $school     = $this->school_name;
         $year       = $this->session_year;
-        $examId     = strip_tags(trim((string) $this->input->post('examId')));
-        $classKey   = strip_tags(trim((string) $this->input->post('classKey')));
-        $sectionKey = strip_tags(trim((string) $this->input->post('sectionKey')));
+        $examId     = $this->safe_path_segment(trim((string) $this->input->post('examId')), 'examId');
+        $classKey   = $this->safe_path_segment(trim((string) $this->input->post('classKey')), 'classKey');
+        $sectionKey = $this->safe_path_segment(trim((string) $this->input->post('sectionKey')), 'sectionKey');
         $topN       = max(1, min(100, (int) ($this->input->post('topN') ?: 10)));
 
         if (!$examId || !$classKey) {

@@ -510,6 +510,8 @@ class Subjects extends MY_Controller
                 echo "Class name or section is missing.";
                 return;
             }
+            $className = $this->safe_path_segment($className, 'class_name');
+            $section   = $this->safe_path_segment($section, 'section');
 
             $folderName = "$className '$section'"; // Combine class name and section
 
@@ -592,6 +594,7 @@ class Subjects extends MY_Controller
         // Get the encoded class name from the URL
         $encodedClassSection = $this->input->get('class_name');
         $decodedClassSection = urldecode($encodedClassSection);
+        $decodedClassSection = $this->safe_path_segment($decodedClassSection, 'class_name');
 
         // Fetch data from Firebase
         $classPath = "Schools/$school_name/$session_year/{$decodedClassSection}";
@@ -677,6 +680,7 @@ class Subjects extends MY_Controller
 
         // Decode the class name to handle any special characters or spaces
         $class_name = urldecode($class_name);
+        $class_name = $this->safe_path_segment($class_name, 'class_name');
 
         // Construct the Firebase path using the decoded class_name
         $class_path = "Schools/$school_name/$session_year/{$class_name}";

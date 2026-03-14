@@ -379,8 +379,12 @@
         <textarea id="jobDescription" rows="3" placeholder="Role description..."></textarea>
       </div>
       <div class="hr-fg" style="grid-column:1/-1;">
-        <label>Requirements</label>
-        <textarea id="jobRequirements" rows="3" placeholder="Qualifications, experience, etc."></textarea>
+        <label>Qualifications</label>
+        <textarea id="jobQualifications" rows="2" placeholder="Required qualifications..."></textarea>
+      </div>
+      <div class="hr-fg" style="grid-column:1/-1;">
+        <label>Experience Required</label>
+        <input type="text" id="jobExperience" placeholder="e.g. 3+ years" maxlength="100">
       </div>
       <div class="hr-fg">
         <label>Salary Range Min</label>
@@ -397,8 +401,9 @@
       <div class="hr-fg">
         <label>Status</label>
         <select id="jobStatus">
-          <option value="open">Open</option>
-          <option value="closed">Closed</option>
+          <option value="Open">Open</option>
+          <option value="Closed">Closed</option>
+          <option value="On_Hold">On Hold</option>
         </select>
       </div>
     </div>
@@ -431,11 +436,12 @@
       <div class="hr-fg">
         <label>Status</label>
         <select id="applicantStatus">
-          <option value="applied">Applied</option>
-          <option value="shortlisted">Shortlisted</option>
-          <option value="interviewed">Interviewed</option>
-          <option value="selected">Selected</option>
-          <option value="rejected">Rejected</option>
+          <option value="Applied">Applied</option>
+          <option value="Shortlisted">Shortlisted</option>
+          <option value="Interview">Interview</option>
+          <option value="Selected">Selected</option>
+          <option value="Rejected">Rejected</option>
+          <option value="Joined">Joined</option>
         </select>
       </div>
       <div class="hr-fg">
@@ -493,6 +499,17 @@
       <div class="hr-fg">
         <label>Max Carry Days</label>
         <input type="number" id="ltMaxCarry" min="0" value="0">
+      </div>
+      <div class="hr-fg">
+        <label>Paid Leave</label>
+        <select id="ltPaid">
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      </div>
+      <div class="hr-fg" style="grid-column:1/-1;">
+        <label>Description</label>
+        <textarea id="ltDescription" rows="2" placeholder="Brief description..."></textarea>
       </div>
     </div>
     <div class="hr-modal-actions">
@@ -740,7 +757,7 @@
 /* Toolbar / Filter Group */
 .hr-toolbar{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end}
 .hr-fg{display:flex;flex-direction:column;gap:4px}
-.hr-fg label{font-size:11px;font-weight:600;color:var(--t3);font-family:var(--font-b);text-transform:uppercase;letter-spacing:.3px}
+.hr-fg label{font-size:12px;font-weight:600;color:var(--t3);font-family:var(--font-b);text-transform:uppercase;letter-spacing:.3px}
 .hr-fg input,.hr-fg select,.hr-fg textarea{padding:8px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--t1);font-family:var(--font-b);outline:none;transition:border-color .2s}
 .hr-fg input:focus,.hr-fg select:focus,.hr-fg textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-ring)}
 .hr-fg textarea{resize:vertical}
@@ -750,7 +767,7 @@
 .hr-table-wrap{overflow-x:auto}
 .hr-table{width:100%;border-collapse:collapse;font-size:13px;font-family:var(--font-b)}
 .hr-table thead{background:var(--bg3)}
-.hr-table th{padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border);white-space:nowrap}
+.hr-table th{padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border);white-space:nowrap}
 .hr-table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--t1);vertical-align:middle}
 .hr-table tbody tr:hover{background:var(--gold-dim)}
 .hr-table .hr-num{font-family:var(--font-m);font-size:12px;color:var(--t2)}
@@ -758,7 +775,7 @@
 .hr-empty i{margin-right:6px}
 
 /* Badges */
-.hr-badge{display:inline-block;padding:3px 10px;font-size:11px;font-weight:700;border-radius:20px;text-transform:capitalize;font-family:var(--font-b);letter-spacing:.3px}
+.hr-badge{display:inline-block;padding:3px 10px;font-size:12px;font-weight:700;border-radius:20px;text-transform:capitalize;font-family:var(--font-b);letter-spacing:.3px}
 .hr-badge-pending{background:#fef3c7;color:#92400e}
 .hr-badge-approved,.hr-badge-open{background:#d1fae5;color:#065f46}
 .hr-badge-rejected{background:#fee2e2;color:#991b1b}
@@ -841,7 +858,7 @@
 /* Responsive */
 @media(max-width:768px){
   .hr-tabs{gap:2px}
-  .hr-tab{padding:8px 10px;font-size:11px}
+  .hr-tab{padding:8px 10px;font-size:12px}
   .hr-tab i{display:none}
   .hr-dash-grid{grid-template-columns:1fr}
   .hr-modal-grid{grid-template-columns:1fr}
@@ -1212,11 +1229,11 @@ document.addEventListener('DOMContentLoaded', function(){
 
   function openJobModal(id){
     $('#jobId').val('');
-    $('#jobTitle,#jobDescription,#jobRequirements').val('');
+    $('#jobTitle,#jobDescription,#jobQualifications,#jobExperience').val('');
     $('#jobPositions').val(1);
     $('#jobSalaryMin,#jobSalaryMax').val('');
     $('#jobDeadline').val('');
-    $('#jobStatus').val('open');
+    $('#jobStatus').val('Open');
     fillDeptSelect('#jobDept');
     $('#modalJobTitle').text('New Job Posting');
     openModal('modalJob');
@@ -1230,7 +1247,8 @@ document.addEventListener('DOMContentLoaded', function(){
     $('#jobTitle').val(j.title||'');
     fillDeptSelect('#jobDept', j.department);
     $('#jobDescription').val(j.description||'');
-    $('#jobRequirements').val(j.requirements||j.qualifications||'');
+    $('#jobQualifications').val(j.qualifications||'');
+    $('#jobExperience').val(j.experience_required||'');
     $('#jobPositions').val(j.positions||1);
     $('#jobSalaryMin').val(j.salary_range_min||'');
     $('#jobSalaryMax').val(j.salary_range_max||'');
@@ -1246,7 +1264,8 @@ document.addEventListener('DOMContentLoaded', function(){
     if(!title||!dept){ toast('Title and department are required','error'); return; }
     post('hr/save_job', {
       id:$('#jobId').val(), title:title, department:dept,
-      description:$('#jobDescription').val().trim(), requirements:$('#jobRequirements').val().trim(),
+      description:$('#jobDescription').val().trim(), qualifications:$('#jobQualifications').val().trim(),
+      experience_required:$('#jobExperience').val().trim(),
       positions:$('#jobPositions').val(), salary_range_min:$('#jobSalaryMin').val(),
       salary_range_max:$('#jobSalaryMax').val(), deadline:$('#jobDeadline').val(), status:$('#jobStatus').val()
     }).then(function(r){
@@ -1338,10 +1357,11 @@ document.addEventListener('DOMContentLoaded', function(){
 
   function openLeaveTypeModal(id){
     $('#leaveTypeId').val('');
-    $('#ltName,#ltCode').val('');
+    $('#ltName,#ltCode,#ltDescription').val('');
     $('#ltDays').val(12);
     $('#ltCarry').val('no');
     $('#ltMaxCarry').val(0);
+    $('#ltPaid').val('true');
     $('#modalLeaveTypeTitle').text('Add Leave Type');
     if(id && leaveTypeCache[id]){
       var t=leaveTypeCache[id];
@@ -1351,6 +1371,8 @@ document.addEventListener('DOMContentLoaded', function(){
       $('#ltDays').val(t.days_per_year);
       $('#ltCarry').val(t.carry_forward||'no');
       $('#ltMaxCarry').val(t.max_carry||0);
+      $('#ltPaid').val(t.paid===true||t.paid==='true'?'true':'false');
+      $('#ltDescription').val(t.description||'');
       $('#modalLeaveTypeTitle').text('Edit Leave Type');
     }
     openModal('modalLeaveType');
@@ -1361,7 +1383,8 @@ document.addEventListener('DOMContentLoaded', function(){
     if(!name||!code){ toast('Name and code are required','error'); return; }
     post('hr/save_leave_type', {
       id:$('#leaveTypeId').val(), name:name, code:code,
-      days_per_year:$('#ltDays').val(), carry_forward:$('#ltCarry').val(), max_carry:$('#ltMaxCarry').val()
+      days_per_year:$('#ltDays').val(), carry_forward:$('#ltCarry').val(), max_carry:$('#ltMaxCarry').val(),
+      paid:$('#ltPaid').val(), description:$('#ltDescription').val().trim()
     }).then(function(r){
       if(r&&r.status){ toast(r.message||'Saved','success'); closeModal('modalLeaveType'); loadLeaveTypes(); }
       else toast(r.message||'Failed','error');
@@ -1386,7 +1409,7 @@ document.addEventListener('DOMContentLoaded', function(){
       var h='', i=0;
       $.each(reqs, function(k,l){
         i++;
-        var lwpTag = (parseInt(l.lwp_days||0)>0) ? ' <span class="hr-badge" style="background:var(--amber);color:#fff;font-size:10px">LWP:'+l.lwp_days+'</span>' : '';
+        var lwpTag = (parseInt(l.lwp_days||0)>0) ? ' <span class="hr-badge" style="background:var(--amber);color:#fff;font-size:12px">LWP:'+l.lwp_days+'</span>' : '';
         h+='<tr><td class="hr-num">'+i+'</td><td>'+esc(staffName(l.staff_id))+'</td><td>'+esc(l.type_name||l.leave_type)+'</td>';
         h+='<td>'+esc(l.from_date||l.start_date)+'</td><td>'+esc(l.to_date||l.end_date)+'</td><td class="hr-num">'+(l.days||'-')+lwpTag+'</td>';
         h+='<td>'+esc(l.reason||'-')+'</td><td>'+badgeHtml(l.status)+'</td>';

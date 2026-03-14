@@ -164,7 +164,8 @@ class Admission_crm extends MY_Controller
 
     public function save_inquiry()
     {
-        $id             = $this->input->post('id');
+        $id             = trim($this->input->post('id') ?? '');
+        if ($id !== '') $id = $this->safe_path_segment($id, 'id');
         $student_name   = trim($this->input->post('student_name') ?? '');
         $parent_name    = trim($this->input->post('parent_name') ?? '');
         $phone          = trim($this->input->post('phone') ?? '');
@@ -240,8 +241,9 @@ class Admission_crm extends MY_Controller
 
     public function delete_inquiry()
     {
-        $id = $this->input->post('id');
+        $id = trim($this->input->post('id') ?? '');
         if (!$id) return $this->json_error('Inquiry ID required');
+        $id = $this->safe_path_segment($id, 'id');
 
         $this->firebase->delete("{$this->crm_base}/Inquiries", $id);
         return $this->json_success();
@@ -249,8 +251,9 @@ class Admission_crm extends MY_Controller
 
     public function convert_to_application()
     {
-        $inquiry_id = $this->input->post('inquiry_id');
+        $inquiry_id = trim($this->input->post('inquiry_id') ?? '');
         if (!$inquiry_id) return $this->json_error('Inquiry ID required');
+        $inquiry_id = $this->safe_path_segment($inquiry_id, 'inquiry_id');
 
         $inquiry = $this->firebase->get("{$this->crm_base}/Inquiries/{$inquiry_id}");
         if (!is_array($inquiry)) return $this->json_error('Inquiry not found');
@@ -343,7 +346,8 @@ class Admission_crm extends MY_Controller
 
     public function save_application()
     {
-        $id = $this->input->post('id');
+        $id = trim($this->input->post('id') ?? '');
+        if ($id !== '') $id = $this->safe_path_segment($id, 'id');
         $now = date('Y-m-d H:i:s');
 
         $fields = [
@@ -422,8 +426,9 @@ class Admission_crm extends MY_Controller
 
     public function get_application()
     {
-        $id = $this->input->get('id');
+        $id = trim($this->input->get('id') ?? '');
         if (!$id) return $this->json_error('Application ID required');
+        $id = $this->safe_path_segment($id, 'id');
 
         $app = $this->firebase->get("{$this->crm_base}/Applications/{$id}");
         if (!is_array($app)) return $this->json_error('Application not found');
@@ -434,8 +439,9 @@ class Admission_crm extends MY_Controller
 
     public function delete_application()
     {
-        $id = $this->input->post('id');
+        $id = trim($this->input->post('id') ?? '');
         if (!$id) return $this->json_error('Application ID required');
+        $id = $this->safe_path_segment($id, 'id');
 
         $this->firebase->delete("{$this->crm_base}/Applications", $id);
         return $this->json_success();
@@ -495,9 +501,10 @@ class Admission_crm extends MY_Controller
 
     public function update_stage()
     {
-        $id    = $this->input->post('id');
+        $id    = trim($this->input->post('id') ?? '');
         $stage = $this->input->post('stage');
         if (!$id || !$stage) return $this->json_error('Application ID and stage required');
+        $id = $this->safe_path_segment($id, 'id');
 
         // Validate stage against allowed stages
         $settings = $this->firebase->get("{$this->crm_base}/Settings") ?? [];
@@ -534,9 +541,10 @@ class Admission_crm extends MY_Controller
 
     public function approve_application()
     {
-        $id      = $this->input->post('id');
+        $id      = trim($this->input->post('id') ?? '');
         $remarks = trim($this->input->post('remarks') ?? '');
         if (!$id) return $this->json_error('Application ID required');
+        $id = $this->safe_path_segment($id, 'id');
 
         $app = $this->firebase->get("{$this->crm_base}/Applications/{$id}");
         if (!is_array($app)) return $this->json_error('Application not found');
@@ -572,9 +580,10 @@ class Admission_crm extends MY_Controller
 
     public function reject_application()
     {
-        $id     = $this->input->post('id');
+        $id     = trim($this->input->post('id') ?? '');
         $reason = trim($this->input->post('reason') ?? '');
         if (!$id) return $this->json_error('Application ID required');
+        $id = $this->safe_path_segment($id, 'id');
 
         $app = $this->firebase->get("{$this->crm_base}/Applications/{$id}");
         if (!is_array($app)) return $this->json_error('Application not found');
@@ -610,8 +619,9 @@ class Admission_crm extends MY_Controller
 
     public function enroll_student()
     {
-        $id = $this->input->post('id');
+        $id = trim($this->input->post('id') ?? '');
         if (!$id) return $this->json_error('Application ID required');
+        $id = $this->safe_path_segment($id, 'id');
 
         $app = $this->firebase->get("{$this->crm_base}/Applications/{$id}");
         if (!is_array($app)) return $this->json_error('Application not found');
@@ -773,11 +783,12 @@ class Admission_crm extends MY_Controller
 
     public function add_to_waitlist()
     {
-        $app_id = $this->input->post('application_id');
+        $app_id = trim($this->input->post('application_id') ?? '');
         $reason = trim($this->input->post('reason') ?? '');
         $priority = (int)($this->input->post('priority') ?? 99);
 
         if (!$app_id) return $this->json_error('Application ID required');
+        $app_id = $this->safe_path_segment($app_id, 'application_id');
 
         $app = $this->firebase->get("{$this->crm_base}/Applications/{$app_id}");
         if (!is_array($app)) return $this->json_error('Application not found');
@@ -825,8 +836,9 @@ class Admission_crm extends MY_Controller
 
     public function remove_from_waitlist()
     {
-        $id = $this->input->post('id');
+        $id = trim($this->input->post('id') ?? '');
         if (!$id) return $this->json_error('Waitlist ID required');
+        $id = $this->safe_path_segment($id, 'id');
 
         $entry = $this->firebase->get("{$this->crm_base}/Waitlist/{$id}");
         if (is_array($entry) && !empty($entry['application_id'])) {
@@ -844,8 +856,9 @@ class Admission_crm extends MY_Controller
 
     public function promote_from_waitlist()
     {
-        $id = $this->input->post('id');
+        $id = trim($this->input->post('id') ?? '');
         if (!$id) return $this->json_error('Waitlist ID required');
+        $id = $this->safe_path_segment($id, 'id');
 
         $entry = $this->firebase->get("{$this->crm_base}/Waitlist/{$id}");
         if (!is_array($entry)) return $this->json_error('Waitlist entry not found');

@@ -28,7 +28,7 @@ class Inventory extends MY_Controller
         parent::__construct();
         $this->load->library('operations_accounting');
         $this->operations_accounting->init(
-            $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this
+            $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this, $this->parent_db_key
         );
     }
 
@@ -285,6 +285,7 @@ class Inventory extends MY_Controller
         $this->_require_manage();
         $itemId      = $this->safe_path_segment(trim($this->input->post('item_id') ?? ''), 'item_id');
         $vendorId    = trim($this->input->post('vendor_id') ?? '');
+        if ($vendorId !== '') $vendorId = $this->safe_path_segment($vendorId, 'vendor_id');
         $qty         = max(1, (int) ($this->input->post('qty') ?? 1));
         $unitPrice   = max(0, (float) ($this->input->post('unit_price') ?? 0));
         $date        = trim($this->input->post('date') ?? date('Y-m-d'));

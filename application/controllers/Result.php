@@ -42,6 +42,19 @@ class Result extends MY_Controller
         $this->exam_engine->init($this->firebase, $this->school_name, $this->session_year);
     }
 
+    /**
+     * Sanitize common Result path segments from user input.
+     * Applies safe_path_segment() to each non-empty value.
+     */
+    private function _safe_result_params(array $params): array
+    {
+        $out = [];
+        foreach ($params as $key => $val) {
+            $out[$key] = ($val !== '') ? $this->safe_path_segment($val, $key) : '';
+        }
+        return $out;
+    }
+
     // ══════════════════════════════════════════════════════════════════
     // PAGE VIEWS
     // ══════════════════════════════════════════════════════════════════
@@ -518,6 +531,7 @@ class Result extends MY_Controller
         if (!$examId || !$classKey || !$sectionKey || !$subject) {
             $this->json_error('Missing required fields.', 400);
         }
+        extract($this->_safe_result_params(compact('examId', 'classKey', 'sectionKey', 'subject')));
         if (strpos($classKey, 'Class ') !== 0) {
             $this->json_error('Invalid class key.', 400);
         }
@@ -574,6 +588,7 @@ class Result extends MY_Controller
             echo json_encode(['template' => null]);
             return;
         }
+        extract($this->_safe_result_params(compact('examId', 'classKey', 'sectionKey', 'subject')));
 
         $path     = "Schools/{$school}/{$year}/Results/Templates/{$examId}/{$classKey}/{$sectionKey}/{$subject}";
         $template = $this->firebase->get($path);
@@ -610,15 +625,16 @@ class Result extends MY_Controller
         $sectionKey = trim((string) ($payload['sectionKey'] ?? ''));
         $subject    = trim((string) ($payload['subject']    ?? ''));
 
+        if (!$examId || !$classKey || !$sectionKey || !$subject) {
+            $this->json_error('Missing required fields.', 400);
+        }
+        extract($this->_safe_result_params(compact('examId', 'classKey', 'sectionKey', 'subject')));
+
         // RBAC: Teachers can only save marks for their assigned classes/subjects
         if (!$this->_teacher_can_access($classKey, $sectionKey, $subject)) {
             $this->json_error('You are not assigned to this class/subject.', 403);
         }
         $students   = $payload['students'] ?? [];
-
-        if (!$examId || !$classKey || !$sectionKey || !$subject) {
-            $this->json_error('Missing required fields.', 400);
-        }
         if (!is_array($students)) {
             $this->json_error('Students data must be an array.', 400);
         }
@@ -631,6 +647,7 @@ class Result extends MY_Controller
         foreach ($students as $stu) {
             $userId = trim((string) ($stu['userId'] ?? ''));
             if (!$userId) continue;
+            $userId = $this->safe_path_segment($userId, 'userId');
 
             $absent   = !empty($stu['absent']);
             $rawMarks = is_array($stu['marks'] ?? null) ? $stu['marks'] : [];
@@ -677,6 +694,7 @@ class Result extends MY_Controller
             echo json_encode(['marks' => (object)[]]);
             return;
         }
+        extract($this->_safe_result_params(compact('examId', 'classKey', 'sectionKey', 'subject')));
 
         $path  = "Schools/{$school}/{$year}/Results/Marks/{$examId}/{$classKey}/{$sectionKey}/{$subject}";
         $marks = $this->firebase->get($path) ?? [];
@@ -701,6 +719,7 @@ class Result extends MY_Controller
         if (!$examId || !$classKey || !$sectionKey) {
             $this->json_error('Missing required fields.', 400);
         }
+        extract($this->_safe_result_params(compact('examId', 'classKey', 'sectionKey')));
 
         $exam = $this->firebase->get("Schools/{$school}/{$year}/Exams/{$examId}");
         if (!$exam || !is_array($exam)) {
@@ -864,6 +883,7 @@ class Result extends MY_Controller
         if (!$classKey || !$sectionKey) {
             $this->json_error('Missing classKey or sectionKey.', 400);
         }
+        extract($this->_safe_result_params(compact('classKey', 'sectionKey')));
 
         // Load config
         $config = $this->firebase->get("Schools/{$school}/{$year}/Results/CumulativeConfig") ?? [];
@@ -989,6 +1009,7 @@ class Result extends MY_Controller
             echo json_encode(['students' => [], 'subjects' => []]);
             return;
         }
+        extract($this->_safe_result_params(compact('classKey', 'sectionKey')));
 
         $cumulative = $this->firebase->get(
             "Schools/{$school}/{$year}/Results/Cumulative/{$classKey}/{$sectionKey}"
@@ -1050,6 +1071,7 @@ class Result extends MY_Controller
             echo json_encode(['students' => [], 'subjects' => []]);
             return;
         }
+        extract($this->_safe_result_params(compact('examId', 'classKey', 'sectionKey')));
 
         $computed = $this->firebase->get(
             "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}"
@@ -1113,6 +1135,7 @@ class Result extends MY_Controller
             echo json_encode(['status' => null]);
             return;
         }
+        extract($this->_safe_result_params(compact('examId', 'classKey', 'sectionKey')));
 
         // Templates
         $templatesNode = $this->firebase->shallow_get(

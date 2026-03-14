@@ -512,11 +512,14 @@ class Schools extends MY_Controller
     {
         header('Content-Type: application/json');
         $school_name = $this->school_name;
-        $eventId     = $this->input->get('event_id');
+        $eventId     = trim($this->input->get('event_id') ?? '');
 
         if (empty($eventId)) {
             echo json_encode(['images' => [], 'videos' => []]);
             return;
+        }
+        if ($eventId !== '__legacy__') {
+            $eventId = $this->safe_path_segment($eventId, 'event_id');
         }
 
         $images = [];
@@ -581,8 +584,11 @@ class Schools extends MY_Controller
 
         $school_name = $this->school_name;
         $fileUrl     = $this->input->get('url');
-        $eventId     = $this->input->get('event_id');
-        $mediaId     = $this->input->get('media_id');
+        $eventId     = trim($this->input->get('event_id') ?? '');
+        $mediaId     = trim($this->input->get('media_id') ?? '');
+
+        if ($eventId !== '') $eventId = $this->safe_path_segment($eventId, 'event_id');
+        if ($mediaId !== '') $mediaId = $this->safe_path_segment($mediaId, 'media_id');
 
         if (!$fileUrl) {
             echo json_encode(['status' => 'error', 'message' => 'File URL is required']);
@@ -637,12 +643,13 @@ class Schools extends MY_Controller
         header('Content-Type: application/json');
 
         $school_name = $this->school_name;
-        $eventId     = $this->input->post('event_id');
+        $eventId     = trim($this->input->post('event_id') ?? '');
 
         if (empty($eventId)) {
             echo json_encode(['status' => 'error', 'message' => 'Event ID is required']);
             return;
         }
+        $eventId = $this->safe_path_segment($eventId, 'event_id');
         if (!isset($_FILES['file'])) {
             echo json_encode(['status' => 'error', 'message' => 'No file uploaded']);
             return;
@@ -733,13 +740,14 @@ class Schools extends MY_Controller
     {
         header('Content-Type: application/json');
         $school_name = $this->school_name;
-        $eventId     = $this->input->post('event_id');
+        $eventId     = trim($this->input->post('event_id') ?? '');
         $coverUrl    = $this->input->post('cover_url');
 
         if (empty($eventId) || empty($coverUrl)) {
             echo json_encode(['status' => 'error', 'message' => 'Missing event ID or cover URL']);
             return;
         }
+        $eventId = $this->safe_path_segment($eventId, 'event_id');
 
         $this->firebase->update("Schools/$school_name/Events/List/$eventId", [
             'cover_image' => $coverUrl,

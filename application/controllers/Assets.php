@@ -28,7 +28,7 @@ class Assets extends MY_Controller
         parent::__construct();
         $this->load->library('operations_accounting');
         $this->operations_accounting->init(
-            $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this
+            $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this, $this->parent_db_key
         );
     }
 
@@ -182,10 +182,13 @@ class Assets extends MY_Controller
         if (!in_array($condition, ['New', 'Good', 'Fair', 'Poor', 'Disposed'], true)) $condition = 'Good';
 
         $isNew = ($id === '');
+        $existingAsset = null;
         if ($isNew) {
             $id = $this->operations_accounting->next_id($this->_counters('Asset'), 'AST');
         } else {
             $id = $this->safe_path_segment($id, 'asset_id');
+            $existingAsset = $this->firebase->get($this->_assets($id));
+            if (!is_array($existingAsset)) $this->json_error('Asset not found.');
         }
 
         // Get category info for depreciation
@@ -203,8 +206,8 @@ class Assets extends MY_Controller
             'category_id'       => $categoryId,
             'purchase_date'     => $purchaseDate,
             'purchase_cost'     => $purchaseCost,
-            'current_value'     => $isNew ? $purchaseCost : (float) ($this->input->post('current_value') ?? $purchaseCost),
-            'accumulated_dep'   => $isNew ? 0 : (float) ($this->input->post('accumulated_dep') ?? 0),
+            'current_value'     => $isNew ? $purchaseCost : (float) ($existingAsset['current_value'] ?? $purchaseCost),
+            'accumulated_dep'   => $isNew ? 0 : (float) ($existingAsset['accumulated_dep'] ?? 0),
             'depreciation_rate' => $depRate,
             'depreciation_method' => $depMethod,
             'serial_no'         => $serialNo,

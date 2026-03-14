@@ -26,7 +26,7 @@ class Transport extends MY_Controller
         parent::__construct();
         $this->load->library('operations_accounting');
         $this->operations_accounting->init(
-            $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this
+            $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this, $this->parent_db_key
         );
     }
 
@@ -118,7 +118,15 @@ class Transport extends MY_Controller
             $id = $this->operations_accounting->next_id($this->_counters('Vehicle'), 'VH');
         } else {
             $id = $this->safe_path_segment($id, 'vehicle_id');
+            // Preserve staff_id from Firebase (not in form — future staff integration)
+            if ($staffId === '') {
+                $existing = $this->firebase->get($this->_vehicles($id));
+                $staffId = is_array($existing) ? ($existing['staff_id'] ?? '') : '';
+            }
         }
+
+        $status = trim($this->input->post('status') ?? 'Active');
+        if (!in_array($status, ['Active', 'Inactive', 'Maintenance'], true)) $status = 'Active';
 
         $data = [
             'number'           => $number,
@@ -131,7 +139,7 @@ class Transport extends MY_Controller
             'insurance_expiry' => $insuranceExp,
             'fitness_expiry'   => $fitnessExp,
             'gps_enabled'      => $gpsEnabled,
-            'status'           => 'Active',
+            'status'           => $status,
             'updated_at'       => date('c'),
         ];
         if ($isNew) $data['created_at'] = date('c');
@@ -326,25 +334,44 @@ class Transport extends MY_Controller
         $stopId    = trim($this->input->post('stop_id') ?? '');
         $type      = trim($this->input->post('type') ?? 'both');
 
+        if ($studentId === '') $this->json_error('Please select a student.');
+        if ($routeId === '') $this->json_error('Please select a route.');
+        if ($stopId !== '') $stopId = $this->safe_path_segment($stopId, 'stop_id');
         if (!in_array($type, ['pickup', 'drop', 'both'], true)) $type = 'both';
 
-        // Verify student
-        $student = $this->firebase->get("Users/Parents/{$this->school_name}/{$studentId}");
+        // Verify student (use parent_db_key — legacy schools key by school_code, not school_id)
+        $student = $this->firebase->get("Users/Parents/{$this->parent_db_key}/{$studentId}");
         if (!is_array($student)) $this->json_error('Student not found.');
 
         // Verify route
         $route = $this->firebase->get($this->_routes($routeId));
         if (!is_array($route)) $this->json_error('Route not found.');
 
+        // Verify stop belongs to selected route (if provided)
+        $stopName = '';
+        if ($stopId !== '') {
+            $stop = $this->firebase->get($this->_stops($stopId));
+            if (!is_array($stop)) $this->json_error('Stop not found.');
+            if (($stop['route_id'] ?? '') !== $routeId) {
+                $this->json_error('Selected stop does not belong to the chosen route.');
+            }
+            $stopName = $stop['name'] ?? '';
+        }
+
+        // Check if student already has an assignment (warn on overwrite)
+        $existing = $this->firebase->get($this->_assignments($studentId));
+        $isUpdate = is_array($existing);
+
         $data = [
             'route_id'      => $routeId,
             'route_name'    => $route['name'] ?? '',
             'stop_id'       => $stopId,
+            'stop_name'     => $stopName,
             'type'          => $type,
             'student_name'  => $student['Name'] ?? $studentId,
-            'student_class' => ($student['Class'] ?? '') . ' ' . ($student['Section'] ?? ''),
+            'student_class' => trim(($student['Class'] ?? '') . ' ' . ($student['Section'] ?? '')),
             'monthly_fee'   => (float) ($route['monthly_fee'] ?? 0),
-            'assigned_date' => date('Y-m-d'),
+            'assigned_date' => $isUpdate ? ($existing['assigned_date'] ?? date('Y-m-d')) : date('Y-m-d'),
             'assigned_by'   => $this->admin_name,
             'status'        => 'Active',
             'updated_at'    => date('c'),
@@ -352,8 +379,8 @@ class Transport extends MY_Controller
 
         $this->firebase->set($this->_assignments($studentId), $data);
 
-        // Write transport fee component for fee collection integration
-        $feePath = "Schools/{$this->school_name}/Fees/Student_Fee_Items/{$studentId}/Transport";
+        // Write transport fee component for fee collection integration (session-scoped)
+        $feePath = "Schools/{$this->school_name}/{$this->session_year}/Fees/Student_Fee_Items/{$studentId}/Transport";
         $this->firebase->set($feePath, [
             'route_id'       => $routeId,
             'route_name'     => $route['name'] ?? '',
@@ -363,7 +390,8 @@ class Transport extends MY_Controller
             'updated_at'     => date('c'),
         ]);
 
-        $this->json_success(['message' => "Student assigned to route {$route['name']}."]);
+        $action = $isUpdate ? 'updated' : 'assigned';
+        $this->json_success(['message' => "Student {$action} to route {$route['name']}."]);
     }
 
     public function delete_assignment()
@@ -371,11 +399,16 @@ class Transport extends MY_Controller
         $this->_require_manage();
         $studentId = $this->safe_path_segment(trim($this->input->post('student_id') ?? ''), 'student_id');
 
-        // Disable transport fee component
-        $feePath = "Schools/{$this->school_name}/Fees/Student_Fee_Items/{$studentId}/Transport";
-        $existing = $this->firebase->get($feePath);
-        if (is_array($existing)) {
+        // Verify assignment exists
+        $existing = $this->firebase->get($this->_assignments($studentId));
+        if (!is_array($existing)) $this->json_error('No assignment found for this student.');
+
+        // Disable transport fee component (session-scoped)
+        $feePath = "Schools/{$this->school_name}/{$this->session_year}/Fees/Student_Fee_Items/{$studentId}/Transport";
+        $feeData = $this->firebase->get($feePath);
+        if (is_array($feeData)) {
             $this->firebase->update($feePath, [
+                'monthly_fee' => 0,
                 'status'      => 'inactive',
                 'removed_at'  => date('c'),
                 'updated_at'  => date('c'),
@@ -390,9 +423,12 @@ class Transport extends MY_Controller
     public function search_students()
     {
         $this->_require_view();
-        $results = $this->operations_accounting->search_students(
-            $this->input->get('q') ?? ''
-        );
+        $q = trim($this->input->get('q') ?? '');
+        if (strlen($q) < 2) {
+            $this->json_success(['students' => []]);
+            return;
+        }
+        $results = $this->operations_accounting->search_students($q);
         // Merge class+section for Transport's expected format
         foreach ($results as &$r) {
             $r['class'] = trim(($r['class'] ?? '') . ' ' . ($r['section'] ?? ''));

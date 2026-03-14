@@ -30,7 +30,7 @@ class Library extends MY_Controller
         parent::__construct();
         $this->load->library('operations_accounting');
         $this->operations_accounting->init(
-            $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this
+            $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this, $this->parent_db_key
         );
     }
 
@@ -254,8 +254,8 @@ class Library extends MY_Controller
         if (!is_array($book)) $this->json_error('Book not found.');
         if ((int) ($book['available'] ?? 0) < 1) $this->json_error('No copies available for issue.');
 
-        // Verify student exists
-        $student = $this->firebase->get("Users/Parents/{$this->school_name}/{$studentId}");
+        // Verify student (use parent_db_key — legacy schools key by school_code, not school_id)
+        $student = $this->firebase->get("Users/Parents/{$this->parent_db_key}/{$studentId}");
         if (!is_array($student)) $this->json_error('Student not found.');
 
         // Check if student already has this book

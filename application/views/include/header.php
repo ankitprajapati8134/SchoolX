@@ -731,13 +731,7 @@
             <li class="g-sec">Academics</li>
             <?php endif; ?>
 
-            <?php if (isset($school_features) && in_array('Class Management', $school_features)): ?>
-            <li class="sidebar-single"><a href="<?= base_url('classes/manage_classes') ?>"><i class="fa fa-th-list"></i><span>Classes</span></a></li>
-            <?php endif; ?>
-
-            <?php if (isset($school_features) && in_array('Subject Management', $school_features)): ?>
-            <li class="sidebar-single"><a href="<?= base_url('subjects/manage_subjects') ?>"><i class="fa fa-book"></i><span>Subjects</span></a></li>
-            <?php endif; ?>
+           
 
             <?php if (isset($school_features) && in_array('Class Management', $school_features)): ?>
             <li class="sidebar-single"><a href="<?= base_url('academic') ?>"><i class="fa fa-university"></i><span>Academic Planner</span></a></li>

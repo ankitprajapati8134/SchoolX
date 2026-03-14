@@ -28,6 +28,9 @@ class Operations_accounting
     /** @var string School key (SCH_XXXXXX) */
     private $school_name;
 
+    /** @var string Key for Users/Parents/ path — school_code for legacy, school_id for SCH_ schools */
+    private $parent_db_key;
+
     /** @var string Session year (YYYY-YY) */
     private $session_year;
 
@@ -40,19 +43,21 @@ class Operations_accounting
     /**
      * Initialize with controller context.
      *
-     * @param object $firebase     Firebase library instance
-     * @param string $school_name  School key (SCH_XXXXXX)
-     * @param string $session_year Session year (e.g. 2025-26)
-     * @param string $admin_id     Current admin ID
-     * @param object $CI           Controller instance (must have json_error())
+     * @param object $firebase       Firebase library instance
+     * @param string $school_name    School key (SCH_XXXXXX)
+     * @param string $session_year   Session year (e.g. 2025-26)
+     * @param string $admin_id       Current admin ID
+     * @param object $CI             Controller instance (must have json_error())
+     * @param string $parent_db_key  Key for Users/Parents/ path (defaults to school_name)
      */
-    public function init($firebase, string $school_name, string $session_year, string $admin_id, $CI): void
+    public function init($firebase, string $school_name, string $session_year, string $admin_id, $CI, string $parent_db_key = ''): void
     {
-        $this->firebase     = $firebase;
-        $this->school_name  = $school_name;
-        $this->session_year = $session_year;
-        $this->admin_id     = $admin_id;
-        $this->CI           = $CI;
+        $this->firebase       = $firebase;
+        $this->school_name    = $school_name;
+        $this->parent_db_key  = $parent_db_key !== '' ? $parent_db_key : $school_name;
+        $this->session_year   = $session_year;
+        $this->admin_id       = $admin_id;
+        $this->CI             = $CI;
     }
 
     // ====================================================================
@@ -98,7 +103,8 @@ class Operations_accounting
             $this->CI->json_error('Enter at least 2 characters.');
         }
 
-        $cacheKey = 'ops_students_' . md5($this->school_name);
+        $dbKey = $this->parent_db_key;
+        $cacheKey = 'ops_students_' . md5($dbKey);
 
         // Try file cache first (5-minute TTL)
         $CI =& get_instance();
@@ -107,7 +113,7 @@ class Operations_accounting
 
         if ($index === false) {
             // Cache miss — load from Firebase and build lightweight index
-            $students = $this->firebase->get("Users/Parents/{$this->school_name}");
+            $students = $this->firebase->get("Users/Parents/{$dbKey}");
             $index = [];
             if (is_array($students)) {
                 foreach ($students as $sid => $s) {

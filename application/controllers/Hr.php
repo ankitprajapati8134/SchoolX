@@ -778,12 +778,19 @@ class Hr extends MY_Controller
 
         $id            = trim($this->input->post('id') ?? '');
         $jobId         = trim($this->input->post('job_id') ?? '');
+        if ($id !== '') {
+            $id = $this->safe_path_segment($id, 'id');
+        }
+        $jobId         = $this->safe_path_segment($jobId, 'job_id');
         $name          = trim($this->input->post('name') ?? '');
         $email         = trim($this->input->post('email') ?? '');
         $phone         = trim($this->input->post('phone') ?? '');
         $qualification = trim($this->input->post('qualification') ?? '');
         $experience    = trim($this->input->post('experience') ?? '');
         $resumeNotes   = trim($this->input->post('resume_notes') ?? '');
+        $interviewDate = trim($this->input->post('interview_date') ?? '');
+        $interviewNotes= trim($this->input->post('interview_notes') ?? '');
+        $rating        = (int) ($this->input->post('rating') ?? 0);
         $status        = trim($this->input->post('status') ?? 'Applied');
         $notes         = trim($this->input->post('notes') ?? '');
 
@@ -794,6 +801,9 @@ class Hr extends MY_Controller
             $this->json_error('Job posting is required.');
         }
 
+        // Normalise status to title-case
+        $status = ucfirst(strtolower($status));
+        if ($status === 'Interviewed') $status = 'Interview';
         $validStatuses = ['Applied', 'Shortlisted', 'Interview', 'Selected', 'Rejected', 'Joined'];
         if (!in_array($status, $validStatuses, true)) {
             $status = 'Applied';
@@ -812,21 +822,32 @@ class Hr extends MY_Controller
             $id = $this->_next_id('APP', 'Applicant');
         }
 
+        // Preserve applied_date on edit
+        $existingApplicant = null;
+        if (!$isNew) {
+            $existingApplicant = $this->firebase->get($this->_applicants($id));
+        }
+
         $data = [
-            'job_id'        => $jobId,
-            'name'          => $name,
-            'email'         => $email,
-            'phone'         => $phone,
-            'qualification' => $qualification,
-            'experience'    => $experience,
-            'resume_notes'  => $resumeNotes,
-            'status'        => $status,
-            'notes'         => $notes,
-            'updated_at'    => $now,
-            'updated_by'    => $this->admin_name,
+            'job_id'          => $jobId,
+            'name'            => $name,
+            'email'           => $email,
+            'phone'           => $phone,
+            'qualification'   => $qualification,
+            'experience'      => $experience,
+            'resume_notes'    => $resumeNotes,
+            'interview_date'  => $interviewDate,
+            'interview_notes' => $interviewNotes,
+            'rating'          => $rating,
+            'status'          => $status,
+            'notes'           => $notes,
+            'updated_at'      => $now,
+            'updated_by'      => $this->admin_name,
         ];
         if ($isNew) {
             $data['applied_date'] = date('Y-m-d');
+        } else {
+            $data['applied_date'] = $existingApplicant['applied_date'] ?? date('Y-m-d');
         }
 
         $this->firebase->set($this->_applicants($id), $data);
@@ -919,8 +940,9 @@ class Hr extends MY_Controller
 
         $id           = trim($this->input->post('id') ?? '');
         $name         = trim($this->input->post('name') ?? '');
+        $code         = strtoupper(trim($this->input->post('code') ?? ''));
         $daysPerYear  = (int) ($this->input->post('days_per_year') ?? 0);
-        $carryForward = ($this->input->post('carry_forward') === 'true' || $this->input->post('carry_forward') === '1');
+        $carryForward = ($this->input->post('carry_forward') === 'true' || $this->input->post('carry_forward') === '1' || $this->input->post('carry_forward') === 'yes');
         $maxCarry     = (int) ($this->input->post('max_carry') ?? 0);
         $paid         = ($this->input->post('paid') === 'true' || $this->input->post('paid') === '1');
         $description  = trim($this->input->post('description') ?? '');
@@ -955,6 +977,7 @@ class Hr extends MY_Controller
 
         $data = [
             'name'          => $name,
+            'code'          => $code,
             'days_per_year' => $daysPerYear,
             'carry_forward' => $carryForward,
             'max_carry'     => $maxCarry,
@@ -1023,6 +1046,7 @@ class Hr extends MY_Controller
         }
 
         if ($staffId !== '') {
+            $staffId = $this->safe_path_segment($staffId, 'staff_id');
             // Single staff balances
             $balances = $this->firebase->get($this->_leave_bal($year, $staffId));
             $this->json_success([
@@ -1429,6 +1453,7 @@ class Hr extends MY_Controller
         $staffId = trim($this->input->get('staff_id') ?? '');
 
         if ($staffId !== '') {
+            $staffId = $this->safe_path_segment($staffId, 'staff_id');
             $structure = $this->firebase->get($this->_salary($staffId));
             $this->json_success([
                 'salary_structure' => is_array($structure) ? $structure : null,
@@ -1469,7 +1494,7 @@ class Hr extends MY_Controller
         $da               = (float) ($this->input->post('da') ?? 0);
         $ta               = (float) ($this->input->post('ta') ?? 0);
         $medical          = (float) ($this->input->post('medical') ?? 0);
-        $otherAllowances  = (float) ($this->input->post('other_allowances') ?? 0);
+        $otherAllowances  = (float) ($this->input->post('other_allowances') ?? $this->input->post('special_allowance') ?? 0);
         $pfEmployee       = (float) ($this->input->post('pf_employee') ?? 0);
         $pfEmployer       = (float) ($this->input->post('pf_employer') ?? 0);
         $esiEmployee      = (float) ($this->input->post('esi_employee') ?? 0);
@@ -1979,6 +2004,7 @@ class Hr extends MY_Controller
         if ($runId === '') {
             $this->json_error('Payroll run ID is required.');
         }
+        $runId = $this->safe_path_segment($runId, 'run_id');
 
         // Verify run exists
         $run = $this->firebase->get($this->_payroll_runs($runId));
@@ -2129,6 +2155,8 @@ class Hr extends MY_Controller
         if ($runId === '' || $staffId === '') {
             $this->json_error('Both run_id and staff_id are required.');
         }
+        $runId   = $this->safe_path_segment($runId, 'run_id');
+        $staffId = $this->safe_path_segment($staffId, 'staff_id');
 
         // Get run info
         $run = $this->firebase->get($this->_payroll_runs($runId));
@@ -2250,12 +2278,16 @@ class Hr extends MY_Controller
         $id               = trim($this->input->post('id') ?? '');
         $staffId          = $this->safe_path_segment(trim($this->input->post('staff_id') ?? ''), 'staff_id');
         $period           = trim($this->input->post('period') ?? '');
-        $teachingQuality  = (float) ($this->input->post('teaching_quality') ?? 0);
+        // Accept both field-name conventions (view sends teaching/behavior/innovation)
+        $teachingQuality  = (float) ($this->input->post('teaching') ?? $this->input->post('teaching_quality') ?? 0);
         $punctuality      = (float) ($this->input->post('punctuality') ?? 0);
-        $studentFeedback  = (float) ($this->input->post('student_feedback') ?? 0);
-        $initiative       = (float) ($this->input->post('initiative') ?? 0);
+        $studentFeedback  = (float) ($this->input->post('behavior') ?? $this->input->post('student_feedback') ?? 0);
+        $initiative       = (float) ($this->input->post('innovation') ?? $this->input->post('initiative') ?? 0);
         $teamwork         = (float) ($this->input->post('teamwork') ?? 0);
         $overallRating    = (float) ($this->input->post('overall_rating') ?? 0);
+        $strengths        = trim($this->input->post('strengths') ?? '');
+        $areasImprovement = trim($this->input->post('areas_of_improvement') ?? '');
+        $recommendation   = trim($this->input->post('recommendation') ?? 'none');
         $comments         = trim($this->input->post('comments') ?? '');
         $goals            = trim($this->input->post('goals') ?? '');
 
@@ -2295,21 +2327,24 @@ class Hr extends MY_Controller
         }
 
         $data = [
-            'staff_id'         => $staffId,
-            'staff_name'       => $staffName,
-            'period'           => $period,
-            'reviewer_id'      => $this->admin_id,
-            'reviewer_name'    => $this->admin_name,
-            'teaching_quality' => $teachingQuality,
-            'punctuality'      => $punctuality,
-            'student_feedback' => $studentFeedback,
-            'initiative'       => $initiative,
-            'teamwork'         => $teamwork,
-            'overall_rating'   => $overallRating,
-            'comments'         => $comments,
-            'goals'            => $goals,
-            'status'           => 'Draft',
-            'updated_at'       => $now,
+            'staff_id'              => $staffId,
+            'staff_name'            => $staffName,
+            'period'                => $period,
+            'reviewer_id'           => $this->input->post('reviewer_id') ? $this->safe_path_segment(trim($this->input->post('reviewer_id')), 'reviewer_id') : $this->admin_id,
+            'reviewer_name'         => $this->admin_name,
+            'teaching_quality'      => $teachingQuality,
+            'punctuality'           => $punctuality,
+            'student_feedback'      => $studentFeedback,
+            'initiative'            => $initiative,
+            'teamwork'              => $teamwork,
+            'overall_rating'        => $overallRating,
+            'strengths'             => $strengths,
+            'areas_of_improvement'  => $areasImprovement,
+            'recommendation'        => $recommendation,
+            'comments'              => $comments,
+            'goals'                 => $goals,
+            'status'                => 'Draft',
+            'updated_at'            => $now,
         ];
         if ($isNew) {
             $data['created_at'] = $now;

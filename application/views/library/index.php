@@ -33,16 +33,16 @@ $tab_map = [
 .lib-btn-sm{padding:6px 12px;font-size:12px}
 .lib-table{width:100%;border-collapse:collapse;font-size:13px;font-family:var(--font-b)}
 .lib-table th,.lib-table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border)}
-.lib-table th{color:var(--t3);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.lib-table th{color:var(--t3);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
 .lib-table td{color:var(--t1)}
 .lib-table tr:hover td{background:var(--gold-dim)}
-.lib-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;font-family:var(--font-b)}
+.lib-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;font-family:var(--font-b)}
 .lib-badge-green{background:rgba(34,197,94,.12);color:#22c55e}
 .lib-badge-amber{background:rgba(234,179,8,.12);color:#eab308}
 .lib-badge-red{background:rgba(239,68,68,.12);color:#ef4444}
 .lib-badge-blue{background:rgba(59,130,246,.12);color:#3b82f6}
 .lib-form-group{margin-bottom:14px}
-.lib-form-group label{display:block;font-size:11px;font-weight:600;color:var(--t3);margin-bottom:4px;font-family:var(--font-b);text-transform:uppercase;letter-spacing:.3px}
+.lib-form-group label{display:block;font-size:12px;font-weight:600;color:var(--t3);margin-bottom:4px;font-family:var(--font-b);text-transform:uppercase;letter-spacing:.3px}
 .lib-form-group input,.lib-form-group select,.lib-form-group textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--t1);font-size:13px;font-family:var(--font-b)}
 .lib-form-group input:focus,.lib-form-group select:focus{border-color:var(--gold);outline:none}
 .lib-form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -123,7 +123,7 @@ $tab_map = [
       <div class="lib-form-row">
         <div class="lib-form-group lib-search-box">
           <label>Student</label>
-          <input type="text" id="issStudentSearch" placeholder="Search by name..." autocomplete="off">
+          <input type="text" id="issStudentSearch" placeholder="Search by name or ID..." autocomplete="off">
           <input type="hidden" id="issStudentId">
           <div class="lib-search-results" id="issStudentResults"></div>
         </div>
@@ -348,13 +348,13 @@ document.addEventListener('DOMContentLoaded', function(){
     if(q.length < 2){ $('#issStudentResults').removeClass('show'); return; }
     searchTimer = setTimeout(function(){
       getJSON('library/search_students?q='+encodeURIComponent(q)).done(function(r){
-        if(r.status!=='success'||!r.students.length){ $('#issStudentResults').removeClass('show'); return; }
+        if(r.status!=='success'||!r.students.length){ $('#issStudentResults').html('<div class="lib-search-item" style="color:var(--t3);cursor:default">No students found</div>').addClass('show'); return; }
         var html = '';
         r.students.forEach(function(s){
-          html += '<div class="lib-search-item" data-id="'+s.id+'" data-name="'+escH(s.name)+'">'+escH(s.name)+' <small>'+escH(s.class)+' '+escH(s.section)+'</small></div>';
+          html += '<div class="lib-search-item" data-id="'+s.id+'" data-name="'+escH(s.name)+'">'+escH(s.name)+' <small style="opacity:.6">'+escH(s.id)+'</small> <small>'+escH(s.class)+' '+escH(s.section||'')+'</small></div>';
         });
         $('#issStudentResults').html(html).addClass('show');
-      });
+      }).fail(function(xhr){ $('#issStudentResults').html('<div class="lib-search-item" style="color:var(--rose);cursor:default">Search failed: '+(xhr.responseJSON?xhr.responseJSON.message:xhr.statusText)+'</div>').addClass('show'); });
     }, 300);
   });
   $(document).on('click', '#issStudentResults .lib-search-item', function(){

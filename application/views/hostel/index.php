@@ -25,13 +25,13 @@ $tab_map = [
 .hst-btn-danger{background:var(--rose);color:#fff} .hst-btn-sm{padding:6px 12px;font-size:12px}
 .hst-table{width:100%;border-collapse:collapse;font-size:13px;font-family:var(--font-b)}
 .hst-table th,.hst-table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border)}
-.hst-table th{color:var(--t3);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.hst-table th{color:var(--t3);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
 .hst-table td{color:var(--t1)} .hst-table tr:hover td{background:var(--gold-dim)}
-.hst-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;font-family:var(--font-b)}
+.hst-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;font-family:var(--font-b)}
 .hst-badge-green{background:rgba(34,197,94,.12);color:#22c55e} .hst-badge-red{background:rgba(239,68,68,.12);color:#ef4444}
 .hst-badge-blue{background:rgba(59,130,246,.12);color:#3b82f6} .hst-badge-amber{background:rgba(234,179,8,.12);color:#eab308}
 .hst-form-group{margin-bottom:14px}
-.hst-form-group label{display:block;font-size:11px;font-weight:600;color:var(--t3);margin-bottom:4px;font-family:var(--font-b);text-transform:uppercase;letter-spacing:.3px}
+.hst-form-group label{display:block;font-size:12px;font-weight:600;color:var(--t3);margin-bottom:4px;font-family:var(--font-b);text-transform:uppercase;letter-spacing:.3px}
 .hst-form-group input,.hst-form-group select,.hst-form-group textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--t1);font-size:13px;font-family:var(--font-b)}
 .hst-form-group input:focus,.hst-form-group select:focus{border-color:var(--gold);outline:none}
 .hst-form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -123,13 +123,14 @@ $tab_map = [
   <div class="hst-form-row"><div class="hst-form-group"><label>Floor</label><input type="number" id="rmFloor" value="1" min="0"></div><div class="hst-form-group"><label>Room Number *</label><input type="text" id="rmNo"></div></div>
   <div class="hst-form-row"><div class="hst-form-group"><label>Type</label><select id="rmType"><option value="single">Single</option><option value="double">Double</option><option value="triple">Triple</option><option value="dormitory">Dormitory</option></select></div><div class="hst-form-group"><label>Beds</label><input type="number" id="rmBeds" value="2" min="1"></div></div>
   <div class="hst-form-group"><label>Monthly Fee (Rs)</label><input type="number" id="rmFee" value="0" min="0"></div>
+  <div class="hst-form-group"><label>Facilities</label><input type="text" id="rmFacilities" placeholder="AC, Geyser, WiFi..."></div>
   <button class="hst-btn hst-btn-primary" onclick="HST.saveRm()" style="width:100%;margin-top:8px">Save Room</button>
 </div></div>
 
 <!-- ALLOCATION MODAL -->
-<div class="hst-modal-bg" id="allocModal"><div class="hst-modal" style="width:480px">
+<div class="hst-modal-bg" id="allocModal"><div class="hst-modal" style="width:480px;overflow:visible">
   <div class="hst-modal-title"><span>Allocate Student</span><button class="hst-modal-close" onclick="HST.closeAllocModal()">&times;</button></div>
-  <div class="hst-form-group hst-search-box"><label>Student</label><input type="text" id="allocStudentSearch" placeholder="Search..." autocomplete="off"><input type="hidden" id="allocStudentId"><div class="hst-search-results" id="allocStudentResults"></div></div>
+  <div class="hst-form-group hst-search-box"><label>Student</label><input type="text" id="allocStudentSearch" placeholder="Search by name or ID..." autocomplete="off"><input type="hidden" id="allocStudentId"><div class="hst-search-results" id="allocStudentResults"></div></div>
   <div class="hst-form-group"><label>Room *</label><select id="allocRoomId"></select></div>
   <div class="hst-form-group"><label>Bed Number</label><input type="number" id="allocBed" value="1" min="1"></div>
   <button class="hst-btn hst-btn-primary" onclick="HST.saveAlloc()" style="width:100%;margin-top:8px">Allocate</button>
@@ -194,10 +195,10 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
   $('#rmBldFilter').on('change',loadRooms);
-  HST.openRmModal=function(){$('#rmId,#rmNo').val('');$('#rmFloor').val(1);$('#rmType').val('double');$('#rmBeds').val(2);$('#rmFee').val(0);$('#rmModalTitle').text('Add Room');$('#rmModal').addClass('show')};
+  HST.openRmModal=function(){$('#rmId,#rmNo,#rmFacilities').val('');$('#rmFloor').val(1);$('#rmType').val('double');$('#rmBeds').val(2);$('#rmFee').val(0);$('#rmModalTitle').text('Add Room');$('#rmModal').addClass('show')};
   HST.closeRmModal=function(){$('#rmModal').removeClass('show')};
-  HST.editRm=function(id){var r=rooms.find(function(x){return x.id===id});if(!r)return;$('#rmId').val(r.id);$('#rmBldId').val(r.building_id);$('#rmFloor').val(r.floor);$('#rmNo').val(r.room_no);$('#rmType').val(r.type);$('#rmBeds').val(r.beds);$('#rmFee').val(r.monthly_fee);$('#rmModalTitle').text('Edit Room');$('#rmModal').addClass('show')};
-  HST.saveRm=function(){post('hostel/save_room',{id:$('#rmId').val(),building_id:$('#rmBldId').val(),floor:$('#rmFloor').val(),room_no:$('#rmNo').val(),type:$('#rmType').val(),beds:$('#rmBeds').val(),monthly_fee:$('#rmFee').val()}).done(function(r){r=typeof r==='string'?JSON.parse(r):r;if(r.status==='success'){toast(r.message,true);HST.closeRmModal();loadRooms()}else toast(r.message,false)})};
+  HST.editRm=function(id){var r=rooms.find(function(x){return x.id===id});if(!r)return;$('#rmId').val(r.id);$('#rmBldId').val(r.building_id);$('#rmFloor').val(r.floor);$('#rmNo').val(r.room_no);$('#rmType').val(r.type);$('#rmBeds').val(r.beds);$('#rmFee').val(r.monthly_fee);$('#rmFacilities').val(r.facilities||'');$('#rmModalTitle').text('Edit Room');$('#rmModal').addClass('show')};
+  HST.saveRm=function(){post('hostel/save_room',{id:$('#rmId').val(),building_id:$('#rmBldId').val(),floor:$('#rmFloor').val(),room_no:$('#rmNo').val(),type:$('#rmType').val(),beds:$('#rmBeds').val(),monthly_fee:$('#rmFee').val(),facilities:$('#rmFacilities').val()}).done(function(r){r=typeof r==='string'?JSON.parse(r):r;if(r.status==='success'){toast(r.message,true);HST.closeRmModal();loadRooms()}else toast(r.message,false)})};
   HST.delRm=function(id){if(!confirm('Delete room?'))return;post('hostel/delete_room',{id:id}).done(function(r){r=typeof r==='string'?JSON.parse(r):r;if(r.status==='success'){toast(r.message,true);loadRooms()}else toast(r.message,false)})};
 
   // ── Allocations ──
@@ -214,7 +215,7 @@ document.addEventListener('DOMContentLoaded', function(){
   // Student search
   var allocTimer;
   $('#allocStudentSearch').on('input',function(){clearTimeout(allocTimer);var q=$(this).val();if(q.length<2){$('#allocStudentResults').removeClass('show');return}
-    allocTimer=setTimeout(function(){getJSON('hostel/search_students?q='+encodeURIComponent(q)).done(function(r){if(r.status!=='success'||!r.students.length){$('#allocStudentResults').removeClass('show');return}var h='';r.students.forEach(function(s){h+='<div class="hst-search-item" data-id="'+s.id+'" data-name="'+escH(s.name)+'">'+escH(s.name)+' <small>'+escH(s.class)+'</small></div>'});$('#allocStudentResults').html(h).addClass('show')})},300)});
+    allocTimer=setTimeout(function(){getJSON('hostel/search_students?q='+encodeURIComponent(q)).done(function(r){if(r.status!=='success'||!r.students.length){$('#allocStudentResults').html('<div class="hst-search-item" style="color:var(--t3);cursor:default">No students found</div>').addClass('show');return}var h='';r.students.forEach(function(s){h+='<div class="hst-search-item" data-id="'+s.id+'" data-name="'+escH(s.name)+'">'+escH(s.name)+' <small style="opacity:.6">'+escH(s.id)+'</small> <small>'+escH(s.class)+'</small></div>'});$('#allocStudentResults').html(h).addClass('show')}).fail(function(xhr){$('#allocStudentResults').html('<div class="hst-search-item" style="color:var(--rose);cursor:default">Search failed: '+(xhr.responseJSON?xhr.responseJSON.message:xhr.statusText)+'</div>').addClass('show')})},300)});
   $(document).on('click','#allocStudentResults .hst-search-item',function(){$('#allocStudentId').val($(this).data('id'));$('#allocStudentSearch').val($(this).data('name'));$('#allocStudentResults').removeClass('show')});
   $(document).on('click',function(e){if(!$(e.target).closest('.hst-search-box').length) $('.hst-search-results').removeClass('show')});
   HST.openAllocModal=function(){$('#allocStudentSearch,#allocStudentId').val('');$('#allocBed').val(1);$('#allocModal').addClass('show')};

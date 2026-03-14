@@ -456,4 +456,41 @@ class MY_Controller extends CI_Controller
 
         return true;
     }
+
+    /**
+     * Enumerate all class-sections for the current session.
+     *
+     * Uses shallow_get to read session root keys, filters for "Class " nodes,
+     * then reads each class's children for "Section " nodes.
+     *
+     * @return array  List of ['class_key'=>'Class 9th', 'section'=>'A',
+     *                         'label'=>'Class 9th / Section A',
+     *                         'class_section'=>"Class 9th 'A'"]
+     */
+    protected function _get_session_classes(): array
+    {
+        $school  = $this->school_name;
+        $session = $this->session_year;
+        $classes = [];
+
+        $keys = $this->firebase->shallow_get("Schools/{$school}/{$session}");
+        if (!is_array($keys)) return $classes;
+
+        foreach ($keys as $key) {
+            if (strpos($key, 'Class ') !== 0) continue;
+            $sectionKeys = $this->firebase->shallow_get("Schools/{$school}/{$session}/{$key}");
+            if (!is_array($sectionKeys)) continue;
+            foreach ($sectionKeys as $sk) {
+                if (strpos($sk, 'Section ') !== 0) continue;
+                $secLetter = str_replace('Section ', '', $sk);
+                $classes[] = [
+                    'class_key'     => $key,
+                    'section'       => $secLetter,
+                    'label'         => $key . ' / Section ' . $secLetter,
+                    'class_section' => $key . " '" . $secLetter . "'",
+                ];
+            }
+        }
+        return $classes;
+    }
 }
