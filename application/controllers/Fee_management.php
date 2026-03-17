@@ -2276,10 +2276,8 @@ class Fee_management extends MY_Controller
 
                     if (!empty($unpaidMonths)) {
                         // Calculate unpaid amount from fee structure
-                        $classOrd = trim(str_replace('Class', '', $classKey));
-                        $sectionOrd = trim(str_replace('Section', '', $sectionKey));
-                        $feeKey = "{$classOrd} '{$sectionOrd}'";
-                        $feeData = $classFees[$feeKey] ?? [];
+                        // Firebase stores fees nested: Classes Fees/Class 8th/Section A/{title}
+                        $feeData = $classFees[$classKey][$sectionKey] ?? [];
 
                         $monthlyTotal = 0;
                         if (is_array($feeData)) {

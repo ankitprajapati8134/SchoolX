@@ -2064,6 +2064,7 @@ class Sis extends MY_Controller
                     "Pre School" => trim($rowData['Pre School'] ?? ''), "Pre Class" => trim($rowData['Pre Class'] ?? ''),
                     "Pre Marks" => trim($rowData['Pre Marks'] ?? ''),
                     "Profile Pic" => "",
+                    "Status" => "Active",
                     "Doc" => [
                         "Aadhar Card" => ["thumbnail" => "", "url" => ""],
                         "Birth Certificate" => ["thumbnail" => "", "url" => ""],
@@ -2081,6 +2082,24 @@ class Sis extends MY_Controller
                     $this->CM->addKey_pair_data("Schools/{$school_name}/Phone_Index/", [$phone => $studentId]);
                     $this->CM->addKey_pair_data('Exits/', [$phone => $school_id]);
                     $this->CM->addKey_pair_data('User_ids_pno/', [$phone => $studentId]);
+                }
+
+                // Update Students_Index
+                $this->_update_student_index($school_name, $studentId, $studentName, $className, $section, 'Active');
+
+                // Initialize Month Fee markers as unpaid (0) for all 12 months
+                try {
+                    $classKey   = "Class {$className}";
+                    $sectionKey = "Section {$section}";
+                    $studentFeePath = "Schools/{$school_name}/{$session_year}/{$classKey}/{$sectionKey}/Students/{$studentId}";
+                    $months = ['April','May','June','July','August','September','October','November','December','January','February','March'];
+                    $monthFeeInit = [];
+                    foreach ($months as $m) {
+                        $monthFeeInit[$m] = 0;
+                    }
+                    $this->firebase->set("{$studentFeePath}/Month Fee", $monthFeeInit);
+                } catch (Exception $e) {
+                    log_message('error', "SIS import fee init failed for {$studentId}: " . $e->getMessage());
                 }
 
                 // Subject assignment

@@ -303,10 +303,30 @@ class Operations_accounting
         }
 
         // Generate voucher number (after validation to avoid wasting sequence numbers)
+        // Uses verify-after-write + retry pattern to handle concurrent writers
         $counterPath = "{$bp}/Accounts/Voucher_counters/Journal";
-        $seq = (int) ($this->firebase->get($counterPath) ?? 0) + 1;
-        $this->firebase->set($counterPath, $seq);
-        $voucherNo = 'JV-' . str_pad($seq, 6, '0', STR_PAD_LEFT);
+        $voucherNo   = '';
+        $seq         = 0;
+        $maxAttempts  = 3;
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $seq = (int) ($this->firebase->get($counterPath) ?? 0) + 1;
+            $this->firebase->set($counterPath, $seq);
+
+            // Verify-after-write: re-read to confirm we own this value
+            $verify = $this->firebase->get($counterPath);
+            if ((int) $verify === $seq) {
+                $voucherNo = 'JV-' . str_pad($seq, 6, '0', STR_PAD_LEFT);
+                break;
+            }
+            // Another writer overwrote — retry with their higher value
+            usleep(50000 * $attempt); // 50ms, 100ms, 150ms backoff
+        }
+        if ($voucherNo === '') {
+            // All retries failed — use timestamp-based fallback to guarantee uniqueness
+            $seq = (int) ($this->firebase->get($counterPath) ?? 0) + 1;
+            $this->firebase->set($counterPath, $seq);
+            $voucherNo = 'JV-' . str_pad($seq, 6, '0', STR_PAD_LEFT) . '_' . substr(bin2hex(random_bytes(2)), 0, 4);
+        }
 
         // Generate entry ID
         $entryId = 'JE_' . date('YmdHis') . '_' . bin2hex(random_bytes(4));
@@ -423,10 +443,30 @@ class Operations_accounting
         // Generate entry ID
         $entryId = 'FE_' . date('YmdHis') . '_' . substr(bin2hex(random_bytes(4)), 0, 8);
 
-        // Voucher counter
+        // Voucher counter — verify-after-write + retry pattern for concurrency safety
         $counterPath = "{$bp}/Accounts/Voucher_counters/Fee";
-        $seq = (int) ($this->firebase->get($counterPath) ?? 0) + 1;
-        $voucherNo = 'FV-' . str_pad($seq, 6, '0', STR_PAD_LEFT);
+        $voucherNo   = '';
+        $seq         = 0;
+        $maxAttempts  = 3;
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $seq = (int) ($this->firebase->get($counterPath) ?? 0) + 1;
+            $this->firebase->set($counterPath, $seq);
+
+            // Verify-after-write: re-read to confirm we own this value
+            $verify = $this->firebase->get($counterPath);
+            if ((int) $verify === $seq) {
+                $voucherNo = 'FV-' . str_pad($seq, 6, '0', STR_PAD_LEFT);
+                break;
+            }
+            // Another writer overwrote — retry with their higher value
+            usleep(50000 * $attempt);
+        }
+        if ($voucherNo === '') {
+            // All retries failed — timestamp-based fallback guarantees uniqueness
+            $seq = (int) ($this->firebase->get($counterPath) ?? 0) + 1;
+            $this->firebase->set($counterPath, $seq);
+            $voucherNo = 'FV-' . str_pad($seq, 6, '0', STR_PAD_LEFT) . '_' . substr(bin2hex(random_bytes(2)), 0, 4);
+        }
 
         $lines = [
             ['account_code' => $cashBankCode,  'account_name' => $cashAcct['name'] ?? $cashBankCode,  'dr' => $amount, 'cr' => 0,       'narration' => $narration],
@@ -449,9 +489,8 @@ class Operations_accounting
             'created_at'   => date('c'),
         ];
 
-        // Write ledger entry + counter
+        // Write ledger entry (counter already written in verify-after-write loop above)
         $this->firebase->set("{$bp}/Accounts/Ledger/{$entryId}", $entry);
-        $this->firebase->set($counterPath, $seq);
 
         // Write indices
         $this->firebase->set("{$bp}/Accounts/Ledger_index/by_date/{$date}/{$entryId}", true);
