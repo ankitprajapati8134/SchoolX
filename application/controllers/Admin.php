@@ -62,30 +62,33 @@ class Admin extends MY_Controller
 
         $school    = $this->school_name;
         $session   = $this->session_year;
-        $parentKey = $this->parent_db_key;
         $role      = $this->admin_role;
 
-        // ── Read 1: All students ──────────────────────────────────────────
-        $students     = $this->firebase->get("Users/Parents/{$parentKey}");
+        // ── Read 1: Lightweight Students_Index (OPT: replaces full Users/Parents tree)
+        $index = $this->firebase->get("Schools/{$school}/SIS/Students_Index");
         $studentCount = 0;
         $classDist    = [];
         $genderDist   = ['Male' => 0, 'Female' => 0, 'Other' => 0];
         $sectionSet   = [];
 
-        if (is_array($students)) {
-            foreach ($students as $sid => $s) {
-                if (!is_array($s) || empty($s['Name'])) continue;
+        if (is_array($index)) {
+            foreach ($index as $sid => $s) {
+                if (!is_array($s) || empty($s['name'])) continue;
+                // Skip non-active students (TC, Inactive, Withdrawn)
+                $status = $s['status'] ?? 'Active';
+                if ($status !== 'Active') continue;
+
                 $studentCount++;
 
-                $cls = trim($s['Class'] ?? 'Unknown');
-                $sec = trim($s['Section'] ?? '');
+                $cls = trim($s['class'] ?? 'Unknown');
+                $sec = trim($s['section'] ?? '');
                 $classDist[$cls] = ($classDist[$cls] ?? 0) + 1;
                 if ($cls && $sec) $sectionSet["{$cls}|{$sec}"] = true;
 
-                $g = strtolower(trim($s['Gender'] ?? ''));
+                $g = strtolower(trim($s['gender'] ?? ''));
                 if ($g === 'male' || $g === 'm')        $genderDist['Male']++;
                 elseif ($g === 'female' || $g === 'f')  $genderDist['Female']++;
-                else                                     $genderDist['Other']++;
+                elseif ($g !== '')                        $genderDist['Other']++;
             }
         }
         uksort($classDist, 'strnatcasecmp');

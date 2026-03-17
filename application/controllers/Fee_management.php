@@ -2260,11 +2260,14 @@ class Fee_management extends MY_Controller
                 if (strpos($sectionKey, 'Section ') !== 0) continue;
 
                 $studentsPath = "{$sessionRoot}/{$classKey}/{$sectionKey}/Students";
-                $studentList = $this->firebase->get("{$studentsPath}/List");
+                $studentsNode = $this->firebase->get($studentsPath);
+                if (!is_array($studentsNode)) continue;
+
+                $studentList = $studentsNode['List'] ?? [];
                 if (!is_array($studentList)) continue;
 
                 foreach ($studentList as $userId => $name) {
-                    $monthFee = $this->firebase->get("{$studentsPath}/{$userId}/Month Fee");
+                    $monthFee = $studentsNode[$userId]['Month Fee'] ?? null;
                     if (!is_array($monthFee)) continue;
 
                     $unpaidMonths = [];

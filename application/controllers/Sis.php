@@ -381,7 +381,7 @@ class Sis extends MY_Controller
         }
 
         // Update Students_Index (OPT 1)
-        $this->_update_student_index($school_name, $userId, $name, $classOrd, $section, 'Active');
+        $this->_update_student_index($school_name, $userId, $name, $classOrd, $section, 'Active', $gender);
 
         // ── B-A4 FIX: Initialize fee tracking for new student (matches legacy Student.php path) ──
         try {
@@ -1381,6 +1381,7 @@ class Sis extends MY_Controller
                 'class'   => $s['Class']   ?? '',
                 'section' => $s['Section'] ?? '',
                 'status'  => $s['Status']  ?? 'Active',
+                'gender'  => $s['Gender']  ?? '',
             ];
         }
 
@@ -1569,6 +1570,7 @@ class Sis extends MY_Controller
                 'class'   => $s['Class']   ?? '',
                 'section' => $s['Section'] ?? '',
                 'status'  => $s['Status']  ?? 'Active',
+                'gender'  => $s['Gender']  ?? '',
             ];
         }
 
@@ -1663,13 +1665,15 @@ class Sis extends MY_Controller
         string $name,
         string $class,
         string $section,
-        string $status
+        string $status,
+        string $gender = ''
     ): void {
         $this->firebase->set("Schools/{$schoolName}/SIS/Students_Index/{$userId}", [
             'name'    => $name,
             'class'   => $class,
             'section' => $section,
             'status'  => $status,
+            'gender'  => $gender,
         ]);
     }
 
@@ -2085,7 +2089,7 @@ class Sis extends MY_Controller
                 }
 
                 // Update Students_Index
-                $this->_update_student_index($school_name, $studentId, $studentName, $className, $section, 'Active');
+                $this->_update_student_index($school_name, $studentId, $studentName, $className, $section, 'Active', trim($rowData['Gender'] ?? ''));
 
                 // Initialize Month Fee markers as unpaid (0) for all 12 months
                 try {

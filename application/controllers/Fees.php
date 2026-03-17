@@ -1118,17 +1118,32 @@ class Fees extends MY_Controller
         );
 
         $totalSubmitted = $schoolFees + $submitAmount;
+        $failedMonths = [];
         foreach ($selectedMonths as $m) {
             $mFee = $monthTotalsArray[$m] ?? 0;
             if ($mFee > 0 && $totalSubmitted >= $mFee) {
-                $this->firebase->set("$studentBase/Month Fee/$m", 1);
+                try {
+                    $this->firebase->set("$studentBase/Month Fee/$m", 1);
+                } catch (\Exception $e) {
+                    log_message('error', "submit_fees: Failed to mark month '$m' as paid for student $userId receipt $receiptNo — " . $e->getMessage());
+                    $failedMonths[] = $m;
+                }
                 $totalSubmitted -= $mFee;
             }
         }
 
         // 8. Carry-forward overpaid amount
-        if ($totalSubmitted > 0.005) {
-            $this->firebase->set("$studentBase/Oversubmittedfees", round($totalSubmitted, 2));
+        try {
+            if ($totalSubmitted > 0.005) {
+                $this->firebase->set("$studentBase/Oversubmittedfees", round($totalSubmitted, 2));
+            }
+        } catch (\Exception $e) {
+            log_message('error', "submit_fees: Failed to write carry-forward for student $userId receipt $receiptNo — " . $e->getMessage());
+            $failedMonths[] = '_carry_forward';
+        }
+
+        if (!empty($failedMonths)) {
+            log_message('error', "submit_fees: PARTIAL MONTH MARKING — student=$userId, receipt=$receiptNo, failed_months=" . implode(',', $failedMonths) . ". Pending flag retained for manual reconciliation.");
         }
 
         // Mark fee submission as completed — clear pending flag
