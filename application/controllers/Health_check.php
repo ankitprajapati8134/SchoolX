@@ -15,6 +15,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  */
 class Health_check extends MY_Controller
 {
+    private const ADMIN_ROLES = ['Admin'];
     /* ══════════════════════════════════════════════════════════════════════
        MODULE REGISTRY
     ══════════════════════════════════════════════════════════════════════ */
@@ -43,6 +44,7 @@ class Health_check extends MY_Controller
 
     public function index()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'view_health_check');
         $data['modules']      = $this->_modules();
         $data['session_year'] = $this->session_year;
         $data['school_name']  = $this->school_name;
@@ -55,6 +57,7 @@ class Health_check extends MY_Controller
 
     public function run()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'run_health_check');
         $module = trim($this->input->post('module') ?? '');
         $modules = $this->_modules();
 
@@ -85,6 +88,7 @@ class Health_check extends MY_Controller
 
     public function run_all()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'run_all_health_checks');
         $modules   = $this->_modules();
         $allResults = [];
         $totalP = 0;
@@ -155,7 +159,7 @@ class Health_check extends MY_Controller
        SHARED HELPERS
     ══════════════════════════════════════════════════════════════════════ */
 
-    private function _get_session_classes()
+    protected function _get_session_classes(): array
     {
         $school  = $this->school_name;
         $session = $this->session_year;
@@ -191,7 +195,7 @@ class Health_check extends MY_Controller
     private function _checks_config()
     {
         $school    = $this->school_name;
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $fb        = $this->firebase;
 
         return [
@@ -322,7 +326,7 @@ class Health_check extends MY_Controller
 
     private function _checks_student()
     {
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $school    = $this->school_name;
         $session   = $this->session_year;
         $fb        = $this->firebase;
@@ -386,8 +390,9 @@ class Health_check extends MY_Controller
                 },
             ],
             [
-                'name' => 'Phone Mappings (Exits/User_ids_pno) Sample',
+                'name' => 'Phone Index (Tenant-Scoped) Sample',
                 'fn'   => function() use ($fb, $school_id) {
+                    $school_name = $this->school_name;
                     $all = $fb->get("Users/Parents/{$school_id}");
                     if (!is_array($all)) return $this->_p('No profiles to check');
                     $errors = [];
@@ -396,12 +401,16 @@ class Health_check extends MY_Controller
                         if ($id === 'Count' || !is_array($stu)) continue;
                         $phone = $stu['Phone Number'] ?? '';
                         if ($phone === '') continue;
+                        // Check tenant-scoped index (primary)
+                        $indexVal = $fb->get("Schools/{$school_name}/Phone_Index/{$phone}");
+                        if ($indexVal !== $id) $errors[] = "{$id}: Phone_Index/{$phone} = " . json_encode($indexVal);
+                        // Also check legacy Exits path
                         $exitVal = $fb->get("Exits/{$phone}");
-                        if ($exitVal !== $school_id) $errors[] = "{$id}: Exits/{$phone} = " . json_encode($exitVal);
+                        if ($exitVal !== $school_id) $errors[] = "{$id}: Exits/{$phone} = " . json_encode($exitVal) . ' (legacy)';
                         $checked++;
                         if ($checked >= 5) break;
                     }
-                    if (empty($errors)) return $this->_p("{$checked} phone mappings verified");
+                    if (empty($errors)) return $this->_p("{$checked} phone mappings verified (tenant-scoped + legacy)");
                     return $this->_f(count($errors) . ' mapping issues: ' . implode('; ', $errors));
                 },
             ],
@@ -591,7 +600,7 @@ class Health_check extends MY_Controller
     private function _checks_crm()
     {
         $school    = $this->school_name;
-        $school_id = $this->school_id;
+        $school_id = $this->parent_db_key;
         $session   = $this->session_year;
         $fb        = $this->firebase;
         $base      = "Schools/{$school}/CRM/Admissions";

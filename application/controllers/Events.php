@@ -13,9 +13,14 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Events extends MY_Controller
 {
+    /** Roles for event management */
+    private const MANAGE_ROLES = ['Admin', 'Principal', 'Teacher'];
+
+    /** Roles that may view events */
+    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+
     const ADMIN_ROLES   = ['Super Admin', 'Principal', 'Vice Principal', 'Admin'];
     const TEACHER_ROLES = ['Super Admin', 'Principal', 'Vice Principal', 'Admin', 'Teacher'];
-    const VIEW_ROLES    = ['Super Admin', 'Principal', 'Vice Principal', 'Admin', 'Teacher', 'Accountant', 'HR Manager', 'Operations Manager'];
 
     const ALLOWED_CATEGORIES = ['event', 'cultural', 'sports'];
     const ALLOWED_STATUSES   = ['scheduled', 'ongoing', 'completed', 'cancelled'];
@@ -28,6 +33,7 @@ class Events extends MY_Controller
     public function __construct()
     {
         parent::__construct();
+        require_permission('Events');
     }
 
     // ── Access helpers ──────────────────────────────────────────────────
@@ -142,6 +148,7 @@ class Events extends MY_Controller
 
     public function index()
     {
+        $this->_require_role(self::VIEW_ROLES, 'events_view');
         $this->_require_view();
         $data = ['active_tab' => 'dashboard'];
         $this->load->view('include/header', $data);
@@ -151,6 +158,7 @@ class Events extends MY_Controller
 
     public function list()
     {
+        $this->_require_role(self::VIEW_ROLES, 'events_view');
         $this->_require_view();
         $data = ['active_tab' => 'events'];
         $this->load->view('include/header', $data);
@@ -160,6 +168,7 @@ class Events extends MY_Controller
 
     public function calendar()
     {
+        $this->_require_role(self::VIEW_ROLES, 'events_view');
         $this->_require_view();
         $data = ['active_tab' => 'calendar'];
         $this->load->view('include/header', $data);
@@ -169,6 +178,7 @@ class Events extends MY_Controller
 
     public function participation()
     {
+        $this->_require_role(self::VIEW_ROLES, 'events_view');
         $this->_require_view();
         $data = ['active_tab' => 'participation'];
         $this->load->view('include/header', $data);
@@ -182,6 +192,7 @@ class Events extends MY_Controller
 
     public function get_dashboard()
     {
+        $this->_require_role(self::VIEW_ROLES, 'events_view');
         $this->_require_view();
 
         $all = $this->firebase->get($this->_evt('List'));
@@ -252,6 +263,7 @@ class Events extends MY_Controller
 
     public function get_events()
     {
+        $this->_require_role(self::VIEW_ROLES, 'events_view');
         $this->_require_view();
         $category = trim($this->input->get('category') ?? '');
         $status   = trim($this->input->get('status') ?? '');
@@ -287,6 +299,7 @@ class Events extends MY_Controller
 
     public function get_event()
     {
+        $this->_require_role(self::VIEW_ROLES, 'events_view');
         $this->_require_view();
         $id = $this->safe_path_segment(trim($this->input->get('id') ?? ''), 'event_id');
         $event = $this->firebase->get($this->_evt("List/{$id}"));
@@ -302,6 +315,7 @@ class Events extends MY_Controller
 
     public function save_event()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'save_event');
         $this->_require_admin();
         $id              = trim($this->input->post('id') ?? '');
         $title           = trim($this->input->post('title') ?? '');
@@ -378,6 +392,7 @@ class Events extends MY_Controller
 
     public function delete_event()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'delete_event');
         $this->_require_admin();
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'event_id');
 
@@ -394,6 +409,7 @@ class Events extends MY_Controller
 
     public function update_status()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'update_status');
         $this->_require_admin();
         $id     = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'event_id');
         $status = trim($this->input->post('status') ?? '');
@@ -415,6 +431,7 @@ class Events extends MY_Controller
 
     public function get_calendar()
     {
+        $this->_require_role(self::VIEW_ROLES, 'events_view');
         $this->_require_view();
         $month = (int) ($this->input->get('month') ?? date('n'));
         $year  = (int) ($this->input->get('year') ?? date('Y'));
@@ -463,6 +480,7 @@ class Events extends MY_Controller
 
     public function get_participants()
     {
+        $this->_require_role(self::VIEW_ROLES, 'events_view');
         $this->_require_view();
         $eventId = $this->safe_path_segment(trim($this->input->get('event_id') ?? ''), 'event_id');
 
@@ -497,6 +515,7 @@ class Events extends MY_Controller
 
     public function save_participant()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'save_participant');
         $this->_require_teacher();
         $eventId         = $this->safe_path_segment(trim($this->input->post('event_id') ?? ''), 'event_id');
         $participantId   = $this->safe_path_segment(trim($this->input->post('participant_id') ?? ''), 'participant_id');
@@ -561,6 +580,7 @@ class Events extends MY_Controller
 
     public function remove_participant()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'remove_participant');
         $this->_require_teacher();
         $eventId       = $this->safe_path_segment(trim($this->input->post('event_id') ?? ''), 'event_id');
         $participantId = $this->safe_path_segment(trim($this->input->post('participant_id') ?? ''), 'participant_id');
@@ -574,6 +594,7 @@ class Events extends MY_Controller
 
     public function mark_attendance()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'mark_attendance');
         $this->_require_teacher();
         $eventId       = $this->safe_path_segment(trim($this->input->post('event_id') ?? ''), 'event_id');
         $participantId = $this->safe_path_segment(trim($this->input->post('participant_id') ?? ''), 'participant_id');
@@ -595,6 +616,7 @@ class Events extends MY_Controller
      */
     public function search_people()
     {
+        $this->_require_role(self::VIEW_ROLES, 'events_view');
         $this->_require_teacher();
         $query = strtolower(trim($this->input->get('q') ?? ''));
         if (mb_strlen($query) < 2) $this->json_error('Enter at least 2 characters.');
@@ -675,7 +697,7 @@ class Events extends MY_Controller
     {
         try {
             $this->load->library('communication_helper');
-            $this->communication_helper->init($this->firebase, $this->school_name, $this->session_year);
+            $this->communication_helper->init($this->firebase, $this->school_name, $this->session_year, $this->parent_db_key);
 
             // Structured payload for trigger-based notifications
             $payload = [

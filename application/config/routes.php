@@ -52,7 +52,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 $route['default_controller'] = 'admin_login';
 $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;
-$route['sync_offline_data'] = 'SyncOfflineData/index';
+// $route['sync_offline_data'] = 'SyncOfflineData/index'; // REMOVED: unauthenticated stub archived 2026-03-14
 $route['accounts'] = 'Account/fetch_accounts';
 $route['create_account'] = 'Account/create_account';
 $route['edit_account/(:any)'] = 'Account/edit_account/$1';
@@ -97,6 +97,7 @@ $route['superadmin/migration']                          = 'Superadmin_migration/
 $route['superadmin/migration/analyze']                  = 'Superadmin_migration/analyze';
 $route['superadmin/migration/get_report']               = 'Superadmin_migration/get_report';
 $route['superadmin/migration/clear_map']                = 'Superadmin_migration/clear_map';
+$route['superadmin/migration/migrate_phone_index']     = 'Superadmin_migration/migrate_phone_index';
 
 // Plans
 $route['superadmin/plans']                              = 'Superadmin_plans/index';
@@ -158,6 +159,27 @@ $route['superadmin/debug/clear_debug_logs']             = 'Superadmin_debug/clea
 $route['superadmin/debug/schema_check']                 = 'Superadmin_debug/schema_check';
 $route['superadmin/debug/log_ajax_error']               = 'Superadmin_debug/log_ajax_error';
 
+// ─── Subject Master List (SA)
+$route['superadmin/subjects']                           = 'Superadmin_subjects/index';
+$route['superadmin/subjects/get_boards']                = 'Superadmin_subjects/get_boards';
+$route['superadmin/subjects/get_patterns']              = 'Superadmin_subjects/get_patterns';
+$route['superadmin/subjects/get_class_ranges']          = 'Superadmin_subjects/get_class_ranges';
+$route['superadmin/subjects/get_groups']                = 'Superadmin_subjects/get_groups';
+$route['superadmin/subjects/save_group']                = 'Superadmin_subjects/save_group';
+$route['superadmin/subjects/delete_group']              = 'Superadmin_subjects/delete_group';
+$route['superadmin/subjects/save_subject']              = 'Superadmin_subjects/save_subject';
+$route['superadmin/subjects/delete_subject']            = 'Superadmin_subjects/delete_subject';
+$route['superadmin/subjects/save_pattern']              = 'Superadmin_subjects/save_pattern';
+$route['superadmin/subjects/delete_pattern']            = 'Superadmin_subjects/delete_pattern';
+$route['superadmin/subjects/clone_pattern']             = 'Superadmin_subjects/clone_pattern';
+$route['superadmin/subjects/save_rules']                = 'Superadmin_subjects/save_rules';
+$route['superadmin/subjects/save_streams']              = 'Superadmin_subjects/save_streams';
+$route['superadmin/subjects/save_assessment']           = 'Superadmin_subjects/save_assessment';
+$route['superadmin/subjects/export_pattern']            = 'Superadmin_subjects/export_pattern';
+$route['superadmin/subjects/add_class_range']           = 'Superadmin_subjects/add_class_range';
+$route['superadmin/subjects/delete_class_range']        = 'Superadmin_subjects/delete_class_range';
+$route['superadmin/subjects/create_board']              = 'Superadmin_subjects/create_board';
+
 // ─── School Configuration
 $route['school_config']                                 = 'School_config/index';
 $route['school_config/get_config']                      = 'School_config/get_config';
@@ -169,6 +191,7 @@ $route['school_config/get_sections']                    = 'School_config/get_sec
 $route['school_config/save_section']                    = 'School_config/save_section';
 $route['school_config/delete_section']                  = 'School_config/delete_section';
 $route['school_config/get_subjects']                    = 'School_config/get_subjects';
+$route['school_config/get_suggested_subjects']          = 'School_config/get_suggested_subjects';
 $route['school_config/save_subject']                    = 'School_config/save_subject';
 $route['school_config/delete_subject']                  = 'School_config/delete_subject';
 $route['school_config/save_stream']                     = 'School_config/save_stream';
@@ -280,35 +303,94 @@ $route['sis/get_classes']                       = 'Sis/get_classes';
 $route['sis/get_sections']                      = 'Sis/get_sections';
 $route['sis/rebuild_index']                     = 'Sis/rebuild_index';
 
-// ─── Admission CRM ──────────────────────────────────────────────────────────
-$route['admission_crm']                                  = 'Admission_crm/index';
-$route['admission_crm/inquiries']                        = 'Admission_crm/inquiries';
-$route['admission_crm/fetch_inquiries']                  = 'Admission_crm/fetch_inquiries';
-$route['admission_crm/save_inquiry']                     = 'Admission_crm/save_inquiry';
-$route['admission_crm/delete_inquiry']                   = 'Admission_crm/delete_inquiry';
-$route['admission_crm/convert_to_application']           = 'Admission_crm/convert_to_application';
-$route['admission_crm/applications']                     = 'Admission_crm/applications';
-$route['admission_crm/fetch_applications']               = 'Admission_crm/fetch_applications';
-$route['admission_crm/save_application']                 = 'Admission_crm/save_application';
-$route['admission_crm/get_application']                  = 'Admission_crm/get_application';
-$route['admission_crm/delete_application']               = 'Admission_crm/delete_application';
-$route['admission_crm/pipeline']                         = 'Admission_crm/pipeline';
-$route['admission_crm/fetch_pipeline']                   = 'Admission_crm/fetch_pipeline';
-$route['admission_crm/update_stage']                     = 'Admission_crm/update_stage';
-$route['admission_crm/approve_application']              = 'Admission_crm/approve_application';
-$route['admission_crm/reject_application']               = 'Admission_crm/reject_application';
-$route['admission_crm/enroll_student']                   = 'Admission_crm/enroll_student';
-$route['admission_crm/waitlist']                         = 'Admission_crm/waitlist';
-$route['admission_crm/fetch_waitlist']                   = 'Admission_crm/fetch_waitlist';
-$route['admission_crm/add_to_waitlist']                  = 'Admission_crm/add_to_waitlist';
-$route['admission_crm/remove_from_waitlist']             = 'Admission_crm/remove_from_waitlist';
-$route['admission_crm/promote_from_waitlist']            = 'Admission_crm/promote_from_waitlist';
-$route['admission_crm/settings']                         = 'Admission_crm/settings';
-$route['admission_crm/save_settings']                    = 'Admission_crm/save_settings';
-$route['admission_crm/get_settings']                     = 'Admission_crm/get_settings';
-$route['admission_crm/online_form']                      = 'Admission_crm/online_form';
-$route['admission_crm/submit_online_form']               = 'Admission_crm/submit_online_form';
-$route['admission_crm/fetch_analytics']                  = 'Admission_crm/fetch_analytics';
+// ─── SIS: Student methods (merged from Student.php) ─────────────────────────
+$route['sis/all_student']                       = 'Sis/all_student';
+$route['sis/master_student']                    = 'Sis/master_student';
+$route['sis/import_students']                   = 'Sis/import_students';
+$route['sis/studentAdmission']                  = 'Sis/studentAdmission';
+$route['sis/get_sections_by_class']             = 'Sis/get_sections_by_class';
+$route['sis/fetch_subjects']                    = 'Sis/fetch_subjects';
+$route['sis/edit_student/(:any)']               = 'Sis/edit_student/$1';
+$route['sis/delete_student/(:any)']             = 'Sis/delete_student/$1';
+$route['sis/student_profile/(:any)']            = 'Sis/student_profile/$1';
+$route['sis/download_document']                 = 'Sis/download_document';
+$route['sis/attendance']                        = 'Sis/attendance';
+$route['sis/fetchAttendance']                   = 'Sis/fetchAttendance';
+
+// ─── SIS: Admission CRM (merged from Admission_crm.php) ────────────────────
+$route['sis/crm']                               = 'Sis/crm_dashboard';
+$route['sis/inquiries']                         = 'Sis/inquiries';
+$route['sis/fetch_inquiries']                   = 'Sis/fetch_inquiries';
+$route['sis/save_inquiry']                      = 'Sis/save_inquiry';
+$route['sis/delete_inquiry']                    = 'Sis/delete_inquiry';
+$route['sis/convert_to_application']            = 'Sis/convert_to_application';
+$route['sis/applications']                      = 'Sis/applications';
+$route['sis/fetch_applications']                = 'Sis/fetch_applications';
+$route['sis/save_application']                  = 'Sis/save_application';
+$route['sis/get_application']                   = 'Sis/get_application';
+$route['sis/delete_application']                = 'Sis/delete_application';
+$route['sis/pipeline']                          = 'Sis/pipeline';
+$route['sis/fetch_pipeline']                    = 'Sis/fetch_pipeline';
+$route['sis/update_stage']                      = 'Sis/update_stage';
+$route['sis/approve_application']               = 'Sis/approve_application';
+$route['sis/reject_application']                = 'Sis/reject_application';
+$route['sis/enroll_student']                    = 'Sis/enroll_student';
+$route['sis/waitlist']                          = 'Sis/waitlist';
+$route['sis/fetch_waitlist']                    = 'Sis/fetch_waitlist';
+$route['sis/add_to_waitlist']                   = 'Sis/add_to_waitlist';
+$route['sis/remove_from_waitlist']              = 'Sis/remove_from_waitlist';
+$route['sis/promote_from_waitlist']             = 'Sis/promote_from_waitlist';
+$route['sis/crm_settings']                      = 'Sis/crm_settings';
+$route['sis/save_crm_settings']                 = 'Sis/save_crm_settings';
+$route['sis/get_crm_settings']                  = 'Sis/get_crm_settings';
+$route['sis/online_form']                       = 'Sis/online_form';
+$route['sis/submit_online_form']                = 'Sis/submit_online_form';
+$route['sis/fetch_analytics']                   = 'Sis/fetch_analytics';
+
+// ─── Backward-compatible routes (old student/* and admission_crm/* URLs) ────
+// These map legacy URLs to consolidated SIS methods so existing views/links work
+$route['student/all_student']                   = 'Sis/all_student';
+$route['student/id_card']                       = 'Sis/id_card';
+$route['student/master_student']                = 'Sis/master_student';
+$route['student/import_students']               = 'Sis/import_students';
+$route['student/studentAdmission']              = 'Sis/studentAdmission';
+$route['student/get_classes']                   = 'Sis/get_classes';
+$route['student/get_sections_by_class']         = 'Sis/get_sections_by_class';
+$route['student/fetch_subjects']                = 'Sis/fetch_subjects';
+$route['student/edit_student/(:any)']           = 'Sis/edit_student/$1';
+$route['student/delete_student/(:any)']         = 'Sis/delete_student/$1';
+$route['student/student_profile/(:any)']        = 'Sis/student_profile/$1';
+$route['student/download_document']             = 'Sis/download_document';
+$route['student/attendance']                    = 'Sis/attendance';
+$route['student/fetchAttendance']               = 'Sis/fetchAttendance';
+$route['admission_crm']                         = 'Sis/crm_dashboard';
+$route['admission_crm/inquiries']               = 'Sis/inquiries';
+$route['admission_crm/fetch_inquiries']         = 'Sis/fetch_inquiries';
+$route['admission_crm/save_inquiry']            = 'Sis/save_inquiry';
+$route['admission_crm/delete_inquiry']          = 'Sis/delete_inquiry';
+$route['admission_crm/convert_to_application']  = 'Sis/convert_to_application';
+$route['admission_crm/applications']            = 'Sis/applications';
+$route['admission_crm/fetch_applications']      = 'Sis/fetch_applications';
+$route['admission_crm/save_application']        = 'Sis/save_application';
+$route['admission_crm/get_application']         = 'Sis/get_application';
+$route['admission_crm/delete_application']      = 'Sis/delete_application';
+$route['admission_crm/pipeline']                = 'Sis/pipeline';
+$route['admission_crm/fetch_pipeline']          = 'Sis/fetch_pipeline';
+$route['admission_crm/update_stage']            = 'Sis/update_stage';
+$route['admission_crm/approve_application']     = 'Sis/approve_application';
+$route['admission_crm/reject_application']      = 'Sis/reject_application';
+$route['admission_crm/enroll_student']          = 'Sis/enroll_student';
+$route['admission_crm/waitlist']                = 'Sis/waitlist';
+$route['admission_crm/fetch_waitlist']          = 'Sis/fetch_waitlist';
+$route['admission_crm/add_to_waitlist']         = 'Sis/add_to_waitlist';
+$route['admission_crm/remove_from_waitlist']    = 'Sis/remove_from_waitlist';
+$route['admission_crm/promote_from_waitlist']   = 'Sis/promote_from_waitlist';
+$route['admission_crm/settings']                = 'Sis/crm_settings';
+$route['admission_crm/save_settings']           = 'Sis/save_crm_settings';
+$route['admission_crm/get_settings']            = 'Sis/get_crm_settings';
+$route['admission_crm/online_form']             = 'Sis/online_form';
+$route['admission_crm/submit_online_form']      = 'Sis/submit_online_form';
+$route['admission_crm/fetch_analytics']         = 'Sis/fetch_analytics';
 // ─── Attendance Management ───
 $route['attendance']                         = 'Attendance/index';
 $route['attendance/student']                 = 'Attendance/student_attendance';
@@ -503,6 +585,8 @@ $route['fee_management/create_payment_order']            = 'Fee_management/creat
 $route['fee_management/verify_payment']                  = 'Fee_management/verify_payment';
 // Summary
 $route['fee_management/get_fee_summary']                 = 'Fee_management/get_fee_summary';
+// Carry-forward (F-15)
+$route['fee_management/carry_forward_fees']              = 'Fee_management/carry_forward_fees';
 
 // ============================================================================
 //  OPERATIONS MANAGEMENT
@@ -774,4 +858,34 @@ $route['certificates/get_issued']                    = 'Certificates/get_issued'
 $route['certificates/get_certificate']               = 'Certificates/get_certificate';
 $route['certificates/revoke_certificate']            = 'Certificates/revoke_certificate';
 $route['certificates/get_school_profile']            = 'Certificates/get_school_profile';
+
+/* ── School Backup ─────────────────────────────────────────────────── */
+$route['school_backup']                              = 'School_backup/index';
+$route['school_backup/get_backups']                  = 'School_backup/get_backups';
+$route['school_backup/get_schedule']                 = 'School_backup/get_schedule';
+$route['school_backup/save_schedule']                = 'School_backup/save_schedule';
+$route['school_backup/create_backup']                = 'School_backup/create_backup';
+$route['school_backup/download/(:any)']              = 'School_backup/download/$1';
+
+/* ── Admin Users (IAM) ─────────────────────────────────────────────── */
+$route['admin_users']                                = 'AdminUsers/index';
+$route['admin_users/get_dashboard']                  = 'AdminUsers/get_dashboard';
+$route['admin_users/get_admins']                     = 'AdminUsers/get_admins';
+$route['admin_users/create_admin']                   = 'AdminUsers/create_admin';
+$route['admin_users/update_admin']                   = 'AdminUsers/update_admin';
+$route['admin_users/disable_admin']                  = 'AdminUsers/disable_admin';
+$route['admin_users/delete_admin']                   = 'AdminUsers/delete_admin';
+$route['admin_users/reset_password']                 = 'AdminUsers/reset_password';
+$route['admin_users/get_roles']                      = 'AdminUsers/get_roles';
+$route['admin_users/save_role']                      = 'AdminUsers/save_role';
+$route['admin_users/delete_role']                    = 'AdminUsers/delete_role';
+$route['admin_users/get_login_logs']                 = 'AdminUsers/get_login_logs';
+
+/* ── Audit Logs ───────────────────────────────────────────────────── */
+$route['audit_logs']                                 = 'AuditLogs/index';
+$route['audit_logs/get_logs']                        = 'AuditLogs/get_logs';
+$route['audit_logs/filter_logs']                     = 'AuditLogs/filter_logs';
+$route['audit_logs/get_user_activity']               = 'AuditLogs/get_user_activity';
+$route['audit_logs/get_stats']                       = 'AuditLogs/get_stats';
+$route['audit_logs/archive_old']                     = 'AuditLogs/archive_old';
 

@@ -28,11 +28,15 @@ class Exam extends MY_Controller
     const ALLOWED_STATUSES = ['Draft', 'Published', 'Completed'];
 
     /** Roles allowed to create, edit, delete exams and change status. */
-    const ADMIN_ROLES = ['Super Admin', 'Admin'];
+    private const ADMIN_ROLES = ['Super Admin', 'Admin'];
+
+    /** Roles allowed to view exam data. */
+    private const VIEW_ROLES = ['Admin', 'Principal', 'Teacher'];
 
     public function __construct()
     {
         parent::__construct();
+        require_permission('Examinations');
         $this->load->library('exam_engine');
         $this->exam_engine->init($this->firebase, $this->school_name, $this->session_year);
     }
@@ -46,6 +50,7 @@ class Exam extends MY_Controller
     // ── index() — Exam list ───────────────────────────────────────────────
     public function index()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_exams');
         $school = $this->school_name;
         $year   = $this->session_year;
 
@@ -157,7 +162,11 @@ class Exam extends MY_Controller
 
             // — Process schedule rows
             $savedCount = 0;
+            $skippedRows = []; // H-08 FIX: Track skipped rows to report back to user
+            $rowIndex = 0;
+
             foreach ($scheduleRows as $row) {
+                $rowIndex++;
                 if (!is_array($row)) continue;
 
                 $className  = trim((string) ($row['className']   ?? ''));
@@ -169,12 +178,14 @@ class Exam extends MY_Controller
                 $dateRaw    = trim((string) ($row['date'] ?? ''));
 
                 if (!$className || !$subject || !$startTime || !$endTime || $totalMarks === null || !$dateRaw) {
+                    $skippedRows[] = "Row {$rowIndex}: Missing required fields (class/subject/time/marks/date).";
                     log_message('error', 'Exam::create — incomplete row skipped: ' . json_encode($row));
                     continue;
                 }
 
                 $dateDt = DateTime::createFromFormat('d/m/Y', $dateRaw);
                 if (!$dateDt) {
+                    $skippedRows[] = "Row {$rowIndex} ({$subject}): Invalid date format '{$dateRaw}' — expected DD/MM/YYYY.";
                     log_message('error', "Exam::create — bad date [{$dateRaw}], skipping.");
                     continue;
                 }
@@ -183,6 +194,7 @@ class Exam extends MY_Controller
                 $stDt = DateTime::createFromFormat('H:i', $startTime);
                 $etDt = DateTime::createFromFormat('H:i', $endTime);
                 if (!$stDt || !$etDt) {
+                    $skippedRows[] = "Row {$rowIndex} ({$subject}): Invalid time format '{$startTime}-{$endTime}'.";
                     log_message('error', "Exam::create — bad time [{$startTime}-{$endTime}], skipping.");
                     continue;
                 }
@@ -201,6 +213,7 @@ class Exam extends MY_Controller
                 // Save to each section of the class
                 $sections = $structure[$className] ?? [];
                 if (empty($sections)) {
+                    $skippedRows[] = "Row {$rowIndex} ({$subject}): No sections found for '{$className}'.";
                     log_message('error', "Exam::create — no sections for [{$className}], skipping.");
                     continue;
                 }
@@ -220,11 +233,17 @@ class Exam extends MY_Controller
                 $savedCount++;
             }
 
-            $this->json_success([
+            // H-08 FIX: Include skipped row details so the user knows what failed
+            $response = [
                 'examId'     => $examId,
                 'message'    => "Exam created successfully ({$savedCount} entries saved).",
                 'csrf_token' => $this->security->get_csrf_hash(),
-            ]);
+            ];
+            if (!empty($skippedRows)) {
+                $response['warnings'] = $skippedRows;
+                $response['message'] .= ' ' . count($skippedRows) . ' row(s) skipped due to validation errors.';
+            }
+            $this->json_success($response);
             return;
         }
 
@@ -248,6 +267,7 @@ class Exam extends MY_Controller
     // ── view($id) ────────────────────────────────────────────────────────
     public function view($id = null)
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_exam');
         if (!$id) { redirect('exam'); }
 
         $school = $this->school_name;
@@ -289,6 +309,24 @@ class Exam extends MY_Controller
         // Remove from CumulativeConfig
         $this->firebase->delete("Schools/{$school}/{$year}/Results/CumulativeConfig/Exams/{$id}");
 
+        // EX-4 FIX: Mark cumulative results as stale since an exam was removed
+        // (full re-computation needed — we cannot selectively remove one exam's contribution)
+        $cumulativePath = "Schools/{$school}/{$year}/Results/Cumulative";
+        $cumulativeKeys = $this->firebase->shallow_get($cumulativePath);
+        if (is_array($cumulativeKeys)) {
+            foreach ($cumulativeKeys as $ck) {
+                $sectionKeys = $this->firebase->shallow_get("{$cumulativePath}/{$ck}");
+                if (is_array($sectionKeys)) {
+                    foreach ($sectionKeys as $sk) {
+                        $this->firebase->set("{$cumulativePath}/{$ck}/{$sk}/_stale", [
+                            'reason' => "Exam {$id} deleted",
+                            'deleted_at' => date('c'),
+                        ]);
+                    }
+                }
+            }
+        }
+
         redirect('exam');
     }
 
@@ -314,6 +352,7 @@ class Exam extends MY_Controller
     // ── get_subjects() — GET AJAX ────────────────────────────────────────
     public function get_subjects()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_subjects');
         header('Content-Type: application/json');
 
         $classKey = trim((string) $this->input->get('class'));

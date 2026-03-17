@@ -14,6 +14,9 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  */
 class Admin extends MY_Controller
 {
+    private const ADMIN_ROLES = ['Admin'];
+    private const VIEW_ROLES  = ['Admin', 'Principal', 'Teacher'];
+
     public function __construct()
     {
         parent::__construct();
@@ -22,6 +25,8 @@ class Admin extends MY_Controller
 
     public function index()
     {
+        // Dashboard is the landing page — any authenticated admin can see it.
+        // MY_Controller __construct already enforces authentication.
         $school_id    = $this->school_id;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
@@ -99,6 +104,8 @@ class Admin extends MY_Controller
         }
 
         // ── Read 4: Receipt Index (fees) — skip for Teacher role ──────────
+        // SEC-8: All financial data (fees_collected, monthly_fees) is guarded
+        // behind this role check. Teachers see zeroed values only.
         $feesCollected = 0;
         $monthlyFees   = [];
 
@@ -192,8 +199,9 @@ class Admin extends MY_Controller
 
     public function manage_admin()
     {
-        // [FIX-2] Use session school_code (login code) for Users/Admin paths
-        $school_id = $this->school_code;
+        $this->_require_role(self::ADMIN_ROLES);
+        // [FIX-2] Use parent_db_key for Users/Admin paths (works for both legacy and SCH_ schools)
+        $school_id = $this->parent_db_key;
 
         if ($this->input->method() === 'post') {
             header('Content-Type: application/json');
@@ -207,6 +215,12 @@ class Admin extends MY_Controller
 
                 if ($newPassword !== $confirmPassword) {
                     $this->json_error('Passwords do not match.', 400);
+                }
+                if (strlen($newPassword) < 8) {
+                    $this->json_error('Password must be at least 8 characters.', 400);
+                }
+                if (strlen($newPassword) > 72) {
+                    $this->json_error('Password must not exceed 72 characters.', 400);
                 }
 
                 // [FIX-3] Hash password before storing
@@ -248,6 +262,12 @@ class Admin extends MY_Controller
 
             if (!$name || !$email || !$password || !$role) {
                 $this->json_error('Required fields missing.', 400);
+            }
+            if (strlen($password) < 8) {
+                $this->json_error('Password must be at least 8 characters.', 400);
+            }
+            if (strlen($password) > 72) {
+                $this->json_error('Password must not exceed 72 characters.', 400);
             }
 
             // Fetch current admin count
@@ -328,9 +348,10 @@ class Admin extends MY_Controller
 
     public function edit_admin()
     {
+        $this->_require_role(self::ADMIN_ROLES);
         header('Content-Type: application/json');
 
-        $school_id = $this->school_code;
+        $school_id = $this->parent_db_key;
         $admin_id  = trim((string) $this->input->post('admin_id'));
 
         if (!$admin_id) {
@@ -368,6 +389,7 @@ class Admin extends MY_Controller
      */
     public function switch_session(): void
     {
+        $this->_require_role(self::ADMIN_ROLES);
         if ($this->input->method() !== 'post') {
             $this->json_error('Method not allowed.', 405);
         }
@@ -391,6 +413,13 @@ class Admin extends MY_Controller
             'session_year'    => $new_year,  // Account_model reads this
         ]);
 
+        // Persist active session to Firebase so it survives re-login
+        try {
+            $this->firebase->set("Schools/{$this->school_name}/Config/ActiveSession", $new_year);
+        } catch (Exception $e) {
+            log_message('error', 'switch_session: ActiveSession persist failed — ' . $e->getMessage());
+        }
+
         log_message('info',
             "Session switched to [{$new_year}] admin=[{$this->admin_id}] school=[{$this->school_name}]"
         );
@@ -403,12 +432,10 @@ class Admin extends MY_Controller
      */
     public function create_session(): void
     {
+        // Only Super Admin can create new academic sessions
+        $this->_require_role(['Super Admin']);
         if ($this->input->method() !== 'post') {
             $this->json_error('Method not allowed.', 405);
-        }
-
-        if ($this->admin_role !== 'Super Admin') {
-            $this->json_error('Insufficient permissions. Super Admin required.', 403);
         }
 
         $new_year = trim((string) $this->input->post('session_year'));
@@ -467,9 +494,10 @@ class Admin extends MY_Controller
      */
     public function updateUserData()
     {
+        $this->_require_role(self::ADMIN_ROLES);
         header('Content-Type: application/json');
 
-        $school_id = $this->school_code;
+        $school_id = $this->parent_db_key;
         $modalId   = trim((string) $this->input->post('modal_id'));
         $userData  = $this->input->post('user_data');
 

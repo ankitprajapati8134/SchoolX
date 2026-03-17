@@ -2,6 +2,12 @@
 
 class NoticeAnnouncement extends MY_Controller
 {
+    /** Roles for notice management */
+    private const MANAGE_ROLES = ['Admin', 'Principal', 'Teacher'];
+
+    /** Roles that may view notices */
+    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+
     public function __construct()
     {
         parent::__construct();
@@ -9,6 +15,7 @@ class NoticeAnnouncement extends MY_Controller
 
     public function index()
     {
+        $this->_require_role(self::VIEW_ROLES, 'notice_view');
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -24,6 +31,8 @@ class NoticeAnnouncement extends MY_Controller
     // ── Fetch recent notices (called by header bell via AJAX) ─────
     public function fetch_recent_notices()
     {
+        // No role check — any authenticated user can read recent notices.
+        // MY_Controller already enforces authentication.
         header('Content-Type: application/json');
         echo json_encode($this->getRecentNotices(10));
     }
@@ -94,6 +103,7 @@ class NoticeAnnouncement extends MY_Controller
     // ── Search users ──────────────────────────────────────────────
     public function search_users()
     {
+        $this->_require_role(self::VIEW_ROLES, 'search_users');
         header('Content-Type: application/json');
 
         $query        = strtolower(trim($this->input->get('query') ?? ''));
@@ -166,6 +176,7 @@ class NoticeAnnouncement extends MY_Controller
     // ── Create notice ─────────────────────────────────────────────
     public function create_notice()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'create_notice');
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
         $admin_id     = $this->admin_id;
@@ -188,8 +199,8 @@ class NoticeAnnouncement extends MY_Controller
 
         // ── POST handler ──────────────────────────────────────────
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $title       = trim($_POST['title']       ?? '');
-            $description = trim($_POST['description'] ?? '');
+            $title       = trim($this->input->post('title', TRUE) ?? '');
+            $description = trim($this->input->post('description', TRUE) ?? '');
             $to_ids      = [];
 
             $allowedPriorities  = ['High', 'Normal', 'Low'];
@@ -435,6 +446,7 @@ class NoticeAnnouncement extends MY_Controller
     // ── Delete notice ─────────────────────────────────────────────
     public function delete($id)
     {
+        $this->_require_role(self::MANAGE_ROLES, 'delete_notice');
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
         $path = 'Schools/' . $school_name . '/' . $session_year . '/All Notices/' . $id;

@@ -3,6 +3,9 @@ defined('BASEPATH') or exit('No direct script access allowed');
 
 class Classes extends MY_Controller
 {
+    private const MANAGE_ROLES = ['Admin', 'Principal'];
+    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+
     public function __construct()
     {
         parent::__construct();
@@ -11,7 +14,7 @@ class Classes extends MY_Controller
 
     public function ensure_class_exists()
     {
-
+        $this->_require_role(self::MANAGE_ROLES);
 
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
@@ -37,6 +40,7 @@ class Classes extends MY_Controller
 
     public function manage_classes()
     {
+        $this->_require_role(self::VIEW_ROLES);
         $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
@@ -53,6 +57,7 @@ class Classes extends MY_Controller
 
     public function section_students($class_slug, $section_slug)
     {
+        $this->_require_role(self::VIEW_ROLES);
         $class = urldecode($class_slug);
 
         // Numeric class → add prefix
@@ -72,6 +77,7 @@ class Classes extends MY_Controller
 
    public function fetch_classes_grid()
 {
+    $this->_require_role(self::VIEW_ROLES);
     header('Content-Type: application/json');
 
     $school_name  = $this->school_name;
@@ -120,6 +126,7 @@ class Classes extends MY_Controller
 
     public function fetch_class_sections()
     {
+        $this->_require_role(self::VIEW_ROLES);
         header('Content-Type: application/json');
 
         $school_name  = $this->school_name;
@@ -196,6 +203,7 @@ class Classes extends MY_Controller
 
     public function add_section()
     {
+        $this->_require_role(self::MANAGE_ROLES);
         header('Content-Type: application/json');
 
         $school_name  = $this->school_name;
@@ -246,6 +254,7 @@ class Classes extends MY_Controller
 
     public function fetch_sections_list()
     {
+        $this->_require_role(self::VIEW_ROLES);
         header('Content-Type: application/json');
 
         $school = $this->school_name;
@@ -278,6 +287,7 @@ class Classes extends MY_Controller
 
     public function get_class_details()
     {
+        $this->_require_role(self::VIEW_ROLES);
         header('Content-Type: application/json');
 
         $school_name = $this->school_name;
@@ -349,6 +359,7 @@ class Classes extends MY_Controller
 
     public function view($class_slug = null)
     {
+        $this->_require_role(self::VIEW_ROLES);
         if (!$class_slug) {
             show_404();
             return;
@@ -368,6 +379,7 @@ class Classes extends MY_Controller
 
     public function fetch_section_students()
     {
+        $this->_require_role(self::VIEW_ROLES);
         header('Content-Type: application/json');
 
         $class   = trim((string) $this->input->post('class_name'));
@@ -431,6 +443,7 @@ class Classes extends MY_Controller
 
     public function get_section_settings()
     {
+        $this->_require_role(self::VIEW_ROLES);
         header('Content-Type: application/json');
 
         $school_name  = $this->school_name;
@@ -477,6 +490,7 @@ class Classes extends MY_Controller
 
     public function save_section_settings()
     {
+        $this->_require_role(self::MANAGE_ROLES);
         header('Content-Type: application/json');
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
@@ -541,6 +555,7 @@ class Classes extends MY_Controller
 
     public function loadClassesForTransfer()
     {
+        $this->_require_role(self::VIEW_ROLES);
         header('Content-Type: application/json');
 
         $school_name  = $this->school_name;
@@ -595,6 +610,7 @@ class Classes extends MY_Controller
 
     public function transfer_students()
     {
+        $this->_require_role(self::MANAGE_ROLES);
         header('Content-Type: application/json');
 
         $studentIds  = $this->input->post('student_ids');
@@ -639,61 +655,39 @@ class Classes extends MY_Controller
             return;
         }
 
-        $fromStudents = (array) $this->CM->get_data($fromPath);
-        $toStudents   = (array) $this->CM->get_data($toPath);
+        // B-C1 FIX: Read only the List nodes and per-student data we need (not entire Students node)
+        $fromList = $this->firebase->get("{$fromPath}/List") ?? [];
+        if (!is_array($fromList)) $fromList = [];
 
-        // 🔥 Remove numeric junk keys
-        $fromStudents = array_filter($fromStudents, fn($k) => is_string($k), ARRAY_FILTER_USE_KEY);
-        $toStudents   = array_filter($toStudents, fn($k) => is_string($k), ARRAY_FILTER_USE_KEY);
-
-        $fromList = isset($fromStudents['List']) && is_array($fromStudents['List'])
-            ? $fromStudents['List']
-            : [];
-
-        $toList = isset($toStudents['List']) && is_array($toStudents['List'])
-            ? $toStudents['List']
-            : [];
+        $batchTransfer = [];
+        $cleanClass   = trim(str_ireplace('Class', '', $toClass));
+        $cleanSection = trim(str_ireplace('Section', '', $toSection));
 
         foreach ($studentIds as $stuId) {
-
             if (!isset($fromList[$stuId])) continue;
 
             $studentName = $fromList[$stuId];
 
-            /* ===============================
-           1️⃣ MOVE STUDENT DATA (AS-IS)
-        =============================== */
+            // Remove from source roster, add to target roster
+            $batchTransfer["{$fromPath}/List/{$stuId}"] = null;
+            $batchTransfer["{$toPath}/List/{$stuId}"]   = $studentName;
 
-            // Copy FULL student node
-            if (isset($fromStudents[$stuId])) {
-                $toStudents[$stuId] = $fromStudents[$stuId];
-                unset($fromStudents[$stuId]);
+            // Move per-student data node (e.g. Month Fee, attendance) if it exists
+            $studentData = $this->firebase->get("{$fromPath}/{$stuId}");
+            if (!empty($studentData) && is_array($studentData)) {
+                $batchTransfer["{$fromPath}/{$stuId}"] = null;
+                $batchTransfer["{$toPath}/{$stuId}"]   = $studentData;
             }
 
-            // Move List entry
-            $toList[$stuId] = $studentName;
-            unset($fromList[$stuId]);
-
-            /* ===============================
-           2️⃣ UPDATE USER PROFILE (CLEAN)
-        =============================== */
-
-            $cleanClass   = trim(str_ireplace('Class', '', $toClass));
-            $cleanSection = trim(str_ireplace('Section', '', $toSection));
-
-            $userPath = "Users/Parents/{$school_id}/{$stuId}";
-
-            $this->firebase->update($userPath, [
-                'Class'   => $cleanClass,
-                'Section' => $cleanSection
-            ]);
+            // Update user profile
+            $batchTransfer["Users/Parents/{$school_id}/{$stuId}/Class"]   = $cleanClass;
+            $batchTransfer["Users/Parents/{$school_id}/{$stuId}/Section"] = $cleanSection;
         }
 
-        $fromStudents['List'] = $fromList;
-        $toStudents['List']   = $toList;
-
-        $this->firebase->set($fromPath, $fromStudents);
-        $this->firebase->set($toPath, $toStudents);
+        // Single atomic multi-path update
+        if (!empty($batchTransfer)) {
+            $this->firebase->update("", $batchTransfer);
+        }
 
         echo json_encode([
             'status'  => 'success',

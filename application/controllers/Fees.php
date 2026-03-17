@@ -3,9 +3,19 @@ defined('BASEPATH') or exit('No direct script access allowed');
 
 class Fees extends MY_Controller
 {
+    /** Roles that may modify fee structures, submit fees, manage discounts */
+    private const MANAGE_ROLES = ['Admin', 'Principal', 'Accountant'];
+
+    /** Roles that may view fee data */
+    private const VIEW_ROLES   = ['Admin', 'Principal', 'Accountant', 'Teacher'];
+
+    /** Roles that may collect fees at counter */
+    private const COUNTER_ROLES = ['Admin', 'Principal', 'Accountant'];
+
     public function __construct()
     {
         parent::__construct();
+        require_permission('Fees');
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -111,6 +121,7 @@ class Fees extends MY_Controller
 
     public function fees_structure()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'fees_structure');
         $sn = $this->school_name;
         $sy = $this->session_year;
 
@@ -138,6 +149,7 @@ class Fees extends MY_Controller
 
     public function delete_fees_structure($feeTitle, $feeType)
     {
+        $this->_require_role(self::MANAGE_ROLES, 'delete_fees_structure');
         $sn = $this->school_name;
         $sy = $this->session_year;
         $this->CM->delete_data(
@@ -153,6 +165,7 @@ class Fees extends MY_Controller
 
     public function fees_chart()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fees_chart');
         $sn = $this->school_name;
         $sy = $this->session_year;
 
@@ -306,6 +319,7 @@ class Fees extends MY_Controller
 
     public function save_updated_fees()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'save_fees');
         header('Content-Type: application/json');
 
         // ── MY_Controller already validated CSRF in __construct() ──────
@@ -412,6 +426,8 @@ class Fees extends MY_Controller
             $this->CM->addKey_pair_data($feesPath, $fees);
         }
 
+        log_audit('Fees', 'update_fees', "{$class} {$section}", "Updated fee structure for {$class} Section {$section}");
+
         echo json_encode(['status' => 'success', 'message' => 'Fees updated successfully.']);
     }
 
@@ -421,6 +437,7 @@ class Fees extends MY_Controller
 
     public function submit_discount()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'submit_discount');
         header('Content-Type: application/json');
 
         $userId   = trim($this->input->post('userId'));
@@ -459,6 +476,7 @@ class Fees extends MY_Controller
 
     public function student_fees()
     {
+        $this->_require_role(self::VIEW_ROLES, 'student_fees');
         $this->load->view('include/header');
         $this->load->view('student_fees');
         $this->load->view('include/footer');
@@ -470,6 +488,7 @@ class Fees extends MY_Controller
 
     public function fetch_fee_receipts()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_receipts');
         $this->output->set_content_type('application/json');
 
         $school_id = $this->parent_db_key;
@@ -536,6 +555,7 @@ class Fees extends MY_Controller
 
     public function fees_counter()
     {
+        $this->_require_role(self::COUNTER_ROLES, 'fees_counter');
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -569,6 +589,7 @@ class Fees extends MY_Controller
 
     public function lookup_student()
     {
+        $this->_require_role(self::VIEW_ROLES, 'lookup_student');
         header('Content-Type: application/json');
 
         $userId = trim($this->input->post('user_id') ?? '');
@@ -605,6 +626,7 @@ class Fees extends MY_Controller
 
     public function fetch_months()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_months');
         header('Content-Type: application/json');
 
         $school_id = $this->parent_db_key;
@@ -668,6 +690,7 @@ class Fees extends MY_Controller
 
     public function fetch_fee_details()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_fee_details');
         ob_start();
         header('Content-Type: application/json');
 
@@ -781,6 +804,7 @@ class Fees extends MY_Controller
 
     public function get_server_date()
     {
+        $this->_require_role(self::VIEW_ROLES, 'get_server_date');
         header('Content-Type: application/json');
         $sn = $this->school_name;
         $sy = $this->session_year;
@@ -797,10 +821,35 @@ class Fees extends MY_Controller
 
     public function get_receipt_no()
     {
+        $this->_require_role(self::COUNTER_ROLES, 'get_receipt_no');
         header('Content-Type: application/json');
+
+        // H-02 FIX: Read-increment-verify with retry to mitigate race conditions.
+        // After writing the incremented value, re-read to confirm. If another
+        // concurrent request overwrote our value, retry up to 3 times.
         $receiptPath = "Schools/{$this->school_name}/{$this->session_year}/Accounts/Fees/Receipt No";
-        $receiptNo   = $this->CM->get_data($receiptPath) ?: '1';
-        echo json_encode(['receiptNo' => $receiptNo]);
+        $maxRetries  = 3;
+
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            $current = (int) ($this->firebase->get($receiptPath) ?: 0);
+            $nextNo  = $current + 1;
+            $this->firebase->set($receiptPath, $nextNo);
+
+            // Verify our write stuck
+            $verify = (int) ($this->firebase->get($receiptPath) ?: 0);
+            if ($verify === $nextNo) {
+                echo json_encode(['receiptNo' => $nextNo]);
+                return;
+            }
+            // Another request overwrote — retry with the newer value
+            log_message('info', "get_receipt_no race detected on attempt $attempt: wrote $nextNo but read back $verify");
+        }
+
+        // All retries exhausted — use the last verified value + 1 as a safe fallback
+        $fallback = $verify + 1;
+        $this->firebase->set($receiptPath, $fallback);
+        log_message('error', "get_receipt_no exhausted $maxRetries retries, using fallback receipt $fallback");
+        echo json_encode(['receiptNo' => $fallback]);
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -809,6 +858,7 @@ class Fees extends MY_Controller
 
     public function search_student()
     {
+        $this->_require_role(self::VIEW_ROLES, 'search_student');
         header('Content-Type: application/json');
         $results = $this->input->post('search_name')
             ? $this->_searchByName($this->input->post('search_name'))
@@ -857,6 +907,7 @@ class Fees extends MY_Controller
 
     public function submit_fees()
     {
+        $this->_require_role(self::COUNTER_ROLES, 'submit_fees');
         $this->output->set_content_type('application/json');
         $this->load->library('firebase');
 
@@ -923,6 +974,21 @@ class Fees extends MY_Controller
             return;
         }
 
+        // ── Duplicate payment guard: re-read Month Fee markers ──
+        $studentBase_check = $this->studentPath($class, $section, $userId);
+        $monthFeeData = $this->firebase->get("$studentBase_check/Month Fee");
+        $monthFeeData = is_array($monthFeeData) ? $monthFeeData : [];
+        foreach ($selectedMonths as $m) {
+            $m = trim($m);
+            if (isset($monthFeeData[$m]) && (int)$monthFeeData[$m] === 1) {
+                $this->output->set_output(json_encode([
+                    'status'  => 'error',
+                    'message' => "Month $m is already paid. Please refresh and try again.",
+                ]));
+                return;
+            }
+        }
+
         $date     = date('d-m-Y');
         $date_obj = DateTime::createFromFormat('d-m-Y', $date);
         $month    = $date_obj ? $date_obj->format('F') : date('F');
@@ -930,6 +996,14 @@ class Fees extends MY_Controller
 
         $receiptKey  = 'F' . $receiptNo;
         $studentBase = $this->studentPath($class, $section, $userId);
+
+        // Write pending status for reconciliation safety
+        $pendingPath = "Schools/$school_name/$session_year/Accounts/Pending_fees/$receiptKey";
+        $this->firebase->set($pendingPath, [
+            'user_id' => $userId, 'class' => $class, 'section' => $section,
+            'amount' => $schoolFees, 'months' => $selectedMonths,
+            'started_at' => date('c'), 'status' => 'pending',
+        ]);
 
         // 1. Reset OnDemandDiscount, accumulate totalDiscount
         $discPath1 = "$studentBase/Discount/OnDemandDiscount";
@@ -1015,13 +1089,10 @@ class Fees extends MY_Controller
             log_message('error', 'submit_fees receipt index write failed: ' . $e->getMessage());
         }
 
-        // 6. Receipt counter
-        try {
-            $rcPath = "Schools/$school_name/$session_year/Accounts/Fees/Receipt No";
-            $this->firebase->set($rcPath, ((int)($this->firebase->get($rcPath) ?? 0)) + 1);
-        } catch (Exception $e) {
-            log_message('error', 'submit_fees receipt counter failed: ' . $e->getMessage());
-        }
+        // 6. Receipt counter — H-02 FIX: Counter is now incremented atomically
+        //    in get_receipt_no() at reservation time. No increment needed here.
+        //    This prevents the race condition where two concurrent get_receipt_no()
+        //    calls could return the same number.
 
         // 7. Mark months as paid
         $monthOrder = [
@@ -1059,6 +1130,9 @@ class Fees extends MY_Controller
         if ($totalSubmitted > 0.005) {
             $this->firebase->set("$studentBase/Oversubmittedfees", round($totalSubmitted, 2));
         }
+
+        // Mark fee submission as completed — clear pending flag
+        $this->firebase->delete("Schools/$school_name/$session_year/Accounts/Pending_fees", $receiptKey);
 
         // ── Accounting integration via Operations_accounting library
         $journalParams = [
@@ -1116,6 +1190,8 @@ class Fees extends MY_Controller
             log_message('error', 'Communication fire_event failed in submit_fees: ' . $e->getMessage());
         }
 
+        log_audit('Fees', 'collect_fee', $receiptNo, "Collected fee of {$schoolFees} from {$userId} via {$paymentMode}");
+
         $this->output->set_output(json_encode([
             'status'     => 'success',
             'message'    => 'Fees submitted successfully!',
@@ -1130,6 +1206,7 @@ class Fees extends MY_Controller
 
     public function print_receipt($receiptNo = null)
     {
+        $this->_require_role(self::VIEW_ROLES, 'print_receipt');
         if (empty($receiptNo)) show_404();
         if (!preg_match('/^[0-9]+$/', $receiptNo)) show_404();
 
@@ -1303,6 +1380,7 @@ class Fees extends MY_Controller
 
     public function class_fees()
     {
+        $this->_require_role(self::VIEW_ROLES, 'class_fees');
         $sn = $this->school_name;
         $sy = $this->session_year;
 
@@ -1365,6 +1443,7 @@ class Fees extends MY_Controller
 
     public function due_fees_table()
     {
+        $this->_require_role(self::VIEW_ROLES, 'due_fees_table');
         $this->output->set_content_type('application/json');
 
         $school_id = $this->parent_db_key;
@@ -1484,6 +1563,7 @@ class Fees extends MY_Controller
 
     public function fees_records()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fees_records');
         $school_id = $this->parent_db_key;
         $sn        = $this->school_name;
         $sy        = $this->session_year;

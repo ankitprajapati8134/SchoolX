@@ -13,6 +13,15 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Fee_management extends MY_Controller
 {
+    /** Roles for admin-level config (gateway, refund approval) */
+    private const ADMIN_ROLES   = ['Admin', 'Principal'];
+
+    /** Roles for financial operations (categories, discounts, scholarships) */
+    private const FINANCE_ROLES = ['Admin', 'Principal', 'Accountant'];
+
+    /** Roles that may view fee management data */
+    private const VIEW_ROLES    = ['Admin', 'Principal', 'Accountant', 'Teacher'];
+
     /** @var string Base Firebase path for fees */
     private $feesBase;
 
@@ -22,6 +31,7 @@ class Fee_management extends MY_Controller
     public function __construct()
     {
         parent::__construct();
+        require_permission('Fees');
         $sn = $this->school_name;
         $sy = $this->session_year;
         $this->feesBase    = "Schools/$sn/$sy/Accounts/Fees";
@@ -162,6 +172,7 @@ class Fee_management extends MY_Controller
      */
     public function categories()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fee_mgmt_view');
         $data = [];
         $data['feesStructure'] = $this->_getFeesStructure();
         $data['page_title']    = 'Fee Categories';
@@ -176,6 +187,7 @@ class Fee_management extends MY_Controller
      */
     public function discounts()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fee_mgmt_view');
         $data = [];
         $cats = $this->firebase->get("{$this->feesBase}/Categories");
         $data['categories']    = is_array($cats) ? $cats : [];
@@ -192,6 +204,7 @@ class Fee_management extends MY_Controller
      */
     public function scholarships()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fee_mgmt_view');
         $data = [];
         $data['page_title'] = 'Scholarships';
 
@@ -205,6 +218,7 @@ class Fee_management extends MY_Controller
      */
     public function refunds()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fee_mgmt_view');
         $data = [];
         $data['fee_titles']  = $this->_getAllFeeTitles();
         $data['page_title']  = 'Fee Refunds';
@@ -219,6 +233,7 @@ class Fee_management extends MY_Controller
      */
     public function reminders()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fee_mgmt_view');
         $data = [];
         $settings = $this->firebase->get("{$this->feesBase}/Reminder Settings");
         $data['settings']   = is_array($settings) ? $settings : [];
@@ -234,6 +249,7 @@ class Fee_management extends MY_Controller
      */
     public function gateway()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fee_mgmt_view');
         $data = [];
         $config = $this->firebase->get("{$this->feesBase}/Gateway Config");
         if (is_array($config)) {
@@ -260,6 +276,7 @@ class Fee_management extends MY_Controller
      */
     public function online_payments()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fee_mgmt_view');
         $data = [];
         $config = $this->firebase->get("{$this->feesBase}/Gateway Config");
         $data['gateway_mode'] = is_array($config) && isset($config['mode']) ? $config['mode'] : '';
@@ -279,6 +296,7 @@ class Fee_management extends MY_Controller
      */
     public function fetch_categories()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_categories');
         $cats = $this->firebase->get("{$this->feesBase}/Categories");
         $categories = [];
         if (is_array($cats)) {
@@ -303,6 +321,7 @@ class Fee_management extends MY_Controller
      */
     public function save_category()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'save_category');
         $name        = trim($this->input->post('name'));
         $description = trim($this->input->post('description'));
         $type        = trim($this->input->post('type'));
@@ -361,6 +380,7 @@ class Fee_management extends MY_Controller
      */
     public function delete_category()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'delete_category');
         $catId = $this->safe_path_segment(trim($this->input->post('category_id') ?? ''), 'category_id');
 
         // Verify it exists
@@ -382,6 +402,7 @@ class Fee_management extends MY_Controller
      */
     public function fetch_discounts()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_discounts');
         $raw = $this->firebase->get("{$this->feesBase}/Discount Policies");
         $discounts = [];
         if (is_array($raw)) {
@@ -402,6 +423,7 @@ class Fee_management extends MY_Controller
      */
     public function save_discount()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'save_discount');
         $name       = trim($this->input->post('name'));
         $type       = trim($this->input->post('type'));
         $value      = floatval($this->input->post('value'));
@@ -471,6 +493,7 @@ class Fee_management extends MY_Controller
      */
     public function delete_discount()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'delete_discount');
         $discId = $this->safe_path_segment(trim($this->input->post('discount_id') ?? ''), 'discount_id');
 
         $existing = $this->firebase->get("{$this->feesBase}/Discount Policies/{$discId}");
@@ -495,6 +518,7 @@ class Fee_management extends MY_Controller
      */
     public function fetch_eligible_students()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'fetch_eligible');
         $discId = $this->safe_path_segment(trim($this->input->post('discount_id') ?? ''), 'discount_id');
 
         $policy = $this->firebase->get("{$this->feesBase}/Discount Policies/{$discId}");
@@ -618,6 +642,7 @@ class Fee_management extends MY_Controller
      */
     public function apply_discount()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'apply_discount');
         $discId     = $this->safe_path_segment(trim($this->input->post('discount_id') ?? ''), 'discount_id');
         $studentRaw = $this->input->post('student_ids');
 
@@ -732,6 +757,7 @@ class Fee_management extends MY_Controller
      */
     public function fetch_scholarships()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_scholarships');
         $raw = $this->firebase->get("{$this->feesBase}/Scholarships");
         $allAwards = $this->firebase->get("{$this->feesBase}/Scholarship Awards");
         $scholarships = [];
@@ -771,6 +797,7 @@ class Fee_management extends MY_Controller
      */
     public function save_scholarship()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'save_scholarship');
         $name    = trim($this->input->post('name'));
         $type    = trim($this->input->post('type'));
         $value   = floatval($this->input->post('value'));
@@ -821,6 +848,7 @@ class Fee_management extends MY_Controller
      */
     public function delete_scholarship()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'delete_scholarship');
         $scholId = $this->safe_path_segment(trim($this->input->post('scholarship_id') ?? ''), 'scholarship_id');
 
         $existing = $this->firebase->get("{$this->feesBase}/Scholarships/{$scholId}");
@@ -853,6 +881,7 @@ class Fee_management extends MY_Controller
      */
     public function fetch_awards()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_awards');
         $scholId = trim($this->input->get('scholarship_id'));
         $raw     = $this->firebase->get("{$this->feesBase}/Scholarship Awards");
         $awards  = [];
@@ -879,6 +908,7 @@ class Fee_management extends MY_Controller
      */
     public function award_scholarship()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'award_scholarship');
         $scholId     = $this->safe_path_segment(trim($this->input->post('scholarship_id') ?? ''), 'scholarship_id');
         $studentId   = $this->safe_path_segment(trim($this->input->post('student_id') ?? ''), 'student_id');
         $studentName = trim($this->input->post('student_name'));
@@ -1002,6 +1032,7 @@ class Fee_management extends MY_Controller
      */
     public function revoke_scholarship()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'revoke_scholarship');
         $awardId = $this->safe_path_segment(trim($this->input->post('award_id') ?? ''), 'award_id');
 
         $award = $this->firebase->get("{$this->feesBase}/Scholarship Awards/{$awardId}");
@@ -1062,6 +1093,7 @@ class Fee_management extends MY_Controller
      */
     public function fetch_refunds()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_refunds');
         $filterStatus = trim($this->input->get('status'));
         $raw = $this->firebase->get("{$this->feesBase}/Refunds");
         $refunds = [];
@@ -1106,6 +1138,7 @@ class Fee_management extends MY_Controller
      */
     public function create_refund()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'create_refund');
         $studentId   = trim($this->input->post('student_id'));
         $studentName = trim($this->input->post('student_name'));
         $class       = trim($this->input->post('class'));
@@ -1203,6 +1236,7 @@ class Fee_management extends MY_Controller
      */
     public function update_refund_status()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'update_refund_status');
         $refId   = $this->safe_path_segment(trim($this->input->post('refund_id') ?? ''), 'refund_id');
         $status  = trim($this->input->post('status'));
         $remarks = trim($this->input->post('remarks'));
@@ -1243,6 +1277,7 @@ class Fee_management extends MY_Controller
      */
     public function approve_refund()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'approve_refund');
         $_POST['status'] = 'approved';
         $this->update_refund_status();
     }
@@ -1252,6 +1287,7 @@ class Fee_management extends MY_Controller
      */
     public function reject_refund()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'reject_refund');
         $_POST['status'] = 'rejected';
         $this->update_refund_status();
     }
@@ -1262,6 +1298,7 @@ class Fee_management extends MY_Controller
      */
     public function process_refund()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'process_refund');
         $refId      = $this->safe_path_segment(trim($this->input->post('refund_id') ?? ''), 'refund_id');
         $refundMode = trim($this->input->post('refund_mode'));
 
@@ -1314,6 +1351,107 @@ class Fee_management extends MY_Controller
 
         $this->firebase->set("{$voucherPath}/{$receiptKey}", $voucherData);
 
+        // ── F-10: Reverse student paid flags for refunded months ──
+        $studentId = isset($refund['student_id']) ? $refund['student_id'] : '';
+        $origReceiptNo = isset($refund['receipt_no']) ? $refund['receipt_no'] : '';
+        $refClass   = isset($refund['class']) ? $refund['class'] : '';
+        $refSection = isset($refund['section']) ? $refund['section'] : '';
+
+        if ($studentId !== '' && $origReceiptNo !== '' && $refClass !== '' && $refSection !== '') {
+            try {
+                list($classNode, $sectionNode) = $this->_normalizeClassSection($refClass, $refSection);
+                $studentBase = "{$this->sessionRoot}/{$classNode}/{$sectionNode}/Students/{$studentId}";
+
+                // Look up the original receipt to find which months were paid
+                $origReceipt = $this->firebase->get("{$studentBase}/Fees Record/{$origReceiptNo}");
+                if (is_array($origReceipt)) {
+                    // Read current Month Fee flags
+                    $monthFee = $this->firebase->get("{$studentBase}/Month Fee");
+                    $monthFee = is_array($monthFee) ? $monthFee : [];
+
+                    // The receipt Amount tells us total paid; reset all months that were marked paid
+                    // by this receipt. We check which months are currently paid=1 and reset them.
+                    // Since receipts don't store individual months, we reset months that equal the
+                    // fee structure amount. For safety, mark all currently-paid months as candidates
+                    // and reset up to the refund amount.
+                    $refundAmt = $amount;
+                    $feesPath = "{$this->sessionRoot}/Accounts/Fees/Classes Fees/{$classNode}/{$sectionNode}";
+                    $classFees = $this->firebase->get($feesPath);
+                    $classFees = is_array($classFees) ? $classFees : [];
+
+                    // Build per-month cost from fee structure
+                    $monthOrder = ['April','May','June','July','August','September',
+                                   'October','November','December','January','February','March','Yearly Fees'];
+
+                    // Reverse iterate paid months (latest first) and un-mark until refund is consumed
+                    $reversedMonths = array_reverse($monthOrder);
+                    foreach ($reversedMonths as $m) {
+                        if ($refundAmt <= 0) break;
+                        if (!isset($monthFee[$m]) || (int)$monthFee[$m] !== 1) continue;
+
+                        // Calculate this month's fee total from structure
+                        $mTotal = 0;
+                        if (is_array($classFees)) {
+                            foreach ($classFees as $title => $val) {
+                                if (is_array($val) && isset($val[$m])) {
+                                    $mTotal += floatval(str_replace(',', '', $val[$m]));
+                                }
+                            }
+                        }
+                        if ($mTotal <= 0) $mTotal = $refundAmt; // fallback: consume remaining
+
+                        if ($refundAmt >= $mTotal) {
+                            $this->firebase->set("{$studentBase}/Month Fee/{$m}", 0);
+                            $refundAmt -= $mTotal;
+                        }
+                    }
+
+                    // Reduce Oversubmittedfees if any remaining refund amount
+                    if ($refundAmt > 0.005) {
+                        $overSub = floatval($this->firebase->get("{$studentBase}/Oversubmittedfees") ?? 0);
+                        $newOver = max(0, $overSub - $refundAmt);
+                        $this->firebase->set("{$studentBase}/Oversubmittedfees", round($newOver, 2));
+                    }
+                }
+            } catch (\Exception $e) {
+                log_message('error', 'Refund month-fee reversal failed: ' . $e->getMessage());
+            }
+        }
+
+        // ── F-11: Reverse legacy Account_book entries ──
+        try {
+            $origDate = '';
+            if ($studentId !== '' && $origReceiptNo !== '' && isset($studentBase)) {
+                $origReceipt = $this->firebase->get("{$studentBase}/Fees Record/{$origReceiptNo}");
+                if (is_array($origReceipt) && isset($origReceipt['Date'])) {
+                    $origDate = $origReceipt['Date'];
+                }
+            }
+
+            // Use original receipt date for reversal if available, otherwise use today
+            if ($origDate !== '') {
+                $dateObj = DateTime::createFromFormat('d-m-Y', $origDate);
+            } else {
+                $dateObj = new DateTime();
+            }
+            $abMonth = $dateObj ? $dateObj->format('F') : date('F');
+            $abDay   = $dateObj ? $dateObj->format('d') : date('d');
+
+            $ab = "{$this->sessionRoot}/Accounts/Account_book";
+
+            // Subtract refunded amount from Fees ledger
+            $feeLedgerPath = "{$ab}/Fees/{$abMonth}/{$abDay}/R";
+            $curFees = floatval($this->firebase->get($feeLedgerPath) ?? 0);
+            $this->firebase->set($feeLedgerPath, max(0, $curFees - $amount));
+
+            // Add refund entry to Refunds ledger
+            $refundLedgerPath = "{$ab}/Refunds/{$abMonth}/{$abDay}/R";
+            $curRefunds = floatval($this->firebase->get($refundLedgerPath) ?? 0);
+            $this->firebase->set($refundLedgerPath, $curRefunds + $amount);
+        } catch (\Exception $e) {
+            log_message('error', 'Refund Account_book reversal failed: ' . $e->getMessage());
+        }
+
         // ── Accounting integration via Operations_accounting library
         try {
             $this->load->library('Operations_accounting', null, 'ops_acct');
@@ -1349,6 +1487,7 @@ class Fee_management extends MY_Controller
      */
     public function get_reminder_settings()
     {
+        $this->_require_role(self::VIEW_ROLES, 'get_reminder_settings');
         $settings = $this->firebase->get("{$this->feesBase}/Reminder Settings");
         if (!is_array($settings)) {
             $settings = [
@@ -1371,6 +1510,7 @@ class Fee_management extends MY_Controller
      */
     public function save_reminder_settings()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'save_reminder_settings');
         $autoRemind     = ($this->input->post('auto_remind') === '1'
                           || $this->input->post('auto_remind') === 'true') ? true : false;
         $daysBeforeDue  = $this->input->post('days_before_due');
@@ -1423,6 +1563,7 @@ class Fee_management extends MY_Controller
      */
     public function fetch_due_students()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_due_students');
         $classSections = $this->_getAllClassSections();
         $dueStudents   = [];
 
@@ -1509,6 +1650,7 @@ class Fee_management extends MY_Controller
      */
     public function send_reminder()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'send_reminder');
         $studentRaw = $this->input->post('student_ids');
         $month      = trim($this->input->post('month'));
 
@@ -1559,6 +1701,7 @@ class Fee_management extends MY_Controller
      */
     public function fetch_reminder_log()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_reminder_log');
         $raw = $this->firebase->get("{$this->feesBase}/Reminders Log");
         $logs = [];
 
@@ -1591,6 +1734,7 @@ class Fee_management extends MY_Controller
      */
     public function get_gateway_config()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'get_gateway_config');
         $config = $this->firebase->get("{$this->feesBase}/Gateway Config");
         if (!is_array($config)) {
             $config = [
@@ -1627,6 +1771,7 @@ class Fee_management extends MY_Controller
      */
     public function save_gateway_config()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'save_gateway_config');
         $provider      = trim($this->input->post('provider'));
         $apiKey        = trim($this->input->post('api_key'));
         $apiSecret     = trim($this->input->post('api_secret'));
@@ -1682,6 +1827,7 @@ class Fee_management extends MY_Controller
      */
     public function fetch_online_payments()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_online_payments');
         $raw = $this->firebase->get("{$this->feesBase}/Online Payments");
         $payments = [];
 
@@ -1714,6 +1860,7 @@ class Fee_management extends MY_Controller
      */
     public function create_payment_order()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'create_payment_order');
         $studentId   = trim($this->input->post('student_id'));
         $studentName = trim($this->input->post('student_name'));
         $class       = trim($this->input->post('class'));
@@ -1793,6 +1940,7 @@ class Fee_management extends MY_Controller
      */
     public function verify_payment()
     {
+        $this->_require_role(self::FINANCE_ROLES, 'verify_payment');
         $gatewayOrderId   = $this->safe_path_segment(trim($this->input->post('gateway_order_id') ?? ''), 'gateway_order_id');
         $gatewayPaymentId = trim($this->input->post('gateway_payment_id'));
         $signature        = trim($this->input->post('signature'));
@@ -1944,6 +2092,7 @@ class Fee_management extends MY_Controller
      */
     public function get_fee_summary()
     {
+        $this->_require_role(self::VIEW_ROLES, 'get_fee_summary');
         // Check for cached summary (valid for 5 minutes)
         $cachePath = "{$this->feesBase}/Summary Cache";
         $cached = $this->firebase->get($cachePath);
@@ -2059,5 +2208,125 @@ class Fee_management extends MY_Controller
         $this->firebase->set($cachePath, $result);
 
         $this->json_success($result);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  FEE CARRY-FORWARD (F-15)
+    // ══════════════════════════════════════════════════════════════════
+
+    /**
+     * POST — Carry forward unpaid fees from previous session.
+     * Params: from_session (e.g. "2025-26"), to_session (e.g. "2026-27")
+     */
+    public function carry_forward_fees()
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'carry_forward_fees');
+
+        $fromSession = trim($this->input->post('from_session') ?? '');
+        $toSession   = trim($this->input->post('to_session') ?? '');
+        $sn          = $this->school_name;
+
+        if (empty($fromSession) || empty($toSession)) {
+            $this->json_error('Both from_session and to_session are required.');
+        }
+        if ($fromSession === $toSession) {
+            $this->json_error('Source and target sessions must be different.');
+        }
+
+        // Read fee structure from old session
+        $oldFeesBase = "Schools/{$sn}/{$fromSession}/Accounts/Fees";
+        $classFees = $this->firebase->get("{$oldFeesBase}/Classes Fees");
+        if (!is_array($classFees)) {
+            $this->json_error('No fee structure found in the source session.');
+        }
+
+        // Read all class/sections in old session to find students with unpaid months
+        $sessionRoot = "Schools/{$sn}/{$fromSession}";
+        $classKeys = $this->firebase->shallow_get($sessionRoot);
+        if (!is_array($classKeys)) $classKeys = [];
+
+        $months = ['April','May','June','July','August','September','October','November','December','January','February','March'];
+        $carriedForward = [];
+        $totalStudents = 0;
+        $totalAmount = 0;
+
+        foreach ($classKeys as $classKey => $v) {
+            if (strpos($classKey, 'Class ') !== 0) continue;
+
+            $sections = $this->firebase->shallow_get("{$sessionRoot}/{$classKey}");
+            if (!is_array($sections)) continue;
+
+            foreach ($sections as $sectionKey => $sv) {
+                if (strpos($sectionKey, 'Section ') !== 0) continue;
+
+                $studentsPath = "{$sessionRoot}/{$classKey}/{$sectionKey}/Students";
+                $studentList = $this->firebase->get("{$studentsPath}/List");
+                if (!is_array($studentList)) continue;
+
+                foreach ($studentList as $userId => $name) {
+                    $monthFee = $this->firebase->get("{$studentsPath}/{$userId}/Month Fee");
+                    if (!is_array($monthFee)) continue;
+
+                    $unpaidMonths = [];
+                    foreach ($months as $m) {
+                        if (isset($monthFee[$m]) && (int)$monthFee[$m] === 0) {
+                            $unpaidMonths[] = $m;
+                        }
+                    }
+
+                    if (!empty($unpaidMonths)) {
+                        // Calculate unpaid amount from fee structure
+                        $classOrd = trim(str_replace('Class', '', $classKey));
+                        $sectionOrd = trim(str_replace('Section', '', $sectionKey));
+                        $feeKey = "{$classOrd} '{$sectionOrd}'";
+                        $feeData = $classFees[$feeKey] ?? [];
+
+                        $monthlyTotal = 0;
+                        if (is_array($feeData)) {
+                            foreach ($feeData as $title => $amt) {
+                                if (!is_numeric($amt)) continue;
+                                $monthlyTotal += (float) $amt;
+                            }
+                        }
+
+                        $unpaidAmount = $monthlyTotal * count($unpaidMonths);
+                        if ($unpaidAmount > 0) {
+                            $carriedForward[$userId] = [
+                                'student_name'  => $name,
+                                'class'         => $classKey,
+                                'section'       => $sectionKey,
+                                'unpaid_months' => $unpaidMonths,
+                                'amount'        => round($unpaidAmount, 2),
+                                'from_session'  => $fromSession,
+                            ];
+                            $totalStudents++;
+                            $totalAmount += $unpaidAmount;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (empty($carriedForward)) {
+            $this->json_success(['message' => 'No unpaid fees found to carry forward.', 'count' => 0]);
+            return;
+        }
+
+        // Write carry-forward records to new session
+        $cfPath = "Schools/{$sn}/{$toSession}/Accounts/Fees/Carried_Forward";
+        $this->firebase->set($cfPath, [
+            'from_session'   => $fromSession,
+            'created_at'     => date('c'),
+            'created_by'     => $this->session->userdata('admin_name') ?? 'Admin',
+            'total_students' => $totalStudents,
+            'total_amount'   => round($totalAmount, 2),
+            'students'       => $carriedForward,
+        ]);
+
+        $this->json_success([
+            'message' => "Carried forward unpaid fees for {$totalStudents} student(s). Total: Rs. " . number_format($totalAmount, 2),
+            'count'   => $totalStudents,
+            'total'   => round($totalAmount, 2),
+        ]);
     }
 }

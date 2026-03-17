@@ -16,6 +16,7 @@ class MY_Superadmin_Controller extends CI_Controller
     public function __construct()
     {
         parent::__construct();
+        $this->load->library('firebase');
         $this->_send_security_headers();
 
         $sa_id = $this->session->userdata('sa_id');
@@ -111,6 +112,29 @@ class MY_Superadmin_Controller extends CI_Controller
         header('X-Content-Type-Options: nosniff');
         header('X-XSS-Protection: 1; mode=block');
         header('Referrer-Policy: strict-origin-when-cross-origin');
+        header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+
+        // ── HSTS — only sent over HTTPS ──
+        if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
+            header('Strict-Transport-Security: max-age=86400; includeSubDomains');
+        }
+
+        // ── Content-Security-Policy (mirrors MY_Controller's CSP) ──
+        $csp = "default-src 'self'; "
+            . "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.datatables.net; "
+            . "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.datatables.net https://api.fontshare.com; "
+            . "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.fontshare.com; "
+            . "img-src 'self' data: blob: https://*.googleapis.com https://*.firebasestorage.googleapis.com; "
+            . "connect-src 'self' https://*.firebaseio.com https://*.firebasedatabase.app https://cdnjs.cloudflare.com; "
+            . "frame-ancestors 'none'; "
+            . "base-uri 'self'; "
+            . "form-action 'self';";
+
+        if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
+            $csp = "upgrade-insecure-requests; " . $csp;
+        }
+
+        header("Content-Security-Policy: " . $csp);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

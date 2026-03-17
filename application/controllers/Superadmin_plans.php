@@ -125,15 +125,22 @@ class Superadmin_plans extends MY_Superadmin_Controller
 
     public function update()
     {
-        $plan_id    = trim($this->input->post('plan_id',   TRUE) ?? '');
-        $name       = trim($this->input->post('name',      TRUE) ?? '');
-        $price      = (float)($this->input->post('price')        ?? 0);
-        $grace_days = (int)($this->input->post('grace_days')     ?? 7);
-        $modules_raw= $this->input->post('modules') ?? [];
+        $plan_id      = trim($this->input->post('plan_id',       TRUE) ?? '');
+        $name         = trim($this->input->post('name',          TRUE) ?? '');
+        $price        = (float)($this->input->post('price')            ?? 0);
+        $billing      = trim($this->input->post('billing_cycle', TRUE) ?? '');
+        $max_students = $this->input->post('max_students');
+        $max_staff    = $this->input->post('max_staff');
+        $grace_days   = (int)($this->input->post('grace_days')        ?? 7);
+        $sort_order   = $this->input->post('sort_order');
+        $modules_raw  = $this->input->post('modules') ?? [];
 
         if (empty($plan_id) || empty($name)) {
             $this->json_error('Plan ID and name are required.');
             return;
+        }
+        if (!preg_match('/^PLAN_[A-Z0-9]+$/', $plan_id)) {
+            $this->json_error('Invalid plan ID format.'); return;
         }
 
         $modules = [];
@@ -141,15 +148,23 @@ class Superadmin_plans extends MY_Superadmin_Controller
             $modules[$mod] = in_array($mod, (array)$modules_raw);
         }
 
+        $update = [
+            'name'        => $name,
+            'price'       => $price,
+            'grace_days'  => $grace_days,
+            'modules'     => $modules,
+            'updated_at'  => date('Y-m-d H:i:s'),
+            'updated_by'  => $this->sa_id,
+        ];
+        if ($billing !== '' && in_array($billing, ['monthly', 'quarterly', 'annual'])) {
+            $update['billing_cycle'] = $billing;
+        }
+        if ($max_students !== null) $update['max_students'] = (int)$max_students;
+        if ($max_staff    !== null) $update['max_staff']    = (int)$max_staff;
+        if ($sort_order   !== null) $update['sort_order']   = (int)$sort_order;
+
         try {
-            $this->firebase->update("System/Plans/{$plan_id}", [
-                'name'        => $name,
-                'price'       => $price,
-                'grace_days'  => $grace_days,
-                'modules'     => $modules,
-                'updated_at'  => date('Y-m-d H:i:s'),
-                'updated_by'  => $this->sa_id,
-            ]);
+            $this->firebase->update("System/Plans/{$plan_id}", $update);
             $this->sa_log('plan_updated', '', ['plan_id' => $plan_id]);
             $this->json_success(['message' => "Plan '{$name}' updated."]);
         } catch (Exception $e) {
@@ -165,6 +180,9 @@ class Superadmin_plans extends MY_Superadmin_Controller
     {
         $plan_id = trim($this->input->post('plan_id', TRUE) ?? '');
         if (empty($plan_id)) { $this->json_error('Plan ID required.'); return; }
+        if (!preg_match('/^PLAN_[A-Z0-9]+$/', $plan_id)) {
+            $this->json_error('Invalid plan ID format.'); return;
+        }
 
         // Safety: refuse if schools are on this plan
         try {
@@ -196,6 +214,9 @@ class Superadmin_plans extends MY_Superadmin_Controller
 
         try {
             if ($plan_id !== '') {
+                if (!preg_match('/^PLAN_[A-Z0-9]+$/', $plan_id)) {
+                    $this->json_error('Invalid plan ID format.'); return;
+                }
                 // Fetch a single plan
                 $plan = $this->firebase->get("System/Plans/{$plan_id}") ?? [];
                 $this->json_success(['plan' => $plan, 'plans' => [$plan_id => $plan]]);
@@ -324,7 +345,6 @@ class Superadmin_plans extends MY_Superadmin_Controller
     {
         try {
             $schools = $this->firebase->get('System/Schools') ?? [];
-            $meta    = $this->firebase->get('System/Schools') ?? [];
             $today   = date('Y-m-d');
             $rows    = [];
 
@@ -332,14 +352,17 @@ class Superadmin_plans extends MY_Superadmin_Controller
                 if (!is_array($school)) continue;
 
                 $sub      = is_array($school['subscription'] ?? null) ? $school['subscription'] : [];
-                $saP      = is_array($meta[$name]['profile']  ?? null) ? $meta[$name]['profile']  : [];
+                $saP      = is_array($school['profile']       ?? null) ? $school['profile']      : [];
                 $expiry   = $sub['expiry_date'] ?? ($sub['duration']['endDate'] ?? '');
                 $grace_end= $sub['grace_end']   ?? '';
-                $status   = strtolower($sub['status'] ?? 'inactive');
+                $status      = $sub['status'] ?? 'Inactive';
+                $statusLower = strtolower($status);
 
                 // Compute display classification
-                if ($status === 'suspended') {
+                if ($statusLower === 'suspended') {
                     $display = 'suspended';
+                } elseif ($statusLower === 'grace_period') {
+                    $display = 'grace';
                 } elseif (empty($expiry)) {
                     $display = 'inactive';
                 } elseif ($expiry < $today) {
@@ -404,35 +427,35 @@ class Superadmin_plans extends MY_Superadmin_Controller
                 if (!preg_match("/^[A-Za-z0-9 ',_\-]+$/u", $name)) continue;
 
                 $sub      = is_array($school['subscription'] ?? null) ? $school['subscription'] : [];
-                $status   = strtolower($sub['status'] ?? 'inactive');
+                $status   = $sub['status'] ?? 'Inactive';
                 $expiry   = $sub['expiry_date']  ?? ($sub['duration']['endDate'] ?? '');
                 $grace_end= $sub['grace_end']    ?? '';
 
                 if (empty($expiry)) continue;
 
-                if ($status === 'active' && $expiry < $today) {
+                // Normalise legacy lowercase statuses for comparison
+                $statusLower = strtolower($status);
+
+                if ($statusLower === 'active' && $expiry < $today) {
                     if (!empty($grace_end) && $grace_end >= $today) {
                         // Move to grace period — reduce access but not yet suspended
-                        $this->firebase->update("System/Schools/{$name}/subscription", ['status' => 'grace']);
-                        $this->firebase->update("System/Schools/{$name}/profile",      ['status' => 'grace']);
-                        $this->firebase->update("System/Schools/{$name}/profile",     ['status' => 'grace']);
+                        $this->firebase->update("System/Schools/{$name}/subscription", ['status' => 'Grace_Period']);
+                        $this->firebase->update("System/Schools/{$name}/profile",      ['status' => 'grace_period']);
                         $graced[]    = $name;
                         $this->sa_log('auto_grace', $name);
                     } else {
                         // Fully suspend — top-level status gates all SA reads
                         $this->firebase->update("System/Schools/{$name}",             ['status' => 'suspended']);
-                        $this->firebase->update("System/Schools/{$name}/subscription", ['status' => 'suspended']);
+                        $this->firebase->update("System/Schools/{$name}/subscription", ['status' => 'Suspended']);
                         $this->firebase->update("System/Schools/{$name}/profile",      ['status' => 'suspended']);
-                        $this->firebase->update("System/Schools/{$name}/profile",     ['status' => 'suspended']);
                         $suspended[] = $name;
                         $this->sa_log('auto_suspended', $name);
                     }
-                } elseif ($status === 'grace' && !empty($grace_end) && $grace_end < $today) {
+                } elseif ($statusLower === 'grace_period' && !empty($grace_end) && $grace_end < $today) {
                     // Grace period ended — fully suspend
                     $this->firebase->update("System/Schools/{$name}",             ['status' => 'suspended']);
-                    $this->firebase->update("System/Schools/{$name}/subscription", ['status' => 'suspended']);
+                    $this->firebase->update("System/Schools/{$name}/subscription", ['status' => 'Suspended']);
                     $this->firebase->update("System/Schools/{$name}/profile",      ['status' => 'suspended']);
-                    $this->firebase->update("System/Schools/{$name}/profile",     ['status' => 'suspended']);
                     $suspended[] = $name;
                     $this->sa_log('auto_suspended', $name);
                 }
@@ -464,10 +487,9 @@ class Superadmin_plans extends MY_Superadmin_Controller
         $plans   = [];
         try {
             $raw  = $this->firebase->get('System/Schools') ?? [];
-            $meta = $this->firebase->get('System/Schools') ?? [];
             foreach ($raw as $name => $school) {
                 if (!is_array($school)) continue;
-                $saP            = is_array($meta[$name]['profile'] ?? null) ? $meta[$name]['profile'] : [];
+                $saP            = is_array($school['profile']      ?? null) ? $school['profile']      : [];
                 $sub            = is_array($school['subscription'] ?? null) ? $school['subscription'] : [];
                 $schools[$name] = [
                     'name'        => $saP['name']      ?? $name,
@@ -543,6 +565,9 @@ class Superadmin_plans extends MY_Superadmin_Controller
         }
         if (!in_array($status, ['paid', 'pending', 'overdue', 'failed'])) {
             $this->json_error('Invalid payment status.'); return;
+        }
+        if (!preg_match('/^PLAN_[A-Z0-9]+$/', $plan_id)) {
+            $this->json_error('Invalid plan ID format.'); return;
         }
 
         $plan_data = [];

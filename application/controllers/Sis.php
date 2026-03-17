@@ -1,8 +1,16 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+
 /**
  * Student Information System (SIS) Controller
+ *
+ * Consolidated module: merges Student.php + Admission_crm.php into SIS.
+ * Single entry point for the entire student lifecycle:
+ *   Inquiry → Application → Admission → Enrollment → Profile/Edit →
+ *   Promotion → Transfer Certificate → Alumni
  *
  * Handles: SIS dashboard, student list, admission, profile management,
  *          batch promotion, transfer certificates, documents, history, ID cards.
@@ -19,9 +27,20 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  */
 class Sis extends MY_Controller
 {
+    /** Roles for student information management */
+    private const MANAGE_ROLES = ['Admin', 'Principal'];
+
+    /** Roles that may view student information */
+    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+
+    /** CRM base Firebase path */
+    private $crm_base;
+
     public function __construct()
     {
         parent::__construct();
+        require_permission('SIS');
+        $this->crm_base = "Schools/{$this->school_name}/CRM/Admissions";
     }
 
     /* ══════════════════════════════════════════════════════════════════════
@@ -30,6 +49,7 @@ class Sis extends MY_Controller
 
     public function index()
     {
+        $this->_require_role(self::VIEW_ROLES, 'sis_view');
         $school_id   = $this->parent_db_key;
         $school_name = $this->school_name;
         $session     = $this->session_year;
@@ -94,6 +114,7 @@ class Sis extends MY_Controller
 
     public function students()
     {
+        $this->_require_role(self::VIEW_ROLES, 'sis_students');
         $school_id   = $this->parent_db_key;
         $school_name = $this->school_name;
         $session     = $this->session_year;
@@ -134,6 +155,7 @@ class Sis extends MY_Controller
 
     public function admission()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_admission');
         $school_name = $this->school_name;
         $session     = $this->session_year;
 
@@ -169,6 +191,7 @@ class Sis extends MY_Controller
 
     public function save_admission()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_save_admission');
         if ($this->input->method() !== 'post') {
             return $this->json_error('POST required');
         }
@@ -185,6 +208,11 @@ class Sis extends MY_Controller
         $phone       = trim($this->input->post('phone_number')  ?? $this->input->post('phone') ?? '');
         $email       = trim($this->input->post('email')         ?? '');
         $rollNo      = trim($this->input->post('roll_no')       ?? '');
+
+        // M-07 FIX: Validate email format before storing
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->json_error('Invalid email address format.');
+        }
 
         // ── Dates — format dd-mm-YYYY to match Student.php ──────────
         $rawDob  = trim($this->input->post('dob') ?? '');
@@ -345,6 +373,9 @@ class Sis extends MY_Controller
 
         // Phone → school mapping (matches Student.php)
         if (!empty($phone)) {
+            // Tenant-scoped phone index (primary)
+            $this->firebase->update("Schools/{$school_name}/Phone_Index", [$phone => $userId]);
+            // Legacy global indexes — kept for mobile app backward compatibility
             $this->firebase->update("Exits", [$phone => $school_id]);
             $this->firebase->update("User_ids_pno", [$phone => $userId]);
         }
@@ -352,11 +383,31 @@ class Sis extends MY_Controller
         // Update Students_Index (OPT 1)
         $this->_update_student_index($school_name, $userId, $name, $classOrd, $section, 'Active');
 
+        // ── B-A4 FIX: Initialize fee tracking for new student (matches legacy Student.php path) ──
+        try {
+            $feeClassKey = "{$classOrd} '{$section}'";
+            $feeStructurePath = "Schools/{$school_name}/{$session}/Accounts/Fees/Classes Fees/{$feeClassKey}";
+            $classFees = $this->firebase->get($feeStructurePath);
+
+            // Initialize Month Fee markers as unpaid (0) for all months
+            $studentFeePath = "Schools/{$school_name}/{$session}/{$classKey}/{$sectionKey}/Students/{$userId}";
+            $months = ['April','May','June','July','August','September','October','November','December','January','February','March'];
+            $monthFeeInit = [];
+            foreach ($months as $m) {
+                $monthFeeInit[$m] = 0;
+            }
+            $this->firebase->set("{$studentFeePath}/Month Fee", $monthFeeInit);
+        } catch (Exception $e) {
+            log_message('error', "SIS admit fee init failed for {$userId}: " . $e->getMessage());
+        }
+
         // Log history
         $this->_log_history($school_id, $userId, 'ADMISSION',
             "Student admitted to Class {$classOrd} / Section {$section} ({$session})",
             ['class' => $classOrd, 'section' => $section, 'session' => $session]
         );
+
+        log_audit('SIS', 'admit_student', $userId, "Admitted student '{$name}' to Class {$classOrd} Section {$section}");
 
         return $this->json_success(['message' => 'Student admitted successfully.', 'user_id' => $userId]);
     }
@@ -367,6 +418,7 @@ class Sis extends MY_Controller
 
     public function profile($userId = null)
     {
+        $this->_require_role(self::VIEW_ROLES, 'sis_profile');
         if (empty($userId) || !$this->safe_path_segment($userId)) show_404();
 
         $school_id   = $this->parent_db_key;
@@ -398,6 +450,7 @@ class Sis extends MY_Controller
 
     public function update_profile()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_update_profile');
         if ($this->input->method() !== 'post') {
             return $this->json_error('POST required');
         }
@@ -424,6 +477,11 @@ class Sis extends MY_Controller
             if ($val !== null) {
                 $updates[$field] = trim($val);
             }
+        }
+
+        // M-07 FIX: Validate email format on profile update
+        if (isset($updates['Email']) && $updates['Email'] !== '' && !filter_var($updates['Email'], FILTER_VALIDATE_EMAIL)) {
+            return $this->json_error('Invalid email address format.');
         }
 
         // Address is a nested object — posted as Address[Street], Address[City], etc.
@@ -459,6 +517,8 @@ class Sis extends MY_Controller
             "Profile updated: {$changed}", $updates
         );
 
+        log_audit('SIS', 'update_profile', $userId, "Updated student profile: {$changed}");
+
         return $this->json_success(['message' => 'Profile updated successfully.']);
     }
 
@@ -468,6 +528,7 @@ class Sis extends MY_Controller
 
     public function promote()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_promote');
         $school_name = $this->school_name;
         $session     = $this->session_year;
 
@@ -495,6 +556,17 @@ class Sis extends MY_Controller
         $data['class_map']    = $classMap;
         $data['session_year'] = $session;
 
+        // Build session options: available sessions + computed next session
+        $available = $this->session->userdata('available_sessions') ?? [];
+        $parts     = explode('-', $session);
+        $nextYear  = ((int)$parts[0] + 1) . '-' . substr((string)((int)$parts[0] + 2), -2);
+        if (!in_array($nextYear, $available, true)) {
+            $available[] = $nextYear;
+        }
+        rsort($available);
+        $data['session_options'] = $available;
+        $data['next_session']    = $nextYear;
+
         $this->load->view('include/header');
         $this->load->view('sis/promote', $data);
         $this->load->view('include/footer');
@@ -502,6 +574,7 @@ class Sis extends MY_Controller
 
     public function promote_preview()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_promote_preview');
         if ($this->input->method() !== 'post') {
             return $this->json_error('POST required');
         }
@@ -532,6 +605,7 @@ class Sis extends MY_Controller
 
     public function execute_promotion()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_execute_promotion');
         if ($this->input->method() !== 'post') {
             return $this->json_error('POST required');
         }
@@ -556,9 +630,19 @@ class Sis extends MY_Controller
         if (!$this->safe_path_segment($toClass))   return $this->json_error('Invalid destination class.');
         if (!$this->safe_path_segment($toSection))  return $this->json_error('Invalid destination section.');
 
-        // Fix 3: Validate toSession format (YYYY-YY) — reject arbitrary strings
+        // Validate toSession format (YYYY-YY) — reject arbitrary strings
         if (!preg_match('/^\d{4}-\d{2}$/', $toSession)) {
             $toSession = $session;
+        }
+
+        // Auto-register target session in Sessions list if it doesn't exist yet.
+        // Promotion often targets the NEXT academic year before it's formally created.
+        $available = $this->session->userdata('available_sessions') ?? [];
+        if (!in_array($toSession, $available, true)) {
+            $available[] = $toSession;
+            rsort($available);
+            $this->firebase->set("Schools/{$school_name}/Sessions", $available);
+            $this->session->set_userdata('available_sessions', $available);
         }
 
         $students = $this->_get_students_in_class($fromClass, $fromSection, $session);
@@ -566,13 +650,30 @@ class Sis extends MY_Controller
             return $this->json_error('No students found in the selected class/section.');
         }
 
+        // PROM-2 FIX: Check target section capacity before promotion
+        $newClassKey   = "Class {$toClass}";
+        $newSectionKey = "Section {$toSection}";
+        $maxStrength = $this->firebase->get(
+            "Schools/{$school_name}/{$toSession}/{$newClassKey}/{$newSectionKey}/max_strength"
+        );
+        if ($maxStrength) {
+            $existingStudents = $this->firebase->get(
+                "Schools/{$school_name}/{$toSession}/{$newClassKey}/{$newSectionKey}/Students/List"
+            ) ?? [];
+            $currentCount = is_array($existingStudents) ? count($existingStudents) : 0;
+            $promotionCount = count($students);
+            if (($currentCount + $promotionCount) > (int) $maxStrength) {
+                return $this->json_error(
+                    "Target section {$toClass}/{$toSection} capacity exceeded ({$currentCount}/{$maxStrength}). Cannot promote {$promotionCount} student(s)."
+                );
+            }
+        }
+
         $adminName  = $this->session->userdata('admin_name') ?? 'Admin';
         $promoted   = [];
         $now        = date('Y-m-d H:i:s');
         $batchId    = date('YmdHis');
         $oldClassKey   = "Class {$fromClass}";
-        $newClassKey   = "Class {$toClass}";
-        $newSectionKey = "Section {$toSection}";
         $historyDesc   = "Promoted from Class {$fromClass}/{$fromSection} to Class {$toClass}/{$toSection} ({$toSession})";
         $historyMeta   = [
             'from_class' => $fromClass, 'from_section' => $fromSection,
@@ -636,6 +737,35 @@ class Sis extends MY_Controller
         // Single atomic write for entire promotion batch
         $this->firebase->update("", $batchUpdates);
 
+        // ── PROM-1 FIX: Initialize fee structure & subjects in new session for promoted students ──
+        try {
+            // Copy fee structure from old session/class to new session/class if not already present
+            $oldFeeClassKey = "{$fromClass} '{$fromSection}'";
+            $newFeeClassKey = "{$toClass} '{$toSection}'";
+            $oldFeePath = "Schools/{$school_name}/{$session}/Accounts/Fees/Classes Fees/{$oldFeeClassKey}";
+            $newFeePath = "Schools/{$school_name}/{$toSession}/Accounts/Fees/Classes Fees/{$newFeeClassKey}";
+            $existingNewFees = $this->firebase->get($newFeePath);
+            if (empty($existingNewFees)) {
+                $oldFees = $this->firebase->get($oldFeePath);
+                if (is_array($oldFees) && !empty($oldFees)) {
+                    $this->firebase->set($newFeePath, $oldFees);
+                }
+            }
+
+            // Subjects are at Schools/{school}/Subject_list/ — school-wide, session-independent.
+            // No copy needed for subjects — they persist across sessions.
+
+            // Initialize empty attendance node for new session class/section
+            $attendancePath = "Schools/{$school_name}/{$toSession}/{$newClassKey}/{$newSectionKey}/Attendance";
+            $existingAtt = $this->firebase->get($attendancePath);
+            if (empty($existingAtt)) {
+                $this->firebase->set($attendancePath, ['_initialized' => date('c')]);
+            }
+        } catch (Exception $e) {
+            log_message('error', "Promotion session init failed: " . $e->getMessage());
+            // Non-fatal: promotion itself succeeded, initialization is best-effort
+        }
+
         return $this->json_success([
             'message'  => count($promoted) . ' student(s) promoted successfully.',
             'promoted' => $promoted,
@@ -650,6 +780,7 @@ class Sis extends MY_Controller
 
     public function tc_list()
     {
+        $this->_require_role(self::VIEW_ROLES, 'sis_tc_list');
         $school_id   = $this->parent_db_key;
         $school_name = $this->school_name;
         $session     = $this->session_year;
@@ -731,6 +862,7 @@ class Sis extends MY_Controller
 
     public function issue_tc()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_issue_tc');
         if ($this->input->method() !== 'post') {
             return $this->json_error('POST required');
         }
@@ -784,6 +916,18 @@ class Sis extends MY_Controller
             ['status' => 'TC']
         );
 
+        // Remove from current session roster (mirrors withdraw_student behaviour)
+        $session    = $this->session_year;
+        $classOrd   = $student['Class']   ?? '';
+        $sectionLtr = $student['Section'] ?? '';
+        if (!empty($classOrd) && !empty($sectionLtr)) {
+            $rosterBase = "Schools/{$school_name}/{$session}/Class {$classOrd}/Section {$sectionLtr}/Students";
+            // Primary roster path
+            $this->firebase->delete("{$rosterBase}/List", $userId);
+            // Legacy flat path
+            $this->firebase->delete($rosterBase, $userId);
+        }
+
         // Write to TC index for O(1) listing (avoids full student scan in tc_list)
         $this->firebase->set("Schools/{$school_name}/SIS/TC_Index/{$tcKey}", array_merge($tcData, [
             'user_id' => $userId,
@@ -806,6 +950,7 @@ class Sis extends MY_Controller
 
     public function print_tc($userId = null, $tcKey = null)
     {
+        $this->_require_role(self::VIEW_ROLES, 'sis_print_tc');
         if (empty($userId)) show_404();
         if (!preg_match('/^[A-Za-z0-9_\-]+$/', $userId)) show_404();
         if (!empty($tcKey) && !preg_match('/^[A-Za-z0-9_\-]+$/', $tcKey)) show_404();
@@ -874,6 +1019,7 @@ class Sis extends MY_Controller
 
     public function cancel_tc()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_cancel_tc');
         if ($this->input->method() !== 'post') {
             return $this->json_error('POST required');
         }
@@ -920,6 +1066,7 @@ class Sis extends MY_Controller
      */
     public function withdraw_student()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_withdraw');
         if ($this->input->method() !== 'post') {
             return $this->json_error('POST required');
         }
@@ -975,6 +1122,7 @@ class Sis extends MY_Controller
      */
     public function change_status()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_change_status');
         if ($this->input->method() !== 'post') {
             return $this->json_error('POST required');
         }
@@ -1013,6 +1161,7 @@ class Sis extends MY_Controller
 
     public function documents($userId = null)
     {
+        $this->_require_role(self::VIEW_ROLES, 'sis_documents');
         if (empty($userId) || !$this->safe_path_segment($userId)) show_404();
 
         $school_id = $this->parent_db_key;
@@ -1028,6 +1177,7 @@ class Sis extends MY_Controller
 
     public function upload_document()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_upload_doc');
         if ($this->input->method() !== 'post') {
             return $this->json_error('POST required');
         }
@@ -1052,7 +1202,9 @@ class Sis extends MY_Controller
         $allowedExt  = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'];
         $allowedMime = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
         $ext  = strtolower(pathinfo($_FILES['document']['name'], PATHINFO_EXTENSION));
-        $mime = $_FILES['document']['type'];
+        // M-03 FIX: Use finfo for server-side MIME detection (don't trust client-supplied type)
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime  = $finfo->file($_FILES['document']['tmp_name']);
 
         if (!in_array($ext, $allowedExt, true)) {
             return $this->json_error('Invalid file type. Allowed: JPG, PNG, GIF, WebP, PDF.');
@@ -1096,6 +1248,7 @@ class Sis extends MY_Controller
 
     public function delete_document()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_delete_doc');
         if ($this->input->method() !== 'post') {
             return $this->json_error('POST required');
         }
@@ -1127,6 +1280,7 @@ class Sis extends MY_Controller
 
     public function history($userId = null)
     {
+        $this->_require_role(self::VIEW_ROLES, 'sis_history');
         if (empty($userId) || !$this->safe_path_segment($userId)) show_404();
 
         $school_id = $this->parent_db_key;
@@ -1154,9 +1308,55 @@ class Sis extends MY_Controller
 
     public function id_card()
     {
-        // The existing student/id_card is the full-featured implementation (774 lines).
-        // Redirect there to avoid duplication and keep a single source of truth.
-        redirect('student/id_card');
+        $this->_require_role(self::VIEW_ROLES);
+        $school_id    = $this->parent_db_key;
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        $allStudents = $this->CM->select_data('Users/Parents/' . $school_id);
+        if (!is_array($allStudents)) $allStudents = [];
+        foreach (['Count', 'TC Students', ''] as $k) unset($allStudents[$k]);
+        $allStudents = array_filter($allStudents, function ($s) {
+            return is_array($s) && !empty($s['User Id']);
+        });
+
+        $enrolledIds = [];
+        if (!empty($school_name)) {
+            $sessionClassKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}");
+            if (!is_array($sessionClassKeys)) $sessionClassKeys = [];
+            foreach ($sessionClassKeys as $classKey) {
+                if (strpos($classKey, 'Class ') !== 0) continue;
+                $sectionKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}/{$classKey}");
+                if (!is_array($sectionKeys)) continue;
+                foreach ($sectionKeys as $sectionKey) {
+                    if (strpos($sectionKey, 'Section ') !== 0) continue;
+                    $list = $this->CM->select_data("Schools/{$school_name}/{$session_year}/{$classKey}/{$sectionKey}/Students/List");
+                    if (is_array($list)) {
+                        foreach (array_keys($list) as $sid) $enrolledIds[$sid] = true;
+                    }
+                }
+            }
+        }
+
+        $students = array_values(array_filter($allStudents, function ($s) use ($enrolledIds) {
+            return isset($enrolledIds[$s['User Id']]);
+        }));
+
+        usort($students, function ($a, $b) {
+            $c = strcmp($a['Class'] ?? '', $b['Class'] ?? '');
+            if ($c) return $c;
+            $c = strcmp($a['Section'] ?? '', $b['Section'] ?? '');
+            if ($c) return $c;
+            return strcmp($a['Name'] ?? '', $b['Name'] ?? '');
+        });
+
+        $data['students']     = $students;
+        $data['session_year'] = $session_year;
+        $data['school_name']  = $school_name;
+
+        $this->load->view('include/header');
+        $this->load->view('student_id_card', $data);
+        $this->load->view('include/footer');
     }
 
     /**
@@ -1165,6 +1365,7 @@ class Sis extends MY_Controller
      */
     public function rebuild_index()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_rebuild_index');
         $school_id   = $this->parent_db_key;
         $school_name = $this->school_name;
 
@@ -1197,6 +1398,7 @@ class Sis extends MY_Controller
 
     public function search_student()
     {
+        $this->_require_role(self::VIEW_ROLES, 'sis_search');
         if ($this->input->method() !== 'post') {
             return $this->json_error('POST required');
         }
@@ -1282,6 +1484,7 @@ class Sis extends MY_Controller
 
     public function get_student()
     {
+        $this->_require_role(self::VIEW_ROLES, 'sis_get_student');
         if ($this->input->method() !== 'post') {
             return $this->json_error('POST required');
         }
@@ -1300,6 +1503,7 @@ class Sis extends MY_Controller
 
     public function get_classes()
     {
+        $this->_require_role(self::VIEW_ROLES, 'sis_get_classes');
         $school_name = $this->school_name;
         $session     = $this->session_year;
 
@@ -1318,6 +1522,7 @@ class Sis extends MY_Controller
 
     public function get_sections()
     {
+        $this->_require_role(self::VIEW_ROLES, 'sis_get_sections');
         $school_name = $this->school_name;
         $session     = $this->session_year;
         $classOrd    = trim($this->input->get('class') ?? $this->input->post('class') ?? '');
@@ -1392,58 +1597,60 @@ class Sis extends MY_Controller
      * Upload a student file to Firebase Storage — mirrors Student.php::uploadStudentFile().
      * Returns ['document' => url, 'thumbnail' => url] or false on failure.
      */
-    private function _uploadStudentFile(
-        array  $file,
-        string $schoolName,
-        string $combinedClassPath,
-        string $studentId,
-        string $folderLabel,
-        string $type = 'document'
-    ) {
-        if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
-            return false;
-        }
+    private function _uploadStudentFile($file, $schoolName, $combinedClassPath, $studentId, $folderLabel, $type = 'document')
+    {
+        if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) return false;
 
         $ext       = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $allowed   = ($type === 'profile')
-            ? ['jpg', 'jpeg', 'png', 'webp']
-            : ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
+        $allowed   = ($type === 'profile') ? ['jpg','jpeg','png','webp'] : ['jpg','jpeg','png','webp','pdf'];
         if (!in_array($ext, $allowed, true)) return false;
         if ($file['size'] > 5 * 1024 * 1024) return false;
+
+        // M-03 FIX: Validate MIME via finfo (don't trust client-supplied type)
+        $allowedMimes = ($type === 'profile')
+            ? ['image/jpeg','image/png','image/webp']
+            : ['image/jpeg','image/png','image/webp','application/pdf'];
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $realMime = $finfo->file($file['tmp_name']);
+        if (!in_array($realMime, $allowedMimes, true)) return false;
 
         $timestamp = time();
         $random    = substr(md5(uniqid()), 0, 6);
         $safeLabel = str_replace([' ', '.', '#', '$', '[', ']'], '_', $folderLabel);
         $fileName  = "{$safeLabel}_{$timestamp}_{$random}.{$ext}";
+        $basePath  = "{$schoolName}/Students/{$combinedClassPath}/{$studentId}/";
 
-        $basePath = "{$schoolName}/Students/{$combinedClassPath}/{$studentId}/";
+        $documentPath = ($type === 'profile')
+            ? $basePath . "Profile_pic/{$fileName}"
+            : $basePath . "Documents/{$fileName}";
 
-        if ($type === 'profile') {
-            $documentPath = $basePath . "Profile_pic/{$fileName}";
-        } else {
-            $documentPath = $basePath . "Documents/{$fileName}";
-        }
-
-        if ($this->firebase->uploadFile($file['tmp_name'], $documentPath) !== true) {
-            return false;
-        }
+        if ($this->firebase->uploadFile($file['tmp_name'], $documentPath) !== true) return false;
 
         $documentUrl  = $this->firebase->getDownloadUrl($documentPath);
         $thumbnailUrl = '';
 
-        // Generate thumbnail for images
-        if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp'], true)) {
-            $thumbFolder = ($type === 'profile') ? 'Profile_pic' : 'Documents';
-            $thumbPath   = $basePath . "{$thumbFolder}/thumbnail/{$fileName}";
+        // Image thumbnail (document mode)
+        if ($type === 'document' && in_array($ext, ['jpg','jpeg','png','webp'])) {
+            $thumbPath = $basePath . "Documents/thumbnail/{$fileName}";
             if ($this->firebase->uploadFile($file['tmp_name'], $thumbPath) === true) {
                 $thumbnailUrl = $this->firebase->getDownloadUrl($thumbPath);
             }
         }
 
-        return [
-            'document'  => $documentUrl,
-            'thumbnail' => $thumbnailUrl,
-        ];
+        // PDF thumbnail (document mode)
+        if ($type === 'document' && $ext === 'pdf') {
+            $thumbnailUrl = $this->_generatePdfThumbnail($file['tmp_name'], $basePath."Documents/", $safeLabel, $timestamp, $random);
+        }
+
+        // Profile photo thumbnail
+        if ($type === 'profile' && in_array($ext, ['jpg','jpeg','png','webp'])) {
+            $thumbPath = $basePath . "Profile_pic/thumbnail/{$fileName}";
+            if ($this->firebase->uploadFile($file['tmp_name'], $thumbPath) === true) {
+                $thumbnailUrl = $this->firebase->getDownloadUrl($thumbPath);
+            }
+        }
+
+        return ['document' => $documentUrl, 'thumbnail' => $thumbnailUrl];
     }
 
     /**
@@ -1564,9 +1771,21 @@ class Sis extends MY_Controller
             if (strpos($classKey, 'Class ') !== 0 || !is_array($classData)) continue;
             foreach ($classData as $sectionKey => $sectionData) {
                 if (strpos($sectionKey, 'Section ') !== 0 || !is_array($sectionData)) continue;
-                $list = $sectionData['Students']['List'] ?? [];
-                if (is_array($list)) {
+                $studentsNode = $sectionData['Students'] ?? [];
+                if (!is_array($studentsNode)) continue;
+
+                // New format: Students/List/{userId} = "Name"
+                $list = $studentsNode['List'] ?? [];
+                if (is_array($list) && !empty($list)) {
                     foreach (array_keys($list) as $sid) {
+                        if (is_string($sid) && $sid !== '' && $sid !== 'Count') {
+                            $enrolledIds[$sid] = true;
+                        }
+                    }
+                } else {
+                    // Legacy format: Students/{userId} = {Name: "..."}
+                    foreach ($studentsNode as $sid => $data) {
+                        if (!is_string($sid) || $sid === '' || $sid === 'List' || $sid === 'Count') continue;
                         $enrolledIds[$sid] = true;
                     }
                 }
@@ -1591,20 +1810,9 @@ class Sis extends MY_Controller
         $students    = [];
 
         if ($section && $section !== 'all') {
-            $sectionKey = "Section {$section}";
-            $list = $this->firebase->get(
-                "Schools/{$school_name}/{$session}/{$classKey}/{$sectionKey}/Students/List"
+            $students = $this->_fetch_section_students(
+                $school_name, $session, $classKey, "Section {$section}", $classOrd, $section
             );
-            if (is_array($list)) {
-                foreach ($list as $uid => $name) {
-                    $students[$uid] = [
-                        'user_id' => $uid,
-                        'name'    => $name,
-                        'class'   => $classOrd,
-                        'section' => $section,
-                    ];
-                }
-            }
         } else {
             // All sections in this class
             $sectionKeys = $this->firebase->shallow_get(
@@ -1613,24 +1821,1663 @@ class Sis extends MY_Controller
             if (is_array($sectionKeys)) {
                 foreach ($sectionKeys as $sk) {
                     if (strpos($sk, 'Section ') !== 0) continue;
-                    $sec  = str_replace('Section ', '', $sk);
-                    $list = $this->firebase->get(
-                        "Schools/{$school_name}/{$session}/{$classKey}/{$sk}/Students/List"
+                    $sec = str_replace('Section ', '', $sk);
+                    $sectionStudents = $this->_fetch_section_students(
+                        $school_name, $session, $classKey, $sk, $classOrd, $sec
                     );
-                    if (is_array($list)) {
-                        foreach ($list as $uid => $name) {
-                            $students[$uid] = [
-                                'user_id' => $uid,
-                                'name'    => $name,
-                                'class'   => $classOrd,
-                                'section' => $sec,
-                            ];
-                        }
-                    }
+                    $students += $sectionStudents;
                 }
             }
         }
 
         return $students;
+    }
+
+    /**
+     * Fetch students from a specific section.
+     * Checks Students/List first (new format: {userId: "Name"}).
+     * Falls back to Students/ root (legacy format: {userId: {Name: "..."}}).
+     */
+    private function _fetch_section_students(
+        string $school_name, string $session, string $classKey,
+        string $sectionKey, string $classOrd, string $section
+    ): array {
+        $students = [];
+        $basePath = "Schools/{$school_name}/{$session}/{$classKey}/{$sectionKey}/Students";
+
+        // Try new format first: Students/List/{userId} = "Name"
+        $list = $this->firebase->get("{$basePath}/List");
+        if (is_array($list) && !empty($list)) {
+            foreach ($list as $uid => $name) {
+                if (!is_string($uid) || $uid === '' || $uid === 'Count') continue;
+                $students[$uid] = [
+                    'user_id' => $uid,
+                    'name'    => is_string($name) ? $name : ($name['Name'] ?? $uid),
+                    'class'   => $classOrd,
+                    'section' => $section,
+                ];
+            }
+            return $students;
+        }
+
+        // Fallback: legacy format — Students/{userId} = {Name: "...", ...}
+        $allStudentData = $this->firebase->get($basePath);
+        if (is_array($allStudentData)) {
+            foreach ($allStudentData as $uid => $data) {
+                // Skip non-student keys
+                if (!is_string($uid) || $uid === '' || $uid === 'List' || $uid === 'Count') continue;
+                if (is_array($data)) {
+                    $name = $data['Name'] ?? $data['name'] ?? $uid;
+                    $students[$uid] = [
+                        'user_id' => $uid,
+                        'name'    => $name,
+                        'class'   => $classOrd,
+                        'section' => $section,
+                    ];
+                } elseif (is_string($data)) {
+                    // Could be flat: Students/{userId} = "Name"
+                    $students[$uid] = [
+                        'user_id' => $uid,
+                        'name'    => $data,
+                        'class'   => $classOrd,
+                        'section' => $section,
+                    ];
+                }
+            }
+        }
+
+        return $students;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       STUDENT LIST (legacy all_student view)
+       Merged from Student.php
+    ══════════════════════════════════════════════════════════════════════ */
+
+    public function all_student()
+    {
+        $this->_require_role(self::VIEW_ROLES);
+        $school_id    = $this->parent_db_key;
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        $data['students'] = $this->CM->select_data('Users/Parents/' . $school_id);
+        if (!is_array($data['students'])) $data['students'] = [];
+
+        $nonStudentKeys = ['Count', 'TC Students', ''];
+        foreach ($nonStudentKeys as $key) {
+            if (isset($data['students'][$key])) unset($data['students'][$key]);
+        }
+        $data['students'] = array_filter($data['students'], function ($student) {
+            return is_array($student) && isset($student['User Id']) && !empty($student['User Id']);
+        });
+
+        $classNames    = [];
+        $classSections = [];
+        $sessionNode   = [];
+
+        if (!empty($school_name)) {
+            $sessionNode = $this->CM->select_data('Schools/' . $school_name . '/' . $session_year);
+            if (is_array($sessionNode)) {
+                foreach ($sessionNode as $nodeKey => $nodeValue) {
+                    if (strpos($nodeKey, 'Class ') !== 0 || !is_array($nodeValue)) continue;
+                    preg_match('/\b\d+(st|nd|rd|th)\b/i', $nodeKey, $matches);
+                    if (empty($matches)) continue;
+                    $ordinalPart  = $matches[0];
+                    $classNames[] = $ordinalPart;
+                    $sections = [];
+                    foreach ($nodeValue as $subKey => $subVal) {
+                        if (strpos($subKey, 'Section ') === 0) {
+                            $sections[] = str_replace('Section ', '', $subKey);
+                        }
+                    }
+                    $classSections[$ordinalPart] = $sections;
+                }
+            }
+        }
+
+        $enrolledIds = [];
+        if (is_array($sessionNode)) {
+            foreach ($sessionNode as $classKey => $classVal) {
+                if (strpos($classKey, 'Class ') !== 0 || !is_array($classVal)) continue;
+                foreach ($classVal as $sectionKey => $sectionVal) {
+                    if (strpos($sectionKey, 'Section ') !== 0 || !is_array($sectionVal)) continue;
+                    $list = $sectionVal['Students']['List'] ?? null;
+                    if (is_array($list)) {
+                        foreach (array_keys($list) as $sid) $enrolledIds[$sid] = true;
+                    }
+                }
+            }
+        }
+        $data['students'] = array_filter($data['students'], function ($student) use ($enrolledIds) {
+            return isset($enrolledIds[$student['User Id']]);
+        });
+
+        $data['classNames']    = $classNames;
+        $data['classSections'] = $classSections;
+
+        $this->load->view('include/header');
+        $this->load->view('all_student', $data);
+        $this->load->view('include/footer');
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       BULK IMPORT — Merged from Student.php
+    ══════════════════════════════════════════════════════════════════════ */
+
+    public function master_student()
+    {
+        $this->_require_role(self::VIEW_ROLES);
+        $this->load->view('include/header');
+        $this->load->view('import_students');
+        $this->load->view('include/footer');
+    }
+
+    public function import_students()
+    {
+        $this->_require_role(self::MANAGE_ROLES);
+        try {
+            if (defined('GRADER_DEBUG') && GRADER_DEBUG) log_message('debug', '=== IMPORT FUNCTION STARTED ===');
+
+            $school_id    = $this->parent_db_key;
+            $school_name  = $this->school_name;
+            $session_year = $this->session_year;
+
+            if (!isset($_FILES['excelFile']) || $_FILES['excelFile']['error'] !== UPLOAD_ERR_OK) {
+                redirect('sis/all_student');
+                return;
+            }
+
+            $file = $_FILES['excelFile'];
+            $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            $reader = ($extension === 'csv') ? IOFactory::createReader('Csv') : IOFactory::createReader('Xlsx');
+            $spreadsheet = $reader->load($file['tmp_name']);
+            $sheetData   = $spreadsheet->getActiveSheet()->toArray();
+
+            if (count($sheetData) <= 1) {
+                redirect('sis/all_student');
+                return;
+            }
+
+            $headers = array_map('trim', $sheetData[0]);
+            unset($sheetData[0]);
+            $sheetData = array_values($sheetData);
+
+            $success = 0;
+            $error   = 0;
+
+            $studentIdCount = $this->CM->get_data("Users/Parents/{$school_id}/Count");
+            if (!$studentIdCount) $studentIdCount = 1;
+
+            $subjectCache = [];
+
+            foreach ($sheetData as $row) {
+                if (!array_filter($row)) continue;
+                if (count($headers) != count($row)) { $error++; continue; }
+
+                $rowData = array_combine($headers, $row);
+
+                $studentName = trim($rowData['Name'] ?? '');
+                $classRaw    = trim($rowData['Class'] ?? '');
+                $section     = trim($rowData['Section'] ?? '');
+                if (!$studentName || !$classRaw || !$section) { $error++; continue; }
+
+                preg_match('/\d+/', $classRaw, $match);
+                if (!isset($match[0])) { $error++; continue; }
+                $classNumber = (int)$match[0];
+
+                $suffix = 'th';
+                if (!in_array(($classNumber % 100), [11, 12, 13])) {
+                    switch ($classNumber % 10) {
+                        case 1: $suffix = 'st'; break;
+                        case 2: $suffix = 'nd'; break;
+                        case 3: $suffix = 'rd'; break;
+                    }
+                }
+
+                $className = $classNumber . $suffix;
+                $combinedClass = "Class {$className}/Section {$section}";
+                $studentId = 'STU' . str_pad($studentIdCount, 4, '0', STR_PAD_LEFT);
+
+                $formattedDOB = '';
+                if (!empty($rowData['DOB'])) $formattedDOB = date('d-m-Y', strtotime($rowData['DOB']));
+                $formattedAdmDate = '';
+                if (!empty($rowData['Admission Date'])) $formattedAdmDate = date('d-m-Y', strtotime($rowData['Admission Date']));
+
+                $password = $this->_generatePassword($studentName, $formattedDOB);
+
+                $studentData = [
+                    "Name" => $studentName, "User Id" => $studentId, "DOB" => $formattedDOB,
+                    "Admission Date" => $formattedAdmDate, "Class" => $className, "Section" => $section,
+                    "Gender" => trim($rowData['Gender'] ?? ''), "Blood Group" => trim($rowData['Blood Group'] ?? ''),
+                    "Category" => trim($rowData['Category'] ?? ''), "Religion" => trim($rowData['Religion'] ?? ''),
+                    "Nationality" => trim($rowData['Nationality'] ?? ''),
+                    "Father Name" => trim($rowData['Father Name'] ?? ''), "Father Occupation" => trim($rowData['Father Occupation'] ?? ''),
+                    "Mother Name" => trim($rowData['Mother Name'] ?? ''), "Mother Occupation" => trim($rowData['Mother Occupation'] ?? ''),
+                    "Guard Contact" => trim($rowData['Guard Contact'] ?? ''), "Guard Relation" => trim($rowData['Guard Relation'] ?? ''),
+                    "Phone Number" => trim($rowData['Phone Number'] ?? ''), "Email" => trim($rowData['Email'] ?? ''),
+                    "Password" => $password,
+                    "Address" => [
+                        "Street" => trim($rowData['Street'] ?? ''), "City" => trim($rowData['City'] ?? ''),
+                        "State" => trim($rowData['State'] ?? ''), "PostalCode" => trim($rowData['PostalCode'] ?? ''),
+                    ],
+                    "Pre School" => trim($rowData['Pre School'] ?? ''), "Pre Class" => trim($rowData['Pre Class'] ?? ''),
+                    "Pre Marks" => trim($rowData['Pre Marks'] ?? ''),
+                    "Profile Pic" => "",
+                    "Doc" => [
+                        "Aadhar Card" => ["thumbnail" => "", "url" => ""],
+                        "Birth Certificate" => ["thumbnail" => "", "url" => ""],
+                        "Photo" => ["thumbnail" => "", "url" => ""],
+                        "Transfer Certificate" => ["thumbnail" => "", "url" => ""],
+                    ],
+                ];
+
+                $this->firebase->set("Users/Parents/{$school_id}/{$studentId}", $studentData);
+                $this->CM->addKey_pair_data("Schools/{$school_name}/{$session_year}/{$combinedClass}/Students/", [$studentId => ['Name' => $studentName]]);
+                $this->CM->addKey_pair_data("Schools/{$school_name}/{$session_year}/{$combinedClass}/Students/List/", [$studentId => $studentName]);
+
+                $phone = trim($rowData['Phone Number'] ?? '');
+                if ($phone !== '') {
+                    $this->CM->addKey_pair_data("Schools/{$school_name}/Phone_Index/", [$phone => $studentId]);
+                    $this->CM->addKey_pair_data('Exits/', [$phone => $school_id]);
+                    $this->CM->addKey_pair_data('User_ids_pno/', [$phone => $studentId]);
+                }
+
+                // Subject assignment
+                if (!isset($subjectCache[$classNumber])) {
+                    $subjectCache[$classNumber] = ['core' => [], 'allSubjects' => [], 'additionalSubjects' => []];
+                    $rawList = $this->firebase->get("Schools/{$school_name}/Subject_list/{$classNumber}");
+                    if (is_array($rawList)) {
+                        foreach ($rawList as $code => $item) {
+                            if (!is_array($item)) continue;
+                            $subName = trim($item['subject_name'] ?? $item['name'] ?? '');
+                            if ($subName === '') continue;
+                            $type = strtolower(trim($item['category'] ?? ''));
+                            if ($type === 'additional') {
+                                $subjectCache[$classNumber]['additionalSubjects'][$subName] = "";
+                            } else {
+                                $subjectCache[$classNumber]['allSubjects'][(string)$code] = $subName;
+                                if ($type === 'core') {
+                                    $subjectCache[$classNumber]['core'][(string)$code] = ['name' => $subName, 'type' => 'core'];
+                                }
+                            }
+                        }
+                    }
+                    if (!empty($subjectCache[$classNumber]['allSubjects'])) {
+                        $this->firebase->set("Schools/{$school_name}/{$session_year}/Class {$className}/All Subjects", $subjectCache[$classNumber]['allSubjects']);
+                    }
+                }
+
+                if (!empty($subjectCache[$classNumber]['core'])) {
+                    $this->firebase->set("Users/Parents/{$school_id}/{$studentId}/Subjects", $subjectCache[$classNumber]['core']);
+                }
+                if (!empty($subjectCache[$classNumber]['additionalSubjects'])) {
+                    $this->firebase->set("Schools/{$school_name}/{$session_year}/{$combinedClass}/Students/{$studentId}/Additional Subjects", $subjectCache[$classNumber]['additionalSubjects']);
+                }
+
+                $studentIdCount++;
+                $success++;
+            }
+
+            $this->CM->addKey_pair_data("Users/Parents/{$school_id}/", ['Count' => $studentIdCount]);
+            $this->session->set_flashdata('import_result', "Imported Successfully: {$success} | Failed: {$error}");
+            redirect('sis/all_student');
+        } catch (Exception $e) {
+            log_message('error', 'IMPORT ERROR: ' . $e->getMessage());
+            $this->session->set_flashdata('import_result', "Import Failed! Check logs.");
+            redirect('sis/all_student');
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       LEGACY ADMISSION FORM — Merged from Student.php
+       (Includes photo/doc uploads and subject assignment)
+    ══════════════════════════════════════════════════════════════════════ */
+
+    public function studentAdmission()
+    {
+        $this->_require_role(self::MANAGE_ROLES);
+        $school_id    = $this->parent_db_key;
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        $data['school_name'] = $school_name;
+        $schoolName = $school_name;
+
+        $studentIdCount = $this->CM->get_data("Users/Parents/{$school_id}/Count");
+        if ($studentIdCount === null) $studentIdCount = 1;
+        $userId = 'STU' . str_pad($studentIdCount, 4, '0', STR_PAD_LEFT);
+        $data['user_Id'] = $userId;
+
+        $basePath = "Schools/{$school_name}/{$session_year}";
+        $sessionData = $this->firebase->get($basePath);
+        $ClassesData = [];
+        if (is_array($sessionData)) {
+            foreach ($sessionData as $classKey => $classVal) {
+                if (strpos($classKey, 'Class ') === 0 && is_array($classVal)) {
+                    foreach ($classVal as $sectionKey => $v) {
+                        if (strpos($sectionKey, 'Section ') === 0) {
+                            $ClassesData[] = ['class_name' => $classKey, 'section' => str_replace('Section ', '', $sectionKey)];
+                        }
+                    }
+                }
+            }
+        }
+        $data['Classes'] = $ClassesData;
+
+        $feesStructurePath = "Schools/{$schoolName}/{$session_year}/Accounts/Fees/Fees Structure";
+        $data['exemptedFees'] = $this->firebase->get($feesStructurePath);
+
+        if ($this->input->method() === 'post') {
+            header('Content-Type: application/json');
+            $postData = $this->input->post();
+            $normalizedPostData = [];
+            foreach ($postData as $key => $value) $normalizedPostData[urldecode($key)] = $value;
+
+            $studentId   = $normalizedPostData['user_id'] ?? '';
+            $studentName = $normalizedPostData['Name'] ?? '';
+            $phoneNumber = $normalizedPostData['phone_number'] ?? '';
+            $classNameRaw = $normalizedPostData['class'] ?? '';
+            $className    = trim(str_replace('Class ', '', $classNameRaw));
+            $section     = $normalizedPostData['section'] ?? '';
+
+            if (!$studentId || !$studentName || !$className || !$section) {
+                echo json_encode(['status' => 'error', 'message' => 'Student ID, Name, Class and Section are required']);
+                return;
+            }
+
+            $classNameRaw = $this->safe_path_segment($classNameRaw, 'class');
+            $section      = $this->safe_path_segment($section, 'section');
+            $studentId    = $this->safe_path_segment($studentId, 'user_id');
+            $combinedClassPath = "{$classNameRaw}/Section {$section}";
+
+            // Document uploads
+            $documents = ['birthCertificate' => 'Birth Certificate', 'aadharCard' => 'Aadhar Card', 'transferCertificate' => 'Transfer Certificate'];
+            $documentUrls = [];
+            $thumbnailUrls = [];
+            foreach ($documents as $inputKey => $label) {
+                if (!empty($_FILES[$inputKey]['tmp_name'])) {
+                    $uploadResult = $this->_uploadStudentFile($_FILES[$inputKey], $schoolName, $combinedClassPath, $studentId, $label, 'document');
+                    if (!$uploadResult) {
+                        echo json_encode(['status' => 'error', 'message' => "Failed to upload {$label}"]);
+                        return;
+                    }
+                    $documentUrls[$label]  = $uploadResult['document']  ?? '';
+                    $thumbnailUrls[$label] = $uploadResult['thumbnail'] ?? '';
+                }
+            }
+
+            // Photo (required)
+            if (empty($_FILES['student_photo']['tmp_name'])) {
+                echo json_encode(['status' => 'error', 'message' => 'Student photo required']);
+                return;
+            }
+            $photo = $_FILES['student_photo'];
+            $ext = strtolower(pathinfo($photo['name'], PATHINFO_EXTENSION));
+            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
+                echo json_encode(['status' => 'error', 'message' => 'Only JPG, JPEG, PNG or WEBP allowed']);
+                return;
+            }
+            $photoUpload = $this->_uploadStudentFile($photo, $schoolName, $combinedClassPath, $studentId, 'profile', 'profile');
+            if (!$photoUpload) {
+                echo json_encode(['status' => 'error', 'message' => 'Photo upload failed']);
+                return;
+            }
+
+            $formattedDOB = '';
+            if (!empty($normalizedPostData['dob'])) $formattedDOB = date('d-m-Y', strtotime($normalizedPostData['dob']));
+            $formattedAdmission = '';
+            if (!empty($normalizedPostData['admission_date'])) $formattedAdmission = date('d-m-Y', strtotime($normalizedPostData['admission_date']));
+            $preMarks = trim($normalizedPostData['pre_marks'] ?? '');
+            if ($preMarks !== '' && substr($preMarks, -1) !== '%') $preMarks .= '%';
+
+            $studentData = [
+                "Name" => $studentName, "User Id" => $studentId, "DOB" => $formattedDOB,
+                "Admission Date" => $formattedAdmission, "Class" => $className, "Section" => $section,
+                "Phone Number" => $phoneNumber, "Email" => $normalizedPostData['email'] ?? '',
+                "Password" => $this->_generatePassword($studentName, $formattedDOB),
+                "Category" => $normalizedPostData['category'] ?? '', "Gender" => $normalizedPostData['gender'] ?? '',
+                "Blood Group" => $normalizedPostData['blood_group'] ?? '',
+                "Religion" => $normalizedPostData['religion'] ?? '', "Nationality" => $normalizedPostData['nationality'] ?? '',
+                "Father Name" => $normalizedPostData['father_name'] ?? '', "Father Occupation" => $normalizedPostData['father_occupation'] ?? '',
+                "Mother Name" => $normalizedPostData['mother_name'] ?? '', "Mother Occupation" => $normalizedPostData['mother_occupation'] ?? '',
+                "Guard Contact" => $normalizedPostData['guard_contact'] ?? '', "Guard Relation" => $normalizedPostData['guard_relation'] ?? '',
+                "Pre Class" => $normalizedPostData['pre_class'] ?? '', "Pre School" => $normalizedPostData['pre_school'] ?? '',
+                "Pre Marks" => $preMarks,
+                "Address" => [
+                    "Street" => $normalizedPostData['street'] ?? '', "City" => $normalizedPostData['city'] ?? '',
+                    "State" => $normalizedPostData['state'] ?? '', "PostalCode" => $normalizedPostData['postal_code'] ?? '',
+                ],
+                "Profile Pic" => $photoUpload['document'],
+                "Doc" => [
+                    'Birth Certificate'    => ['url' => $documentUrls['Birth Certificate'] ?? '', 'thumbnail' => $thumbnailUrls['Birth Certificate'] ?? ''],
+                    'Aadhar Card'          => ['url' => $documentUrls['Aadhar Card'] ?? '', 'thumbnail' => $thumbnailUrls['Aadhar Card'] ?? ''],
+                    'Transfer Certificate' => ['url' => $documentUrls['Transfer Certificate'] ?? '', 'thumbnail' => $thumbnailUrls['Transfer Certificate'] ?? ''],
+                    'Photo'                => ['url' => $photoUpload['document'] ?? '', 'thumbnail' => $photoUpload['thumbnail'] ?? ''],
+                ],
+            ];
+
+            $this->firebase->set("Users/Parents/{$school_id}/{$studentId}", $studentData);
+            $this->CM->addKey_pair_data("Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/", [$studentId => ['Name' => $studentName]]);
+            $this->CM->addKey_pair_data("Schools/{$school_name}/{$session_year}/{$combinedClassPath}/Students/List/", [$studentId => $studentName]);
+
+            // Subject assignment
+            preg_match('/\d+/', $className, $classMatch);
+            $classNumber = isset($classMatch[0]) ? (int)$classMatch[0] : 0;
+            if ($classNumber > 0) {
+                $rawList = $this->firebase->get("Schools/{$schoolName}/Subject_list/{$classNumber}");
+                $coreSubjects = [];
+                $allSubjects  = [];
+                if (is_array($rawList)) {
+                    foreach ($rawList as $code => $item) {
+                        if (!is_array($item)) continue;
+                        $subName = trim($item['subject_name'] ?? $item['name'] ?? '');
+                        if ($subName === '') continue;
+                        $type = strtolower(trim($item['category'] ?? ''));
+                        if ($type !== 'additional') $allSubjects[(string)$code] = $subName;
+                        if ($type === 'core') $coreSubjects[(string)$code] = ['name' => $subName, 'type' => 'core'];
+                    }
+                }
+                if (!empty($allSubjects)) {
+                    $this->firebase->set("Schools/{$schoolName}/{$session_year}/{$classNameRaw}/All Subjects", $allSubjects);
+                }
+                if (!empty($coreSubjects)) {
+                    $this->firebase->set("Users/Parents/{$school_id}/{$studentId}/Subjects", $coreSubjects);
+                }
+            }
+
+            // Additional subjects
+            if (!empty($normalizedPostData['additional_subjects'])) {
+                $additionalSubjects = [];
+                foreach ($normalizedPostData['additional_subjects'] as $sub) $additionalSubjects[$sub] = "";
+                $this->firebase->set("Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/Additional Subjects", $additionalSubjects);
+            }
+
+            // Month Fee init
+            $monthFee = array_fill_keys(['January','February','March','April','May','June','July','August','September','October','November','December','Yearly Fees'], 0);
+            $this->firebase->set("Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/Month Fee", $monthFee);
+
+            // Exempted fees
+            if (isset($normalizedPostData['exempted_fees_multiple']) && is_array($normalizedPostData['exempted_fees_multiple'])) {
+                $exemptedFeesData = [];
+                foreach ($normalizedPostData['exempted_fees_multiple'] as $feeName) {
+                    $feeName = trim($feeName);
+                    if ($feeName !== '') $exemptedFeesData[$feeName] = "";
+                }
+                $this->firebase->set("Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/Exempted Fees", $exemptedFeesData);
+            }
+
+            // Phone index + count
+            $this->CM->addKey_pair_data("Schools/{$schoolName}/Phone_Index/", [$phoneNumber => $studentId]);
+            $this->CM->addKey_pair_data('Exits/', [$phoneNumber => $school_id]);
+            $this->CM->addKey_pair_data('User_ids_pno/', [$phoneNumber => $studentId]);
+            $this->CM->addKey_pair_data("Users/Parents/{$school_id}/", ['Count' => $studentIdCount + 1]);
+
+            echo json_encode(['status' => 'success', 'message' => 'Student admission successful']);
+            return;
+        }
+
+        $this->load->view('include/header');
+        $this->load->view('studentAdmission', $data);
+        $this->load->view('include/footer');
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       AJAX HELPERS — Merged from Student.php
+    ══════════════════════════════════════════════════════════════════════ */
+
+    public function get_sections_by_class()
+    {
+        $this->_require_role(self::VIEW_ROLES);
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+        $className = trim((string)$this->input->post('class_name'));
+        if ($className === '') {
+            header('Content-Type: application/json');
+            echo json_encode([]);
+            return;
+        }
+        $className = $this->safe_path_segment($className, 'class_name');
+        $keys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}/{$className}");
+        $sections = [];
+        foreach ($keys as $key) {
+            if (strpos($key, 'Section ') === 0) $sections[] = str_replace('Section ', '', $key);
+        }
+        header('Content-Type: application/json');
+        echo json_encode($sections);
+    }
+
+    public function fetch_subjects()
+    {
+        $this->_require_role(self::VIEW_ROLES);
+        header('Content-Type: application/json');
+        $school_name = $this->school_name;
+        $rawClass = trim((string) $this->input->post('class_name'));
+        if ($rawClass === '') {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $rawClass = trim($input['class_name'] ?? '');
+        }
+        if ($rawClass === '' || !preg_match('/\d+/', $rawClass, $m)) {
+            echo json_encode([]);
+            return;
+        }
+        $classKey = (int)$m[0];
+        $subjectData = $this->CM->get_data("Schools/{$school_name}/Subject_list/{$classKey}");
+        $subjects = [];
+        if (is_array($subjectData)) {
+            foreach ($subjectData as $code => $item) {
+                if (!is_array($item)) continue;
+                $category = strtolower(trim($item['category'] ?? ''));
+                $name     = trim($item['subject_name'] ?? $item['name'] ?? '');
+                if ($name !== '' && in_array($category, ['additional', 'skill-based'], true)) {
+                    $subjects[] = $name;
+                }
+            }
+        }
+        echo json_encode(array_values(array_unique($subjects)));
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       EDIT STUDENT — Merged from Student.php
+    ══════════════════════════════════════════════════════════════════════ */
+
+    public function edit_student($userId)
+    {
+        $this->_require_role(self::MANAGE_ROLES);
+        if (empty($userId) || !preg_match('/^[A-Za-z0-9_]+$/', $userId)) { show_404(); return; }
+
+        $school_id    = $this->parent_db_key;
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+        $studentPath = "Users/Parents/{$school_id}/{$userId}";
+        $existing    = $this->CM->select_data($studentPath);
+        if (!$existing) { show_404(); return; }
+
+        $classKey          = trim($existing['Class']);
+        $sectionKey        = trim($existing['Section']);
+        $combinedClassPath = "Class {$classKey}/Section {$sectionKey}";
+
+        if ($this->input->method() !== 'post') {
+            $additionalPath = "Schools/$school_name/$session_year/$combinedClassPath/Students/$userId/Additional Subjects";
+            $data['additional_subjects'] = $this->firebase->get($additionalPath) ?? [];
+            $exemptedPath = "Schools/$school_name/$session_year/$combinedClassPath/Students/$userId/Exempted Fees";
+            $rawFees = $this->firebase->get($exemptedPath);
+            $data['selected_exempted_fees'] = is_array($rawFees) ? $rawFees : [];
+            $feesStructurePath = "Schools/$school_name/$session_year/Accounts/Fees/Fees Structure";
+            $data['exemptedFees'] = $this->firebase->get($feesStructurePath);
+
+            $classNumKey = null;
+            if (preg_match('/\d+/', $existing['Class'], $m)) $classNumKey = (int)$m[0];
+            $allSubjects = [];
+            if ($classNumKey) {
+                $subjectData = $this->CM->get_data("Schools/$school_name/Subject_list/$classNumKey");
+                if (is_array($subjectData)) {
+                    foreach ($subjectData as $code => $item) {
+                        if (!is_array($item)) continue;
+                        $category = strtolower(trim($item['category'] ?? ''));
+                        $name     = trim($item['subject_name'] ?? $item['name'] ?? '');
+                        if ($name !== '' && in_array($category, ['additional', 'skill-based'], true)) $allSubjects[] = $name;
+                    }
+                }
+            }
+            $data['allSubjects']  = array_values(array_unique($allSubjects));
+            $data['student_data'] = $existing;
+            $data['school_name']  = $school_name;
+            $this->load->view('include/header');
+            $this->load->view('edit_student', $data);
+            $this->load->view('include/footer');
+            return;
+        }
+
+        // POST mode
+        header('Content-Type: application/json');
+        $post = $this->input->post();
+
+        $dob           = !empty($post['dob'])            ? trim($post['dob'])            : ($existing['DOB']            ?? '');
+        $admissionDate = !empty($post['admission_date']) ? trim($post['admission_date']) : ($existing['Admission Date'] ?? '');
+        $religion = $post['religion'] ?? ($existing['Religion'] ?? '');
+        if ($religion === 'Other' && !empty($post['other_religion'])) $religion = trim($post['other_religion']);
+        $preMarks = trim($post['pre_marks'] ?? '');
+        if ($preMarks !== '' && substr($preMarks, -1) !== '%') $preMarks .= '%';
+
+        $updateData = [
+            "Name" => $post['Name'] ?? ($existing['Name'] ?? ''),
+            "DOB" => $dob, "Admission Date" => $admissionDate,
+            "Phone Number" => $post['phone_number'] ?? ($existing['Phone Number'] ?? ''),
+            "Email" => $post['email'] ?? ($existing['Email'] ?? ''),
+            "Gender" => $post['gender'] ?? ($existing['Gender'] ?? ''),
+            "Category" => $post['category'] ?? ($existing['Category'] ?? ''),
+            "Blood Group" => $post['blood_group'] ?? ($existing['Blood Group'] ?? ''),
+            "Religion" => $religion,
+            "Nationality" => $post['nationality'] ?? ($existing['Nationality'] ?? ''),
+            "Father Name" => $post['father_name'] ?? ($existing['Father Name'] ?? ''),
+            "Father Occupation" => $post['father_occupation'] ?? ($existing['Father Occupation'] ?? ''),
+            "Mother Name" => $post['mother_name'] ?? ($existing['Mother Name'] ?? ''),
+            "Mother Occupation" => $post['mother_occupation'] ?? ($existing['Mother Occupation'] ?? ''),
+            "Guard Contact" => $post['guard_contact'] ?? ($existing['Guard Contact'] ?? ''),
+            "Guard Relation" => $post['guard_relation'] ?? ($existing['Guard Relation'] ?? ''),
+            "Pre Class" => $post['pre_class'] ?? ($existing['Pre Class'] ?? ''),
+            "Pre School" => $post['pre_school'] ?? ($existing['Pre School'] ?? ''),
+            "Pre Marks" => $preMarks !== '' ? $preMarks : ($existing['Pre Marks'] ?? ''),
+            "Address" => [
+                "Street" => $post['street'] ?? ($existing['Address']['Street'] ?? ''),
+                "City" => $post['city'] ?? ($existing['Address']['City'] ?? ''),
+                "State" => $post['state'] ?? ($existing['Address']['State'] ?? ''),
+                "PostalCode" => $post['postal_code'] ?? ($existing['Address']['PostalCode'] ?? ''),
+            ],
+            "Class" => $existing["Class"], "Section" => $existing["Section"],
+            "User Id" => $existing["User Id"], "Password" => $existing["Password"] ?? '',
+        ];
+
+        $updateData["Profile Pic"] = $existing["Profile Pic"] ?? '';
+        $existingDoc = is_array($existing["Doc"] ?? null) ? $existing["Doc"] : [];
+        foreach (['Birth Certificate', 'Aadhar Card', 'Transfer Certificate', 'Photo'] as $docKey) {
+            if (isset($existingDoc[$docKey]) && !is_array($existingDoc[$docKey])) {
+                $existingDoc[$docKey] = ['url' => (string)$existingDoc[$docKey], 'thumbnail' => ''];
+            }
+        }
+        $updateData["Doc"] = $existingDoc;
+
+        // Document re-upload
+        $documents = ['birthCertificate' => 'Birth Certificate', 'aadharCard' => 'Aadhar Card', 'transferCertificate' => 'Transfer Certificate'];
+        foreach ($documents as $inputKey => $label) {
+            if (empty($_FILES[$inputKey]['tmp_name'])) continue;
+            $oldDoc = $existingDoc[$label] ?? [];
+            $this->_deleteOldStorageFile($oldDoc);
+            $uploadResult = $this->_uploadStudentFile($_FILES[$inputKey], $school_name, $combinedClassPath, $userId, $label, 'document');
+            if ($uploadResult) {
+                $updateData["Doc"][$label] = ['url' => $uploadResult['document'] ?? '', 'thumbnail' => $uploadResult['thumbnail'] ?? ''];
+            }
+        }
+
+        // Photo replace
+        $photoUpdated = false;
+        if (!empty($_FILES['student_photo']['tmp_name'])) {
+            $photo = $_FILES['student_photo'];
+            $ext = strtolower(pathinfo($photo['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
+                $this->_deleteOldStorageFile($existingDoc['Photo'] ?? []);
+                $photoResult = $this->_uploadStudentFile($photo, $school_name, $combinedClassPath, $userId, 'profile', 'profile');
+                if ($photoResult) {
+                    $updateData["Profile Pic"]  = $photoResult['document'];
+                    $updateData["Doc"]["Photo"] = ['url' => $photoResult['document'] ?? '', 'thumbnail' => $photoResult['thumbnail'] ?? ''];
+                    $photoUpdated = true;
+                }
+            }
+        }
+
+        $this->firebase->update("Users/Parents/$school_id/$userId", $updateData);
+
+        // Additional subjects
+        $additionalSubjects = [];
+        if (!empty($post['additional_subjects']) && is_array($post['additional_subjects'])) {
+            foreach ($post['additional_subjects'] as $sub) {
+                $sub = trim($sub);
+                if ($sub !== '') $additionalSubjects[$sub] = "";
+            }
+        }
+        $this->firebase->set("Schools/$school_name/$session_year/$combinedClassPath/Students/$userId/Additional Subjects", $additionalSubjects);
+
+        // Exempted fees
+        $exemptedFeesData = [];
+        if (!empty($post['exempted_fees_multiple']) && is_array($post['exempted_fees_multiple'])) {
+            foreach ($post['exempted_fees_multiple'] as $fee) {
+                $fee = trim($fee);
+                if ($fee !== '') $exemptedFeesData[$fee] = "";
+            }
+        }
+        $this->firebase->set("Schools/$school_name/$session_year/$combinedClassPath/Students/$userId/Exempted Fees", $exemptedFeesData);
+
+        $response = ['status' => 'success', 'message' => 'Student updated successfully'];
+        if ($photoUpdated) $response['photo_notice'] = 'Profile photo updated with thumbnail.';
+        echo json_encode($response);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       DELETE STUDENT — Merged from Student.php
+    ══════════════════════════════════════════════════════════════════════ */
+
+    public function delete_student($id)
+    {
+        $this->_require_role(self::MANAGE_ROLES);
+        if ($this->input->method() !== 'post') { redirect('sis/all_student'); return; }
+        if (empty($id) || !preg_match('/^[A-Za-z0-9_]+$/', $id)) { redirect('sis/all_student'); return; }
+
+        $school_id = $this->parent_db_key;
+        $school_name = $this->school_name;
+        $session_year = $this->session_year;
+        $student = $this->CM->select_data("Users/Parents/{$school_id}/{$id}");
+        if (!$student) { redirect('sis/all_student'); return; }
+
+        $phoneNumber = $student['Phone Number'] ?? '';
+        $class = $student['Class'] ?? '';
+        $section = $student['Section'] ?? '';
+        if (!$class || !$section) {
+            $this->session->set_flashdata('error', 'Class or Section missing');
+            redirect('sis/all_student');
+            return;
+        }
+        $combinedClassPath = "Class {$class}/Section {$section}";
+
+        $this->CM->delete_folder_from_firebase_storage("{$school_name}/Students/Class {$class}/{$id}");
+        $this->CM->delete_data("Schools/{$school_name}/{$session_year}/{$combinedClassPath}/Students", $id);
+        $this->CM->delete_data("Schools/{$school_name}/{$session_year}/{$combinedClassPath}/Students/List", $id);
+        if (!empty($phoneNumber)) {
+            $this->CM->delete_data("Schools/{$school_name}/Phone_Index", $phoneNumber);
+            $this->CM->delete_data('User_ids_pno', $phoneNumber);
+            $this->CM->delete_data('Exits', $phoneNumber);
+        }
+        $this->session->set_flashdata('success', 'Student removed from class successfully');
+        redirect('sis/all_student');
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       STUDENT PROFILE (with fees) — Merged from Student.php
+    ══════════════════════════════════════════════════════════════════════ */
+
+    public function student_profile($userId)
+    {
+        $this->_require_role(self::VIEW_ROLES);
+        if (empty($userId) || !preg_match('/^[A-Za-z0-9_]+$/', $userId)) { show_404(); return; }
+
+        $school_id    = $this->parent_db_key;
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        $studentData = $this->firebase->get("Users/Parents/{$school_id}/{$userId}");
+        if (!$studentData) { show_error("Student not found"); return; }
+
+        $class   = $studentData['Class']   ?? '';
+        $section = $studentData['Section'] ?? '';
+        $basePath = "Schools/$school_name/$session_year/Class {$class}/Section $section";
+
+        // Subjects
+        $subjectsList = [];
+        if (!empty($class)) {
+            $classNumber = preg_replace('/[^0-9]/', '', $class);
+            $subjects = $this->firebase->get("Schools/$school_name/Subject_list/$classNumber");
+            if (!empty($subjects) && is_array($subjects)) {
+                foreach ($subjects as $sd) {
+                    $sn = $sd['subject_name'] ?? $sd['name'] ?? '';
+                    if ($sn !== '') $subjectsList[] = $sn;
+                }
+            }
+        }
+
+        $additionalSubjects = $this->firebase->get("$basePath/Students/$userId/Additional Subjects");
+        $finalSubjectsList = array_unique(array_merge($subjectsList, array_keys($additionalSubjects ?? [])));
+
+        $rawExempted = $this->firebase->get("$basePath/Students/$userId/Exempted Fees");
+        $exemptedFees = is_array($rawExempted) ? $rawExempted : [];
+
+        $discountData = $this->firebase->get("$basePath/Students/$userId/Discount");
+        $totalDiscount   = isset($discountData['totalDiscount'])   ? (float)$discountData['totalDiscount']   : 0;
+        $currentDiscount = isset($discountData['currentDiscount']) ? (float)$discountData['currentDiscount'] : 0;
+
+        $feesJson = $this->_getFees($class, $section);
+        $feesData = json_decode($feesJson, true);
+
+        $data = [
+            'student' => $studentData, 'class' => $class, 'section' => $section,
+            'fees' => $feesData['fees'] ?? null, 'monthlyTotals' => $feesData['monthlyTotals'] ?? null,
+            'overallTotal' => $feesData['overallTotal'] ?? null, 'subjects' => $finalSubjectsList,
+            'discount' => $totalDiscount, 'totaldiscount' => $totalDiscount,
+            'currentdiscount' => $currentDiscount, 'exempted_fees' => $exemptedFees,
+        ];
+
+        $this->load->view('include/header');
+        $this->load->view('student_profile', $data);
+        $this->load->view('include/footer');
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       DOWNLOAD DOCUMENT — Merged from Student.php
+    ══════════════════════════════════════════════════════════════════════ */
+
+    public function download_document()
+    {
+        $this->_require_role(self::VIEW_ROLES);
+        $fileUrl = $this->input->get('file', TRUE);
+        if (empty($fileUrl) || !filter_var($fileUrl, FILTER_VALIDATE_URL)) { show_error("Invalid file URL.", 400); return; }
+
+        $parts = parse_url($fileUrl);
+        if (empty($parts['scheme']) || empty($parts['host'])) { show_error("Malformed URL.", 400); return; }
+        if ($parts['scheme'] !== 'https') { show_error("Only HTTPS allowed.", 403); return; }
+
+        $allowedHosts = ['firebasestorage.googleapis.com', 'storage.googleapis.com'];
+        if (!in_array($parts['host'], $allowedHosts, true)) { show_error("Access denied.", 403); return; }
+
+        $ip = gethostbyname($parts['host']);
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            show_error("Invalid host.", 403); return;
+        }
+
+        $fileName = preg_replace('/[^a-zA-Z0-9._\-]/', '_', basename($parts['path']));
+        $ch = curl_init($fileUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . $fileName . '"');
+        curl_exec($ch);
+        if (curl_errno($ch)) { curl_close($ch); show_error("Download failed.", 500); return; }
+        curl_close($ch);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       ATTENDANCE — Merged from Student.php
+    ══════════════════════════════════════════════════════════════════════ */
+
+    public function attendance()
+    {
+        $this->_require_role(self::VIEW_ROLES);
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+        $data = $this->CM->select_data("Schools/{$school_name}/{$session_year}");
+        $ClassesData = [];
+        if (is_array($data)) {
+            foreach ($data as $key => $value) {
+                if (strpos($key, 'Class ') === 0 && is_array($value)) {
+                    foreach ($value as $sectionKey => $sectionValue) {
+                        if (strpos($sectionKey, 'Section ') === 0) {
+                            $ClassesData[] = ['class_name' => $key, 'section' => str_replace('Section ', '', $sectionKey)];
+                        }
+                    }
+                }
+            }
+        }
+        $viewData['Classes'] = $ClassesData;
+        $this->load->view('include/header');
+        $this->load->view('attendance', $viewData);
+        $this->load->view('include/footer');
+    }
+
+    public function fetchAttendance()
+    {
+        $this->_require_role(self::VIEW_ROLES);
+        header('Content-Type: application/json');
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+        $class   = $this->input->post('class');
+        $section = $this->input->post('section');
+        $month   = $this->input->post('month');
+        if (empty($class) || empty($section) || empty($month)) {
+            echo json_encode(["error" => "Class, Section and Month are required"]);
+            return;
+        }
+
+        $monthToNumber = [
+            'January'=>1,'February'=>2,'March'=>3,'April'=>4,'May'=>5,'June'=>6,
+            'July'=>7,'August'=>8,'September'=>9,'October'=>10,'November'=>11,'December'=>12,
+        ];
+        $monthNumber = $monthToNumber[trim($month)] ?? 0;
+        if ($monthNumber === 0) { echo json_encode(["error" => "Invalid month name."]); return; }
+
+        $sessionParts = explode('-', $session_year);
+        $startYear = (int)($sessionParts[0] ?? date('Y'));
+        $endYear   = isset($sessionParts[1]) ? (int)$sessionParts[1] : $startYear + 1;
+        $year = ($monthNumber >= 4) ? $startYear : $endYear;
+
+        $class   = $this->safe_path_segment($class, 'class');
+        $section = $this->safe_path_segment($section, 'section');
+        $basePath = "Schools/{$school_name}/{$session_year}/{$class}/Section {$section}/Students";
+        $studentsList = $this->firebase->get("$basePath/List");
+        if (empty($studentsList) || !is_array($studentsList)) {
+            echo json_encode(["error" => "No students found for this class/section."]);
+            return;
+        }
+
+        $daysInMonth = cal_days_in_month(CAL_GREGORIAN, $monthNumber, $year);
+        $sundays     = $this->_getSundays($year, $monthNumber);
+        $studentsData = [];
+        foreach ($studentsList as $studentId => $studentName) {
+            $attendanceString = $this->firebase->get("$basePath/$studentId/Attendance/$month $year");
+            if (empty($attendanceString) || !is_string($attendanceString)) $attendanceString = str_repeat('V', $daysInMonth);
+            $attendanceArray = array_pad(str_split($attendanceString), $daysInMonth, 'V');
+            $displayName = is_string($studentName) ? $studentName : ($studentName['Name'] ?? (string)$studentId);
+            $studentsData[] = ["userId" => $studentId, "name" => $displayName, "attendance" => $attendanceArray];
+        }
+        echo json_encode(["students" => $studentsData, "daysInMonth" => $daysInMonth, "sundays" => $sundays, "month" => $month, "year" => $year]);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       ADMISSION CRM — All methods merged from Admission_crm.php
+       Manages: Inquiry → Application → Pipeline → Approval → Waitlist → Enrollment
+    ══════════════════════════════════════════════════════════════════════ */
+
+    public function crm_dashboard()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_view');
+        $session = $this->session_year;
+
+        $inquiries    = $this->firebase->get("{$this->crm_base}/Inquiries") ?? [];
+        $applications = $this->firebase->get("{$this->crm_base}/Applications") ?? [];
+        $waitlist     = $this->firebase->get("{$this->crm_base}/Waitlist") ?? [];
+        $settings     = $this->firebase->get("{$this->crm_base}/Settings") ?? [];
+        if (!is_array($inquiries))    $inquiries = [];
+        if (!is_array($applications)) $applications = [];
+        if (!is_array($waitlist))     $waitlist = [];
+        if (!is_array($settings))     $settings = [];
+
+        $sessionInquiries = array_filter($inquiries, fn($i) => is_array($i) && ($i['session'] ?? '') === $session);
+        $sessionApps = array_filter($applications, fn($a) => is_array($a) && ($a['session'] ?? '') === $session);
+        $sessionWaitlist = array_filter($waitlist, fn($w) => is_array($w) && ($w['session'] ?? '') === $session);
+
+        $stats = ['total_inquiries' => count($sessionInquiries), 'total_applications' => count($sessionApps),
+            'total_waitlist' => count($sessionWaitlist), 'pending_approval' => 0, 'approved' => 0, 'rejected' => 0, 'enrolled' => 0];
+        foreach ($sessionApps as $app) {
+            $status = $app['status'] ?? 'pending';
+            if (isset($stats[$status])) $stats[$status]++;
+            elseif ($status === 'pending') $stats['pending_approval']++;
+        }
+
+        $classBreakdown = [];
+        foreach ($sessionApps as $app) {
+            $cls = $app['class'] ?? 'Unknown';
+            if (!isset($classBreakdown[$cls])) $classBreakdown[$cls] = ['applied'=>0,'approved'=>0,'enrolled'=>0,'waitlisted'=>0];
+            $classBreakdown[$cls]['applied']++;
+            $st = $app['status'] ?? '';
+            if (isset($classBreakdown[$cls][$st])) $classBreakdown[$cls][$st]++;
+        }
+        foreach ($sessionWaitlist as $w) {
+            $cls = $w['class'] ?? 'Unknown';
+            if (!isset($classBreakdown[$cls])) $classBreakdown[$cls] = ['applied'=>0,'approved'=>0,'enrolled'=>0,'waitlisted'=>0];
+            $classBreakdown[$cls]['waitlisted']++;
+        }
+        ksort($classBreakdown);
+
+        $sourceBreakdown = [];
+        foreach ($sessionInquiries as $inq) { $src = $inq['source'] ?? 'Walk-in'; $sourceBreakdown[$src] = ($sourceBreakdown[$src] ?? 0) + 1; }
+
+        $monthlyTrend = [];
+        foreach ($sessionInquiries as $inq) { $dt = $inq['created_at'] ?? ''; if ($dt) { $m = substr($dt,0,7); $monthlyTrend[$m] = ($monthlyTrend[$m] ?? 0)+1; } }
+        ksort($monthlyTrend);
+        $monthlyTrend = array_slice($monthlyTrend, -6, 6, true);
+
+        $data = compact('stats') + ['class_breakdown'=>$classBreakdown,'source_breakdown'=>$sourceBreakdown,'monthly_trend'=>$monthlyTrend,'settings'=>$settings,'session_year'=>$session];
+        $this->load->view('include/header');
+        $this->load->view('admission_crm/index', $data);
+        $this->load->view('include/footer');
+    }
+
+    public function inquiries()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_view');
+        $data['session_year'] = $this->session_year;
+        $data['classes']      = $this->_get_crm_classes();
+        $this->load->view('include/header');
+        $this->load->view('admission_crm/inquiries', $data);
+        $this->load->view('include/footer');
+    }
+
+    public function fetch_inquiries()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_fetch');
+        $inquiries = $this->firebase->get("{$this->crm_base}/Inquiries") ?? [];
+        if (!is_array($inquiries)) $inquiries = [];
+        $session = $this->session_year;
+        $result = [];
+        foreach ($inquiries as $id => $inq) {
+            if (!is_array($inq) || ($inq['session'] ?? '') !== $session) continue;
+            $inq['id'] = $id;
+            $result[] = $inq;
+        }
+        usort($result, fn($a,$b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
+        return $this->json_success(['inquiries' => $result]);
+    }
+
+    public function save_inquiry()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_save_inquiry');
+        $id = trim($this->input->post('id') ?? '');
+        if ($id !== '') $id = $this->safe_path_segment($id, 'id');
+        $student_name   = trim($this->input->post('student_name') ?? '');
+        $parent_name    = trim($this->input->post('parent_name') ?? '');
+        $phone          = trim($this->input->post('phone') ?? '');
+        $email          = trim($this->input->post('email') ?? '');
+        $class          = trim($this->input->post('class') ?? '');
+        $source         = trim($this->input->post('source') ?? 'Walk-in');
+        $notes          = trim($this->input->post('notes') ?? '');
+        $status         = trim($this->input->post('status') ?? 'new');
+        $follow_up_date = trim($this->input->post('follow_up_date') ?? '');
+
+        if ($student_name === '' || $parent_name === '' || $phone === '') return $this->json_error('Student name, parent name, and phone are required');
+        if (!preg_match('/^\+?\d{10,15}$/', preg_replace('/[\s\-]/', '', $phone))) return $this->json_error('Invalid phone number format');
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) return $this->json_error('Invalid email address');
+
+        $now = date('Y-m-d H:i:s');
+        if ($id) {
+            $existing = $this->firebase->get("{$this->crm_base}/Inquiries/{$id}");
+            if (!is_array($existing)) return $this->json_error('Inquiry not found');
+            $data = array_merge($existing, compact('student_name','parent_name','phone','email','class','source','notes','status','follow_up_date') + ['updated_at'=>$now]);
+            $this->firebase->set("{$this->crm_base}/Inquiries/{$id}", $data);
+        } else {
+            $counter = (int)($this->firebase->get("{$this->crm_base}/Counter") ?? 0) + 1;
+            $id = 'INQ' . str_pad($counter, 5, '0', STR_PAD_LEFT);
+            $data = compact('student_name','parent_name','phone','email','class','source','notes','status','follow_up_date') + [
+                'inquiry_id'=>$id, 'session'=>$this->session_year, 'created_at'=>$now, 'updated_at'=>$now, 'created_by'=>$this->admin_name,
+            ];
+            $this->firebase->set("{$this->crm_base}/Inquiries/{$id}", $data);
+            $this->firebase->set("{$this->crm_base}/Counter", $counter);
+        }
+        return $this->json_success(['id' => $id]);
+    }
+
+    public function delete_inquiry()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_delete_inquiry');
+        $id = trim($this->input->post('id') ?? '');
+        if (!$id) return $this->json_error('Inquiry ID required');
+        $this->firebase->delete("{$this->crm_base}/Inquiries", $this->safe_path_segment($id, 'id'));
+        return $this->json_success();
+    }
+
+    public function convert_to_application()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_convert');
+        $inquiry_id = trim($this->input->post('inquiry_id') ?? '');
+        if (!$inquiry_id) return $this->json_error('Inquiry ID required');
+        $inquiry_id = $this->safe_path_segment($inquiry_id, 'inquiry_id');
+        $inquiry = $this->firebase->get("{$this->crm_base}/Inquiries/{$inquiry_id}");
+        if (!is_array($inquiry)) return $this->json_error('Inquiry not found');
+
+        $counter = (int)($this->firebase->get("{$this->crm_base}/Counter") ?? 0) + 1;
+        $app_id = 'APP' . str_pad($counter, 5, '0', STR_PAD_LEFT);
+        $now = date('Y-m-d H:i:s');
+        $application = [
+            'application_id'=>$app_id, 'inquiry_id'=>$inquiry_id,
+            'student_name'=>$inquiry['student_name']??'', 'parent_name'=>$inquiry['parent_name']??'',
+            'phone'=>$inquiry['phone']??'', 'email'=>$inquiry['email']??'', 'class'=>$inquiry['class']??'',
+            'session'=>$inquiry['session']??$this->session_year, 'status'=>'pending', 'stage'=>'document_collection',
+            'created_at'=>$now, 'updated_at'=>$now, 'created_by'=>$this->admin_name,
+            'source_inquiry'=>$inquiry_id, 'dob'=>'', 'gender'=>'', 'address'=>'',
+            'father_name'=>$inquiry['parent_name']??'', 'mother_name'=>'', 'documents'=>[], 'notes'=>$inquiry['notes']??'',
+            'history'=>[['action'=>'Application created from inquiry '.$inquiry_id, 'by'=>$this->admin_name, 'timestamp'=>$now]],
+        ];
+        $this->firebase->set("{$this->crm_base}/Applications/{$app_id}", $application);
+        $this->firebase->set("{$this->crm_base}/Counter", $counter);
+        $this->firebase->update("{$this->crm_base}/Inquiries/{$inquiry_id}", ['status'=>'converted','application_id'=>$app_id,'updated_at'=>$now]);
+        return $this->json_success(['application_id' => $app_id]);
+    }
+
+    public function applications()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_view');
+        $data['session_year'] = $this->session_year;
+        $data['classes']      = $this->_get_crm_classes();
+        $this->load->view('include/header');
+        $this->load->view('admission_crm/applications', $data);
+        $this->load->view('include/footer');
+    }
+
+    public function fetch_applications()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_fetch');
+        $applications = $this->firebase->get("{$this->crm_base}/Applications") ?? [];
+        if (!is_array($applications)) $applications = [];
+        $session = $this->session_year;
+        $result = [];
+        foreach ($applications as $id => $app) {
+            if (!is_array($app) || ($app['session'] ?? '') !== $session) continue;
+            $app['id'] = $id;
+            $result[] = $app;
+        }
+        usort($result, fn($a,$b) => strcmp($b['created_at']??'',$a['created_at']??''));
+        return $this->json_success(['applications' => $result]);
+    }
+
+    public function save_application()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_save_app');
+        $id = trim($this->input->post('id') ?? '');
+        if ($id !== '') $id = $this->safe_path_segment($id, 'id');
+        $now = date('Y-m-d H:i:s');
+        $fields = ['student_name','parent_name','father_name','mother_name','phone','email','class','section','dob','gender',
+            'address','city','state','pincode','previous_school','previous_class','previous_marks',
+            'blood_group','category','religion','nationality','father_occupation','mother_occupation',
+            'guardian_name','guardian_phone','guardian_relation','notes'];
+        $data = [];
+        foreach ($fields as $f) $data[$f] = trim($this->input->post($f) ?? '');
+        if ($data['student_name'] === '' || $data['class'] === '') return $this->json_error('Student name and class are required');
+        if ($data['phone'] !== '' && !preg_match('/^\+?\d{10,15}$/', preg_replace('/[\s\-]/','',$data['phone']))) return $this->json_error('Invalid phone number format');
+        if ($data['email'] !== '' && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) return $this->json_error('Invalid email address');
+
+        if ($id) {
+            $existing = $this->firebase->get("{$this->crm_base}/Applications/{$id}");
+            if (!is_array($existing)) return $this->json_error('Application not found');
+            $data['updated_at'] = $now;
+            $history = $existing['history'] ?? [];
+            $history[] = ['action'=>'Application updated','by'=>$this->admin_name,'timestamp'=>$now];
+            $data['history'] = $history;
+            $this->firebase->update("{$this->crm_base}/Applications/{$id}", $data);
+            return $this->json_success(['id' => $id]);
+        } else {
+            $counter = (int)($this->firebase->get("{$this->crm_base}/Counter") ?? 0) + 1;
+            $app_id = 'APP' . str_pad($counter, 5, '0', STR_PAD_LEFT);
+            $data = array_merge($data, ['application_id'=>$app_id,'session'=>$this->session_year,'status'=>'pending','stage'=>'document_collection',
+                'created_at'=>$now,'updated_at'=>$now,'created_by'=>$this->admin_name,'documents'=>[],
+                'history'=>[['action'=>'Application created directly','by'=>$this->admin_name,'timestamp'=>$now]]]);
+            $this->firebase->set("{$this->crm_base}/Applications/{$app_id}", $data);
+            $this->firebase->set("{$this->crm_base}/Counter", $counter);
+            return $this->json_success(['id' => $app_id]);
+        }
+    }
+
+    public function get_application()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_fetch');
+        $id = trim($this->input->get('id') ?? '');
+        if (!$id) return $this->json_error('Application ID required');
+        $id = $this->safe_path_segment($id, 'id');
+        $app = $this->firebase->get("{$this->crm_base}/Applications/{$id}");
+        if (!is_array($app)) return $this->json_error('Application not found');
+        $app['id'] = $id;
+        return $this->json_success(['application' => $app]);
+    }
+
+    public function delete_application()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_delete_app');
+        $id = trim($this->input->post('id') ?? '');
+        if (!$id) return $this->json_error('Application ID required');
+        $this->firebase->delete("{$this->crm_base}/Applications", $this->safe_path_segment($id, 'id'));
+        return $this->json_success();
+    }
+
+    public function pipeline()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_view');
+        $data['session_year'] = $this->session_year;
+        $data['classes']      = $this->_get_crm_classes();
+        $settings = $this->firebase->get("{$this->crm_base}/Settings") ?? [];
+        $data['settings'] = is_array($settings) ? $settings : [];
+        $this->load->view('include/header');
+        $this->load->view('admission_crm/pipeline', $data);
+        $this->load->view('include/footer');
+    }
+
+    public function fetch_pipeline()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_fetch');
+        $applications = $this->firebase->get("{$this->crm_base}/Applications") ?? [];
+        if (!is_array($applications)) $applications = [];
+        $settings = $this->firebase->get("{$this->crm_base}/Settings") ?? [];
+        $stages = $settings['stages'] ?? $this->_default_stages();
+        $session = $this->session_year;
+        $pipeline = [];
+        foreach ($stages as $key => $label) $pipeline[$key] = ['label'=>$label,'items'=>[]];
+        foreach ($applications as $id => $app) {
+            if (!is_array($app) || ($app['session']??'') !== $session || ($app['status']??'') === 'enrolled') continue;
+            $stage = $app['stage'] ?? 'document_collection';
+            $app['id'] = $id;
+            if (isset($pipeline[$stage])) $pipeline[$stage]['items'][] = $app;
+            else { $fk = array_key_first($pipeline); if ($fk) $pipeline[$fk]['items'][] = $app; }
+        }
+        return $this->json_success(['pipeline'=>$pipeline,'stages'=>$stages]);
+    }
+
+    public function update_stage()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_update_stage');
+        $id = trim($this->input->post('id') ?? '');
+        $stage = $this->input->post('stage');
+        if (!$id || !$stage) return $this->json_error('Application ID and stage required');
+        $id = $this->safe_path_segment($id, 'id');
+        $settings = $this->firebase->get("{$this->crm_base}/Settings") ?? [];
+        $allowedStages = (is_array($settings) && !empty($settings['stages'])) ? array_keys($settings['stages']) : array_keys($this->_default_stages());
+        if (!in_array($stage, $allowedStages, true)) return $this->json_error('Invalid stage: '.$stage);
+        $app = $this->firebase->get("{$this->crm_base}/Applications/{$id}");
+        if (!is_array($app)) return $this->json_error('Application not found');
+        $now = date('Y-m-d H:i:s');
+        $history = $app['history'] ?? [];
+        $history[] = ['action'=>"Stage changed: {$app['stage']} → {$stage}",'by'=>$this->admin_name,'timestamp'=>$now];
+        $this->firebase->update("{$this->crm_base}/Applications/{$id}", ['stage'=>$stage,'updated_at'=>$now,'history'=>$history]);
+        return $this->json_success();
+    }
+
+    public function approve_application()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_approve');
+        $id = trim($this->input->post('id') ?? '');
+        $remarks = trim($this->input->post('remarks') ?? '');
+        if (!$id) return $this->json_error('Application ID required');
+        $id = $this->safe_path_segment($id, 'id');
+        $app = $this->firebase->get("{$this->crm_base}/Applications/{$id}");
+        if (!is_array($app)) return $this->json_error('Application not found');
+        $cs = $app['status'] ?? 'pending';
+        if ($cs === 'enrolled') return $this->json_error('Cannot approve an already enrolled application');
+        if ($cs === 'approved') return $this->json_error('Application is already approved');
+        $now = date('Y-m-d H:i:s');
+        $history = $app['history'] ?? [];
+        $history[] = ['action'=>'Application approved'.($remarks?": {$remarks}":''),'by'=>$this->admin_name,'timestamp'=>$now];
+        $this->firebase->update("{$this->crm_base}/Applications/{$id}", ['status'=>'approved','stage'=>'approved','approved_by'=>$this->admin_name,'approved_at'=>$now,'remarks'=>$remarks,'updated_at'=>$now,'history'=>$history]);
+        return $this->json_success();
+    }
+
+    public function reject_application()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_reject');
+        $id = trim($this->input->post('id') ?? '');
+        $reason = trim($this->input->post('reason') ?? '');
+        if (!$id) return $this->json_error('Application ID required');
+        $id = $this->safe_path_segment($id, 'id');
+        $app = $this->firebase->get("{$this->crm_base}/Applications/{$id}");
+        if (!is_array($app)) return $this->json_error('Application not found');
+        $cs = $app['status'] ?? 'pending';
+        if ($cs === 'enrolled') return $this->json_error('Cannot reject an already enrolled application');
+        if ($cs === 'rejected') return $this->json_error('Application is already rejected');
+        $now = date('Y-m-d H:i:s');
+        $history = $app['history'] ?? [];
+        $history[] = ['action'=>'Application rejected'.($reason?": {$reason}":''),'by'=>$this->admin_name,'timestamp'=>$now];
+        $this->firebase->update("{$this->crm_base}/Applications/{$id}", ['status'=>'rejected','stage'=>'rejected','rejected_by'=>$this->admin_name,'rejected_at'=>$now,'reject_reason'=>$reason,'updated_at'=>$now,'history'=>$history]);
+        return $this->json_success();
+    }
+
+    public function enroll_student()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_enroll');
+        $id = trim($this->input->post('id') ?? '');
+        if (!$id) return $this->json_error('Application ID required');
+        $id = $this->safe_path_segment($id, 'id');
+        $app = $this->firebase->get("{$this->crm_base}/Applications/{$id}");
+        if (!is_array($app)) return $this->json_error('Application not found');
+        if (($app['status'] ?? '') !== 'approved') return $this->json_error('Only approved applications can be enrolled');
+
+        $school_id = $this->parent_db_key;
+        $school_name = $this->school_name;
+        $session = $this->session_year;
+        $studentIdCount = (int)($this->firebase->get("Users/Parents/{$school_id}/Count") ?? 0);
+        if ($studentIdCount === 0) $studentIdCount = 1;
+        $studentId = 'STU000' . $studentIdCount;
+        $className = trim($app['class'] ?? '');
+        $section = trim($app['section'] ?? 'A');
+        if ($className === '') return $this->json_error('Class not specified in application');
+
+        $combinedPath = "Class {$className}/Section {$section}";
+        $formattedDOB = !empty($app['dob']) ? date('d-m-Y', strtotime($app['dob'])) : '';
+        $now = date('Y-m-d H:i:s');
+
+        $studentData = [
+            "Name"=>$app['student_name']??'', "User Id"=>$studentId, "DOB"=>$formattedDOB,
+            "Admission Date"=>date('d-m-Y'), "Class"=>$className, "Section"=>$section,
+            "Gender"=>$app['gender']??'', "Blood Group"=>$app['blood_group']??'',
+            "Category"=>$app['category']??'', "Religion"=>$app['religion']??'',
+            "Nationality"=>$app['nationality']??'',
+            "Father Name"=>$app['father_name']??'', "Father Occupation"=>$app['father_occupation']??'',
+            "Mother Name"=>$app['mother_name']??'', "Mother Occupation"=>$app['mother_occupation']??'',
+            "Guard Contact"=>$app['guardian_phone']??'', "Guard Relation"=>$app['guardian_relation']??'',
+            "Phone Number"=>$app['phone']??'', "Email"=>$app['email']??'',
+            "Password"=>$this->_generatePassword($app['student_name']??'',$formattedDOB),
+            "Address"=>["Street"=>$app['address']??'',"City"=>$app['city']??'',"State"=>$app['state']??'',"PostalCode"=>$app['pincode']??''],
+            "Pre School"=>$app['previous_school']??'', "Pre Class"=>$app['previous_class']??'', "Pre Marks"=>$app['previous_marks']??'',
+            "Profile Pic"=>"",
+            "Doc"=>["Aadhar Card"=>["thumbnail"=>"","url"=>""],"Birth Certificate"=>["thumbnail"=>"","url"=>""],"Photo"=>["thumbnail"=>"","url"=>""],"Transfer Certificate"=>["thumbnail"=>"","url"=>""]],
+        ];
+
+        $this->firebase->set("Users/Parents/{$school_id}/{$studentId}", $studentData);
+        $this->firebase->update("Schools/{$school_name}/{$session}/{$combinedPath}/Students", [$studentId => ['Name'=>$app['student_name']??'']]);
+        $this->firebase->update("Schools/{$school_name}/{$session}/{$combinedPath}/Students/List", [$studentId => $app['student_name']??'']);
+        $this->firebase->set("Users/Parents/{$school_id}/Count", $studentIdCount + 1);
+
+        $phone = trim($app['phone'] ?? '');
+        if ($phone !== '') {
+            $this->firebase->update("Schools/{$school_name}/Phone_Index", [$phone => $studentId]);
+            $this->firebase->update('Exits', [$phone => $school_id]);
+            $this->firebase->update('User_ids_pno', [$phone => $studentId]);
+        }
+
+        $history = $app['history'] ?? [];
+        $history[] = ['action'=>"Enrolled as {$studentId} in Class {$className} Section {$section}",'by'=>$this->admin_name,'timestamp'=>$now];
+        $this->firebase->update("{$this->crm_base}/Applications/{$id}", ['status'=>'enrolled','stage'=>'enrolled','student_id'=>$studentId,'enrolled_at'=>$now,'enrolled_by'=>$this->admin_name,'updated_at'=>$now,'history'=>$history]);
+        return $this->json_success(['student_id'=>$studentId,'class'=>$className,'section'=>$section]);
+    }
+
+    public function waitlist()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_view');
+        $data['session_year'] = $this->session_year;
+        $data['classes']      = $this->_get_crm_classes();
+        $this->load->view('include/header');
+        $this->load->view('admission_crm/waitlist', $data);
+        $this->load->view('include/footer');
+    }
+
+    public function fetch_waitlist()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_fetch');
+        $waitlist = $this->firebase->get("{$this->crm_base}/Waitlist") ?? [];
+        if (!is_array($waitlist)) $waitlist = [];
+        $session = $this->session_year;
+        $result = [];
+        foreach ($waitlist as $id => $w) {
+            if (!is_array($w) || ($w['session']??'') !== $session) continue;
+            $w['id'] = $id;
+            $result[] = $w;
+        }
+        usort($result, function($a,$b) {
+            $p = ($a['priority']??999) - ($b['priority']??999);
+            return $p !== 0 ? $p : strcmp($a['created_at']??'',$b['created_at']??'');
+        });
+        return $this->json_success(['waitlist' => $result]);
+    }
+
+    public function add_to_waitlist()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_waitlist_add');
+        $app_id = trim($this->input->post('application_id') ?? '');
+        $reason = trim($this->input->post('reason') ?? '');
+        $priority = (int)($this->input->post('priority') ?? 99);
+        if (!$app_id) return $this->json_error('Application ID required');
+        $app_id = $this->safe_path_segment($app_id, 'application_id');
+        $app = $this->firebase->get("{$this->crm_base}/Applications/{$app_id}");
+        if (!is_array($app)) return $this->json_error('Application not found');
+        $now = date('Y-m-d H:i:s');
+        $counter = (int)($this->firebase->get("{$this->crm_base}/Counter") ?? 0) + 1;
+        $wl_id = 'WL' . str_pad($counter, 5, '0', STR_PAD_LEFT);
+        $waitEntry = ['waitlist_id'=>$wl_id,'application_id'=>$app_id,'student_name'=>$app['student_name']??'','parent_name'=>$app['parent_name']??'',
+            'phone'=>$app['phone']??'','class'=>$app['class']??'','session'=>$app['session']??$this->session_year,
+            'priority'=>$priority,'reason'=>$reason,'status'=>'waiting','created_at'=>$now,'updated_at'=>$now];
+        $this->firebase->set("{$this->crm_base}/Waitlist/{$wl_id}", $waitEntry);
+        $this->firebase->set("{$this->crm_base}/Counter", $counter);
+        $history = $app['history'] ?? [];
+        $history[] = ['action'=>'Added to waitlist','by'=>$this->admin_name,'timestamp'=>$now];
+        $this->firebase->update("{$this->crm_base}/Applications/{$app_id}", ['status'=>'waitlisted','stage'=>'waitlisted','updated_at'=>$now,'history'=>$history]);
+        return $this->json_success(['id' => $wl_id]);
+    }
+
+    public function remove_from_waitlist()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_waitlist_remove');
+        $id = trim($this->input->post('id') ?? '');
+        if (!$id) return $this->json_error('Waitlist ID required');
+        $id = $this->safe_path_segment($id, 'id');
+        $entry = $this->firebase->get("{$this->crm_base}/Waitlist/{$id}");
+        if (is_array($entry) && !empty($entry['application_id'])) {
+            $this->firebase->update("{$this->crm_base}/Applications/{$entry['application_id']}", ['status'=>'pending','stage'=>'document_collection','updated_at'=>date('Y-m-d H:i:s')]);
+        }
+        $this->firebase->delete("{$this->crm_base}/Waitlist", $id);
+        return $this->json_success();
+    }
+
+    public function promote_from_waitlist()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_waitlist_promote');
+        $id = trim($this->input->post('id') ?? '');
+        if (!$id) return $this->json_error('Waitlist ID required');
+        $id = $this->safe_path_segment($id, 'id');
+        $entry = $this->firebase->get("{$this->crm_base}/Waitlist/{$id}");
+        if (!is_array($entry)) return $this->json_error('Waitlist entry not found');
+        $app_id = $entry['application_id'] ?? '';
+        if (!$app_id) return $this->json_error('No linked application');
+        $now = date('Y-m-d H:i:s');
+        $app = $this->firebase->get("{$this->crm_base}/Applications/{$app_id}");
+        if (is_array($app)) {
+            $history = $app['history'] ?? [];
+            $history[] = ['action'=>'Promoted from waitlist and approved','by'=>$this->admin_name,'timestamp'=>$now];
+            $this->firebase->update("{$this->crm_base}/Applications/{$app_id}", ['status'=>'approved','stage'=>'approved','approved_by'=>$this->admin_name,'approved_at'=>$now,'updated_at'=>$now,'history'=>$history]);
+        }
+        $this->firebase->delete("{$this->crm_base}/Waitlist", $id);
+        return $this->json_success();
+    }
+
+    public function crm_settings()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_view');
+        $settings = $this->firebase->get("{$this->crm_base}/Settings") ?? [];
+        if (!is_array($settings)) $settings = [];
+        $data = ['settings'=>$settings,'session_year'=>$this->session_year,'classes'=>$this->_get_crm_classes()];
+        $this->load->view('include/header');
+        $this->load->view('admission_crm/settings', $data);
+        $this->load->view('include/footer');
+    }
+
+    public function save_crm_settings()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_save_settings');
+        $settings = $this->firebase->get("{$this->crm_base}/Settings") ?? [];
+        if (!is_array($settings)) $settings = [];
+        foreach (['stages','class_limits','form_fields','notifications'] as $key) {
+            $val = $this->input->post($key);
+            if ($val) { $decoded = json_decode($val, true); if (is_array($decoded)) $settings[$key] = $decoded; }
+        }
+        $settings['updated_at'] = date('Y-m-d H:i:s');
+        $this->firebase->set("{$this->crm_base}/Settings", $settings);
+        return $this->json_success();
+    }
+
+    public function get_crm_settings()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_fetch');
+        $settings = $this->firebase->get("{$this->crm_base}/Settings") ?? [];
+        if (!is_array($settings)) $settings = [];
+        if (empty($settings['stages'])) $settings['stages'] = $this->_default_stages();
+        return $this->json_success(['settings' => $settings]);
+    }
+
+    public function online_form()
+    {
+        $school_name = $this->school_name;
+        $settings = $this->firebase->get("{$this->crm_base}/Settings") ?? [];
+        $classes  = $this->_get_crm_classes();
+        $profile  = $this->firebase->get("Schools/{$school_name}/Config/Profile") ?? [];
+        $data = ['school_name'=>$school_name,'session_year'=>$this->session_year,'settings'=>is_array($settings)?$settings:[],'classes'=>$classes,'profile'=>is_array($profile)?$profile:[]];
+        $this->load->view('admission_crm/online_form', $data);
+    }
+
+    public function submit_online_form()
+    {
+        // ── C-03 FIX: Rate limiting — max 10 submissions per IP per 15 minutes ──
+        $clientIp = $this->input->ip_address();
+        $ipKey    = preg_replace('/[^a-zA-Z0-9]/', '_', $clientIp);
+        $ratePath = "System/RateLimits/online_form/{$ipKey}";
+        $rateData = $this->firebase->get($ratePath);
+        $windowStart = time() - 900; // 15-minute window
+        if (is_array($rateData)) {
+            $recentCount = 0;
+            foreach ($rateData as $ts => $v) {
+                if ((int) $ts >= $windowStart) {
+                    $recentCount++;
+                } else {
+                    $this->firebase->delete($ratePath, (string) $ts);
+                }
+            }
+            if ($recentCount >= 10) {
+                return $this->json_error('Too many submissions. Please try again later.', 429);
+            }
+        }
+        $this->firebase->set("{$ratePath}/" . time() . '_' . mt_rand(1000, 9999), 1);
+
+        $now = date('Y-m-d H:i:s');
+
+        // H-05 FIX: Server-side input length limits per field
+        $fieldLimits = [
+            'student_name'=>100, 'parent_name'=>100, 'father_name'=>100, 'mother_name'=>100,
+            'phone'=>20, 'email'=>150, 'class'=>50, 'dob'=>15, 'gender'=>15,
+            'address'=>300, 'city'=>100, 'state'=>100, 'pincode'=>10,
+            'previous_school'=>150, 'previous_class'=>50, 'blood_group'=>10,
+            'category'=>50, 'religion'=>50, 'nationality'=>50,
+            'father_occupation'=>100, 'mother_occupation'=>100, 'notes'=>500,
+        ];
+        $data = [];
+        foreach ($fieldLimits as $f => $maxLen) {
+            $val = trim($this->input->post($f) ?? '');
+            if (mb_strlen($val) > $maxLen) {
+                return $this->json_error("Field '{$f}' exceeds maximum length of {$maxLen} characters.");
+            }
+            $data[$f] = $val;
+        }
+        if ($data['student_name']===''||$data['phone']===''||$data['class']==='') return $this->json_error('Student name, phone, and class are required');
+        if (!preg_match('/^\+?\d{10,15}$/', preg_replace('/[\s\-]/','',$data['phone']))) return $this->json_error('Invalid phone number format');
+        if ($data['email']!==''&&!filter_var($data['email'],FILTER_VALIDATE_EMAIL)) return $this->json_error('Invalid email address');
+
+        $existingApps = $this->firebase->get("{$this->crm_base}/Applications") ?? [];
+        if (is_array($existingApps)) {
+            foreach ($existingApps as $ea) {
+                if (!is_array($ea)||($ea['session']??'')!==$this->session_year) continue;
+                if (($ea['phone']??'')===$data['phone']&&in_array($ea['status']??'',['pending','approved','waitlisted','enrolled'])) {
+                    return $this->json_error('An application with this phone number already exists for this session (ID: '.($ea['application_id']??'N/A').')');
+                }
+            }
+        }
+
+        $counter = (int)($this->firebase->get("{$this->crm_base}/Counter") ?? 0);
+        $counter++;
+        $inq_id = 'INQ'.str_pad($counter,5,'0',STR_PAD_LEFT);
+        $this->firebase->set("{$this->crm_base}/Inquiries/{$inq_id}", ['inquiry_id'=>$inq_id,'student_name'=>$data['student_name'],'parent_name'=>$data['parent_name'],'phone'=>$data['phone'],'email'=>$data['email'],'class'=>$data['class'],'source'=>'Online Form','status'=>'converted','session'=>$this->session_year,'created_at'=>$now,'updated_at'=>$now,'created_by'=>'Online']);
+        $counter++;
+        $app_id = 'APP'.str_pad($counter,5,'0',STR_PAD_LEFT);
+        $appData = array_merge($data, ['application_id'=>$app_id,'inquiry_id'=>$inq_id,'session'=>$this->session_year,'status'=>'pending','stage'=>'document_collection','created_at'=>$now,'updated_at'=>$now,'created_by'=>'Online','documents'=>[],'history'=>[['action'=>'Application submitted via online form','by'=>'Online','timestamp'=>$now]]]);
+        $this->firebase->set("{$this->crm_base}/Applications/{$app_id}", $appData);
+        $this->firebase->update("{$this->crm_base}/Inquiries/{$inq_id}", ['application_id'=>$app_id]);
+        $this->firebase->set("{$this->crm_base}/Counter", $counter);
+        return $this->json_success(['application_id' => $app_id]);
+    }
+
+    public function fetch_analytics()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_fetch');
+        $inquiries    = $this->firebase->get("{$this->crm_base}/Inquiries") ?? [];
+        $applications = $this->firebase->get("{$this->crm_base}/Applications") ?? [];
+        $waitlist     = $this->firebase->get("{$this->crm_base}/Waitlist") ?? [];
+        if (!is_array($inquiries)) $inquiries=[]; if (!is_array($applications)) $applications=[]; if (!is_array($waitlist)) $waitlist=[];
+        $session = $this->session_year;
+        $sInq = array_filter($inquiries, fn($i) => is_array($i)&&($i['session']??'')===$session);
+        $sApp = array_filter($applications, fn($a) => is_array($a)&&($a['session']??'')===$session);
+        $sWl  = array_filter($waitlist, fn($w) => is_array($w)&&($w['session']??'')===$session);
+        $funnel = ['inquiries'=>count($sInq),'applications'=>count($sApp),'approved'=>count(array_filter($sApp,fn($a)=>($a['status']??'')==='approved')),'enrolled'=>count(array_filter($sApp,fn($a)=>($a['status']??'')==='enrolled')),'rejected'=>count(array_filter($sApp,fn($a)=>($a['status']??'')==='rejected')),'waitlisted'=>count($sWl)];
+        $sources = []; foreach ($sInq as $i) { $s=$i['source']??'Walk-in'; $sources[$s]=($sources[$s]??0)+1; }
+        $classes = []; foreach ($sApp as $a) { $c=$a['class']??'Unknown'; $st=$a['status']??'pending'; if (!isset($classes[$c])) $classes[$c]=['total'=>0,'approved'=>0,'enrolled'=>0,'pending'=>0,'rejected'=>0]; $classes[$c]['total']++; if (isset($classes[$c][$st])) $classes[$c][$st]++; }
+        $monthly = []; foreach ($sInq as $i) { $m=substr($i['created_at']??'',0,7); if ($m) $monthly[$m]=($monthly[$m]??0)+1; } ksort($monthly);
+        return $this->json_success(['funnel'=>$funnel,'sources'=>$sources,'classes'=>$classes,'monthly'=>$monthly]);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       ADDITIONAL PRIVATE HELPERS
+       Merged from Student.php and Admission_crm.php
+    ══════════════════════════════════════════════════════════════════════ */
+
+    private function _generatePdfThumbnail($pdfTmpPath, $storagePath, $label, $timestamp, $random)
+    {
+        if (extension_loaded('imagick')) {
+            try {
+                $imagick = new Imagick();
+                $imagick->setResolution(150, 150);
+                $imagick->readImage($pdfTmpPath . '[0]');
+                $imagick->setImageFormat('jpg');
+                $imagick->setImageCompressionQuality(85);
+                $imagick->thumbnailImage(400, 0);
+                $imagick->flattenImages();
+                $tmp = sys_get_temp_dir() . "/thumb_{$label}_{$timestamp}_{$random}.jpg";
+                $imagick->writeImage($tmp);
+                $imagick->clear();
+                $imagick->destroy();
+                $thumbPath = $storagePath . "thumbnail/{$label}_{$timestamp}_{$random}.jpg";
+                if ($this->firebase->uploadFile($tmp, $thumbPath) === true) {
+                    unlink($tmp);
+                    return $this->firebase->getDownloadUrl($thumbPath);
+                }
+            } catch (Exception $e) {
+                log_message('error', $e->getMessage());
+            }
+        }
+        $placeholder = FCPATH . 'tools/image/pdf.png';
+        if (file_exists($placeholder)) {
+            $thumbPath = $storagePath . "thumbnail/{$label}_{$timestamp}_{$random}.png";
+            if ($this->firebase->uploadFile($placeholder, $thumbPath) === true) {
+                return $this->firebase->getDownloadUrl($thumbPath);
+            }
+        }
+        return '';
+    }
+
+    private function _deleteOldStorageFile($docNode)
+    {
+        if (!is_array($docNode)) $docNode = ['url' => (string)$docNode, 'thumbnail' => ''];
+        foreach (['url', 'thumbnail'] as $key) {
+            $url = $docNode[$key] ?? '';
+            if (!empty($url)) {
+                $path = $this->_extractStoragePathFromUrl($url);
+                if ($path) $this->CM->delete_file_from_firebase($path);
+            }
+        }
+    }
+
+    private function _extractStoragePathFromUrl($url)
+    {
+        if (empty($url)) return '';
+        if (preg_match('#/o/([^?]+)#', $url, $matches)) return urldecode($matches[1]);
+        return '';
+    }
+
+    private function _getFees($className, $section)
+    {
+        $school_name = $this->school_name;
+        $session_year = $this->session_year;
+        $path = "Schools/{$school_name}/{$session_year}/Accounts/Fees/Classes Fees/{$className} '{$section}'";
+        $feesData = $this->CM->get_data($path);
+        if ($feesData && !empty($feesData)) {
+            if (!isset($feesData['Yearly Fees']) || !is_array($feesData['Yearly Fees'])) {
+                $feesStructure = $this->CM->get_data("Schools/$school_name/$session_year/Accounts/Fees/Fees Structure/Yearly");
+                if ($feesStructure && is_array($feesStructure)) {
+                    $yearlyFees = array_fill_keys(array_keys($feesStructure), 0);
+                    $feesData['Yearly Fees'] = $yearlyFees;
+                    $this->CM->addKey_pair_data($path, ['Yearly Fees' => $yearlyFees]);
+                }
+            }
+            $formattedFees = [];
+            $monthlyTotals = [];
+            foreach ($feesData as $month => $fees) {
+                if (is_array($fees)) {
+                    $formattedFees[$month] = $fees;
+                    $monthlyTotals[$month] = array_sum($fees);
+                }
+            }
+            return json_encode(["fees"=>$formattedFees,"monthlyTotals"=>$monthlyTotals,"overallTotal"=>array_sum($monthlyTotals)]);
+        }
+        return json_encode(["fees"=>[],"monthlyTotals"=>[]]);
+    }
+
+    private function _getSundays($year, $month)
+    {
+        $sundays = [];
+        $date = new DateTime("$year-$month-01");
+        while ($date->format('n') == $month) {
+            if ($date->format('w') == 0) $sundays[] = (int)$date->format('j');
+            $date->modify('+1 day');
+        }
+        return $sundays;
+    }
+
+    private function _default_stages()
+    {
+        return [
+            'document_collection' => 'Document Collection',
+            'under_review'        => 'Under Review',
+            'interview'           => 'Interview / Test',
+            'approved'            => 'Approved',
+            'rejected'            => 'Rejected',
+            'waitlisted'          => 'Waitlisted',
+        ];
+    }
+
+    private function _get_crm_classes()
+    {
+        $school_name = $this->school_name;
+        $session     = $this->session_year;
+        $classes = [];
+        $sessionKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session}");
+        if (!is_array($sessionKeys)) return $classes;
+        foreach ($sessionKeys as $key) {
+            if (strpos($key, 'Class ') !== 0) continue;
+            $sectionKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session}/{$key}");
+            if (!is_array($sectionKeys)) continue;
+            foreach ($sectionKeys as $sk) {
+                if (strpos($sk, 'Section ') !== 0) continue;
+                $sec = str_replace('Section ', '', $sk);
+                $classes[] = ['class_name'=>$key, 'section'=>$sec, 'label'=>$key.' / Section '.$sec];
+            }
+        }
+        return $classes;
     }
 }

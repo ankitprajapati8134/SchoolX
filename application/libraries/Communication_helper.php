@@ -9,7 +9,7 @@ defined('BASEPATH') or exit('No direct script access allowed');
  *
  * Usage:
  *   $this->load->library('communication_helper');
- *   $this->communication_helper->init($this->firebase, $this->school_name, $this->session_year);
+ *   $this->communication_helper->init($this->firebase, $this->school_name, $this->session_year, $this->parent_db_key);
  *   $this->communication_helper->fire_event('student_absent', [
  *       'student_id'   => 'STU0001',
  *       'student_name' => 'Rahul Sharma',
@@ -24,6 +24,7 @@ class Communication_helper
     private $firebase;
     private $school_name;
     private $session_year;
+    private $parent_db_key;
 
     const ALLOWED_EVENTS = [
         'student_absent', 'student_late', 'low_attendance',
@@ -40,11 +41,12 @@ class Communication_helper
     /**
      * Initialize with controller context.
      */
-    public function init($firebase, string $school_name, string $session_year): void
+    public function init($firebase, string $school_name, string $session_year, string $parent_db_key = ''): void
     {
-        $this->firebase     = $firebase;
-        $this->school_name  = $school_name;
-        $this->session_year = $session_year;
+        $this->firebase       = $firebase;
+        $this->school_name    = $school_name;
+        $this->session_year   = $session_year;
+        $this->parent_db_key  = $parent_db_key !== '' ? $parent_db_key : $school_name;
     }
 
     // ====================================================================
@@ -322,7 +324,7 @@ class Communication_helper
             case 'parent':
                 $studentId = $data['student_id'] ?? '';
                 if ($studentId === '' || !preg_match('/^[A-Za-z0-9_\-]+$/', $studentId)) return [];
-                $student = $this->firebase->get("Users/Parents/{$this->school_name}/{$studentId}");
+                $student = $this->firebase->get("Users/Parents/{$this->parent_db_key}/{$studentId}");
                 if (!is_array($student)) return [];
                 return [
                     'id'      => $studentId,

@@ -96,7 +96,7 @@ class Superadmin_schools extends MY_Superadmin_Controller
         $code = strtoupper(trim($this->input->post('school_code', TRUE) ?? ''));
 
         // Validate characters first
-        if ($name !== '' && !preg_match("/^[A-Za-z0-9 ',_\-]+$/u", $name)) {
+        if ($name !== '' && !preg_match("/^[A-Za-z0-9 '.,()&_\-]+$/u", $name)) {
             $this->json_error('School name contains invalid characters.'); return;
         }
         if ($code !== '' && !preg_match('/^[A-Z0-9]{3,10}$/', $code)) {
@@ -152,7 +152,7 @@ class Superadmin_schools extends MY_Superadmin_Controller
             empty($plan_id) || empty($expiry) || empty($session_yr)) {
             $this->json_error('All required fields must be filled.'); return;
         }
-        if (!preg_match("/^[A-Za-z0-9 ',_\-]+$/u", $name)) {
+        if (!preg_match("/^[A-Za-z0-9 '.,()&_\-]+$/u", $name)) {
             $this->json_error('School name contains invalid characters.'); return;
         }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -166,6 +166,15 @@ class Superadmin_schools extends MY_Superadmin_Controller
         }
         if (!preg_match('/^[A-Za-z0-9_\-\.@]+$/', $admin_id) || strlen($admin_id) > 30) {
             $this->json_error('Admin login ID contains invalid characters (letters, digits, _ - . @ allowed).'); return;
+        }
+        if (!preg_match('/^[A-Za-z0-9_\-]+$/', $plan_id)) {
+            $this->json_error('Invalid plan identifier.'); return;
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $expiry) || strtotime($expiry) === false) {
+            $this->json_error('Expiry date must be in YYYY-MM-DD format.'); return;
+        }
+        if (strtotime($expiry) < time()) {
+            $this->json_error('Expiry date cannot be in the past.'); return;
         }
         if (!preg_match('/^\d{4}-\d{2}$/', $session_yr)) {
             $this->json_error('Session year must be in YYYY-YY format (e.g. 2025-26).'); return;
@@ -185,13 +194,24 @@ class Superadmin_schools extends MY_Superadmin_Controller
             if (!empty($existingCode)) {
                 $this->json_error("School code '{$school_code}' is already taken."); return;
             }
-        } catch (Exception $e) {}
+        } catch (Exception $e) {
+            log_message('error', 'SA onboard: Availability check failed — ' . $e->getMessage());
+            $this->json_error('Unable to verify availability. Please try again.'); return;
+        }
 
         // ── Generate unique school_id ─────────────────────────────────────────
         $school_id = $this->_generate_school_id();
+        $rollbackPaths = []; // Track paths written for rollback on failure
 
         $plan_data  = [];
-        try { $plan_data = $this->firebase->get("System/Plans/{$plan_id}") ?? []; } catch (Exception $e) {}
+        try {
+            $plan_data = $this->firebase->get("System/Plans/{$plan_id}") ?? [];
+        } catch (Exception $e) {
+            log_message('error', 'SA onboard: Plan fetch failed — ' . $e->getMessage());
+        }
+        if (empty($plan_data)) {
+            $this->json_error("Plan '{$plan_id}' not found. Cannot create school without a valid plan."); return;
+        }
 
         $now        = date('Y-m-d H:i:s');
         $grace_days = (int)($plan_data['grace_days'] ?? 7);
@@ -201,15 +221,21 @@ class Superadmin_schools extends MY_Superadmin_Controller
         // ── 1. Indexes/School_names — name → school_id (uniqueness + reverse lookup) ─
         try {
             $this->firebase->set("Indexes/School_names/{$nameKey}", $school_id);
+            $rollbackPaths[] = "Indexes/School_names/{$nameKey}";
         } catch (Exception $e) {
             log_message('error', 'SA onboard: Indexes/School_names write failed — ' . $e->getMessage());
+            $this->_rollback_onboard($rollbackPaths);
+            $this->json_error('Failed to register school name index. Please try again.'); return;
         }
 
         // ── 2. Indexes/School_codes/{code} → school_id  (Admin_login fast path) ─
         try {
             $this->firebase->set("Indexes/School_codes/{$school_code}", $school_id);
+            $rollbackPaths[] = "Indexes/School_codes/{$school_code}";
         } catch (Exception $e) {
             log_message('error', 'SA onboard: Indexes/School_codes write failed — ' . $e->getMessage());
+            $this->_rollback_onboard($rollbackPaths);
+            $this->json_error('Failed to register school code index. Please try again.'); return;
         }
 
         // ── 3. System/Schools/{school_id}/subscription  (PRIMARY subscription data) ─
@@ -224,7 +250,9 @@ class Superadmin_schools extends MY_Superadmin_Controller
                 'features'    => array_keys(array_filter($plan_data['modules'] ?? [])),
                 'modules'     => $plan_data['modules'] ?? [],
             ]);
+            $rollbackPaths[] = "System/Schools/{$school_id}/subscription";
         } catch (Exception $e) {
+            $this->_rollback_onboard($rollbackPaths);
             $this->json_error('Failed to create school subscription.'); return;
         }
 
@@ -232,8 +260,8 @@ class Superadmin_schools extends MY_Superadmin_Controller
         // school_name stored as a DATA FIELD — it is never the Firebase key.
         try {
             $this->firebase->set("System/Schools/{$school_id}/profile", [
-                'school_name'       => $name,           // human-readable name (data field)
-                'name'              => $name,            // alias kept for backward compat
+                'school_name'       => $name,           // canonical human-readable name (data field)
+                'name'              => $name,            // legacy alias — kept for backward compat; readers should prefer school_name
                 'school_id'         => $school_id,       // SCH_XXXXXX — self-reference
                 'school_code'       => $school_code,     // admin login code
                 'city'              => $city,
@@ -247,8 +275,11 @@ class Superadmin_schools extends MY_Superadmin_Controller
                 'created_at'        => $now,
                 'created_by'        => $this->sa_id,
             ]);
+            $rollbackPaths[] = "System/Schools/{$school_id}/profile";
         } catch (Exception $e) {
             log_message('error', 'SA onboard: profile write failed — ' . $e->getMessage());
+            $this->_rollback_onboard($rollbackPaths);
+            $this->json_error('Failed to create school profile. Please try again.'); return;
         }
 
         // ── 5. System/Schools/{school_id} top-level — status + identifiers + stats ─
@@ -263,19 +294,24 @@ class Superadmin_schools extends MY_Superadmin_Controller
                     'last_updated'   => $now,
                 ],
             ]);
+            $rollbackPaths[] = "System/Schools/{$school_id}";
         } catch (Exception $e) {
             log_message('error', 'SA onboard: top-level identifiers write failed — ' . $e->getMessage());
+            $this->_rollback_onboard($rollbackPaths);
+            $this->json_error('Failed to write school identifiers. Please try again.'); return;
         }
 
         // ── 6. Users/Admin/{code}/{admin_id}  (first admin account) ──────────
         try {
             $this->firebase->set("Users/Admin/{$school_code}/{$admin_id}", [
                 'Status'      => 'Active',
+                'Role'        => 'Admin',
+                'Name'        => $admin_name,
                 'Credentials' => ['Password' => $hashed_pw],
                 'Profile'     => [
                     'name'        => $admin_name,
                     'email'       => $admin_email,
-                    'role'        => 'admin',
+                    'role'        => 'Admin',
                     'school'      => $name,         // human-readable school name
                     'school_id'   => $school_code,  // login code (Users/Admin path key)
                     'firebase_id' => $school_id,    // SCH_XXXXXX Firebase key
@@ -283,11 +319,25 @@ class Superadmin_schools extends MY_Superadmin_Controller
                 ],
                 'AccessHistory' => ['LoginAttempts' => 0],
             ]);
+            $rollbackPaths[] = "Users/Admin/{$school_code}/{$admin_id}";
         } catch (Exception $e) {
             log_message('error', 'SA onboard: Admin account creation failed — ' . $e->getMessage());
+            $this->_rollback_onboard($rollbackPaths);
+            $this->json_error('Failed to create admin account. Please try again.'); return;
         }
 
         $this->_initialize_default_data($school_id, $session_yr, $plan_data);
+
+        // ── 8. Persist available sessions list + active session ─────────
+        // Login reads Schools/{school_id}/Sessions to populate the session switcher.
+        // Without this, login computes session from system date, ignoring the onboarded year.
+        try {
+            $this->firebase->set("Schools/{$school_id}/Sessions", [$session_yr]);
+            $this->firebase->set("Schools/{$school_id}/Config/ActiveSession", $session_yr);
+        } catch (Exception $e) {
+            log_message('error', 'SA onboard: Sessions write failed — ' . $e->getMessage());
+        }
+
         $this->sa_log('school_onboarded', $school_id, [
             'school_name' => $name,
             'school_id'   => $school_id,
@@ -405,6 +455,12 @@ class Superadmin_schools extends MY_Superadmin_Controller
         $sub_status = ($new_status === 'active') ? 'Active' : ucfirst($new_status);
 
         try {
+            // Verify school exists before updating
+            $existing = $this->firebase->get("System/Schools/{$school_name}/profile/school_id");
+            if (empty($existing)) {
+                $this->json_error('School not found.'); return;
+            }
+
             $now = date('Y-m-d H:i:s');
             // 1. Top-level status on System/Schools/{name} — SA master switch
             $this->firebase->update("System/Schools/{$school_name}", [
@@ -490,8 +546,25 @@ class Superadmin_schools extends MY_Superadmin_Controller
         if (!preg_match("/^[A-Za-z0-9 ',_\-]+$/u", $school_name)) {
             $this->json_error('Invalid school identifier.'); return;
         }
+        // [FIX-4] Validate plan_id — prevent path injection
+        if (!preg_match('/^[A-Za-z0-9_\-]+$/', $plan_id)) {
+            $this->json_error('Invalid plan identifier.'); return;
+        }
+        // [FIX-5] Validate expiry_date format and sanity
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $expiry_date) || strtotime($expiry_date) === false) {
+            $this->json_error('Expiry date must be in YYYY-MM-DD format.'); return;
+        }
+        if (strtotime($expiry_date) < time()) {
+            $this->json_error('Expiry date cannot be in the past.'); return;
+        }
 
         try {
+            // Verify school exists before assigning plan
+            $existing = $this->firebase->get("System/Schools/{$school_name}/profile/school_id");
+            if (empty($existing)) {
+                $this->json_error('School not found.'); return;
+            }
+
             $plan = $this->firebase->get("System/Plans/{$plan_id}") ?? [];
             if (empty($plan)) { $this->json_error('Plan not found.'); return; }
 
@@ -567,6 +640,9 @@ class Superadmin_schools extends MY_Superadmin_Controller
 
             // Write to System/Schools — PRIMARY location
             $this->firebase->update("System/Schools/{$school_name}/stats_cache",  $cacheData);
+
+            // M-05 FIX: Audit log for stats refresh
+            $this->sa_log('school_stats_refreshed', $school_name, $cacheData);
 
             $this->json_success(array_merge($cacheData, ['message' => 'Stats refreshed.']));
         } catch (Exception $e) {
@@ -819,8 +895,8 @@ class Superadmin_schools extends MY_Superadmin_Controller
     public function upload_logo()
     {
         $school_name = trim($this->input->post('school_uid', TRUE) ?? '');
-        if (empty($school_name)) { $this->json_error('School UID required.'); return; }
-        if (!preg_match("/^[A-Za-z0-9 ',_\-]+$/u", $school_name)) {
+        // [FIX] Validate school_name to prevent path injection in Firebase write
+        if ($school_name !== '' && !preg_match("/^[A-Za-z0-9 ',_\-]+$/u", $school_name)) {
             $this->json_error('Invalid school identifier.'); return;
         }
 
@@ -838,8 +914,9 @@ class Superadmin_schools extends MY_Superadmin_Controller
             $this->json_error('Logo file must be under 2 MB.'); return;
         }
 
-        $ext      = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $safe_name = 'logo_' . preg_replace('/[^A-Za-z0-9_]/', '_', $school_name) . '_' . time() . '.' . $ext;
+        $ext       = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $label     = $school_name !== '' ? preg_replace('/[^A-Za-z0-9_]/', '_', $school_name) : 'new';
+        $safe_name = 'logo_' . $label . '_' . time() . '.' . $ext;
         $upload_dir = FCPATH . 'uploads/logos/';
         if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
 
@@ -850,14 +927,18 @@ class Superadmin_schools extends MY_Superadmin_Controller
 
         $logo_url = base_url('uploads/logos/' . $safe_name);
 
-        // Persist URL to canonical profile node (System/Schools is PRIMARY)
-        try {
-            $this->firebase->update("System/Schools/{$school_name}/profile",  ['logo_url' => $logo_url]);
-        } catch (Exception $e) {
-            log_message('error', 'SA upload_logo: Firebase update failed — ' . $e->getMessage());
+        // Do NOT write to Firebase here — the school doesn't exist yet during onboard.
+        // The logo_url is returned to the client and included in the onboard POST,
+        // which writes it to the correct System/Schools/{school_id}/profile node.
+        // For existing schools (edit profile), update_profile() handles the Firebase write.
+        if (!empty($school_name) && strpos($school_name, 'temp') !== 0) {
+            try {
+                $this->firebase->update("System/Schools/{$school_name}/profile", ['logo_url' => $logo_url]);
+            } catch (Exception $e) {
+                log_message('error', 'SA upload_logo: Firebase update failed — ' . $e->getMessage());
+            }
         }
 
-        $this->sa_log('logo_uploaded', $school_name, ['logo_url' => $logo_url]);
         $this->json_success(['logo_url' => $logo_url, 'message' => 'Logo uploaded successfully.']);
     }
 
@@ -891,15 +972,26 @@ class Superadmin_schools extends MY_Superadmin_Controller
     // ─────────────────────────────────────────────────────────────────────────
     private function _generate_school_id(): string
     {
-        $attempts = 0;
-        do {
-            $id = 'SCH_' . strtoupper(bin2hex(random_bytes(3)));
-            $attempts++;
-            // Collision check: ensure no existing school uses this ID
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $id = 'SCH_' . strtoupper(bin2hex(random_bytes(5)));
+            // Collision check
             $existing = $this->firebase->get("System/Schools/{$id}");
-        } while ($attempts < 10 && !empty($existing));
+            if (!empty($existing)) continue;
 
-        return $id;
+            // Claim the ID by writing a placeholder
+            $this->firebase->set("System/Schools/{$id}/_claim", [
+                'claimed_at' => date('c'),
+                'claimed_by' => $this->sa_id ?? 'system',
+            ]);
+
+            // Verify we own the claim (guards against concurrent requests)
+            $verify = $this->firebase->get("System/Schools/{$id}/_claim/claimed_by");
+            if ($verify === ($this->sa_id ?? 'system')) {
+                return $id;
+            }
+        }
+        // Extreme fallback: timestamp-based ID (guaranteed unique within ms)
+        return 'SCH_' . strtoupper(dechex(time())) . strtoupper(bin2hex(random_bytes(2)));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -910,5 +1002,19 @@ class Superadmin_schools extends MY_Superadmin_Controller
     private function _school_name_key(string $name): string
     {
         return preg_replace('/[^A-Za-z0-9_\-]/', '_', trim($name));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PRIVATE: Rollback partially-written onboarding data
+    // ─────────────────────────────────────────────────────────────────────────
+    private function _rollback_onboard(array $paths): void
+    {
+        foreach ($paths as $path) {
+            try {
+                $this->firebase->set($path, null);
+            } catch (Exception $e) {
+                log_message('error', "SA onboard rollback failed for {$path}: " . $e->getMessage());
+            }
+        }
     }
 }

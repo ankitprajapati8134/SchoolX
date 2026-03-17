@@ -193,7 +193,12 @@ class Admin_login extends CI_Controller
             $credentialsValid = password_verify($password, $storedHash);
 
             // [S-09] Plain-text migration — remove once all passwords are hashed
-            if (! $credentialsValid && $password === $storedHash) {
+            // Guard: only allow plaintext match if stored value is NOT a bcrypt hash
+            if (! $credentialsValid
+                && strlen($storedHash) !== 60
+                && strpos($storedHash, '$2y$') !== 0
+                && strpos($storedHash, '$2a$') !== 0
+                && $password === $storedHash) {
                 $newHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
                 $firebase->update(
                     "Users/Admin/{$schoolId}/{$adminId}/Credentials",
@@ -230,7 +235,8 @@ class Admin_login extends CI_Controller
 
         // ── [S-14] Subscription check ─────────────────────────────────────
         // Try multiple paths: new architecture first, then legacy fallbacks
-        $subscription = null;
+        $subscription    = null;
+        $validSubPath    = null;
         $subPaths = [
             "System/Schools/{$schoolId_resolved}/subscription",
             "Users/Schools/{$schoolId_resolved}/subscription",
@@ -241,6 +247,7 @@ class Admin_login extends CI_Controller
         foreach ($subPaths as $subPath) {
             $subscription = $firebase->get($subPath);
             if ($subscription && is_array($subscription)) {
+                $validSubPath = $subPath;
                 break;
             }
             $subscription = null;
@@ -256,8 +263,8 @@ class Admin_login extends CI_Controller
         $duration = is_array($subscription['duration'] ?? null) ? $subscription['duration'] : [];
         $endDate  = trim((string) ($duration['endDate'] ?? ''));
 
-        // Step 1 — Status must be Active
-        if ($status !== 'Active') {
+        // Step 1 — Status must be Active or Grace_Period
+        if (!in_array($status, ['Active', 'Grace_Period'], true)) {
             log_message(
                 'error',
                 'Subscription inactive school=' . $this->_log_safe($schoolId_resolved)
@@ -268,8 +275,12 @@ class Admin_login extends CI_Controller
         }
 
         // Step 2 — End date must not have passed
-        if ($endDate === '' || strtotime($endDate) < $now) {
-            $firebase->update($subPath, ['status' => 'Expired']);
+        $parsedEndDate = ($endDate !== '') ? strtotime($endDate) : false;
+        if ($parsedEndDate === false || $parsedEndDate < $now) {
+            // Write Expired to the path where we found subscription data
+            if ($validSubPath) {
+                $firebase->update($validSubPath, ['status' => 'Expired']);
+            }
             $this->session->set_flashdata(
                 'error',
                 'Subscription expired on ' . htmlspecialchars($endDate, ENT_QUOTES, 'UTF-8')
@@ -306,10 +317,10 @@ class Admin_login extends CI_Controller
         // [S-10] Prevent session fixation
         $this->session->sess_regenerate(TRUE);
 
-        // Financial year
-        $month         = (int) date('m', $now);
-        $year          = (int) date('Y', $now);
-        $financialYear = ($month >= 4)
+        // Financial year — computed as fallback, but stored session takes priority
+        $month            = (int) date('m', $now);
+        $year             = (int) date('Y', $now);
+        $computedSession  = ($month >= 4)
             ? $year       . '-' . substr($year + 1, -2)   // Apr–Dec → 2025-26
             : ($year - 1) . '-' . substr($year,     -2);  // Jan–Mar → 2024-25
 
@@ -320,14 +331,23 @@ class Admin_login extends CI_Controller
             ? array_values(array_unique(array_filter($storedSessions, 'is_string')))
             : [];
 
-        // Always ensure the current financial year is in the list
-        if (!in_array($financialYear, $availableSessions, true)) {
-            $availableSessions[] = $financialYear;
+        // Always ensure the computed financial year is in the list
+        if (!in_array($computedSession, $availableSessions, true)) {
+            $availableSessions[] = $computedSession;
             $firebase->set($sessionsPath, $availableSessions);
         }
 
         rsort($availableSessions);              // latest year first
-        $financialYear = $availableSessions[0]; // default to most recent
+
+        // Prefer the school's stored active session over the computed date-based one.
+        // Onboarding writes Config/ActiveSession; session switcher updates it too.
+        $activeSession = $firebase->get("Schools/{$schoolId_resolved}/Config/ActiveSession");
+        if (!empty($activeSession) && is_string($activeSession)
+            && in_array($activeSession, $availableSessions, true)) {
+            $financialYear = $activeSession;
+        } else {
+            $financialYear = $availableSessions[0]; // fallback to most recent
+        }
 
         // Features — try new path, then legacy
         $schoolFeatures = [];
@@ -358,6 +378,9 @@ class Admin_login extends CI_Controller
         }
         if (empty($displayName)) $displayName = $schoolId_resolved;
 
+        // Clear any SA panel session to prevent session bleed-through
+        $this->session->unset_userdata(['sa_id', 'sa_name', 'sa_role', 'sa_email', 'sa_csrf_token']);
+
         // [S-11] Store all session data — three key aliases for full compatibility
         $this->session->set_userdata([
             'admin_id'               => $adminId,
@@ -377,6 +400,12 @@ class Admin_login extends CI_Controller
             'subscription_warning'   => $subWarning,
             'sub_check_ts'           => 0,  // force MY_Controller to re-check on first load
         ]);
+
+        // [RBAC] Cache role permissions in session for sidebar/controller checks
+        $this->load->helper('rbac');
+        $adminRole = $adminData['Role'] ?? $adminData['Profile']['role'] ?? '';
+        $rbacPerms = load_role_permissions($this->firebase, $schoolId_resolved, $adminRole);
+        $this->session->set_userdata('rbac_permissions', $rbacPerms);
 
         log_message(
             'info',

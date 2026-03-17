@@ -20,6 +20,15 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Communication extends MY_Controller
 {
+    /** Roles for system-level ops (triggers, queue, bulk) */
+    private const RBAC_ADMIN_ROLES  = ['Admin', 'Principal'];
+
+    /** Roles for content management (notices, circulars, templates) */
+    private const RBAC_MANAGE_ROLES = ['Admin', 'Principal', 'Teacher'];
+
+    /** Roles that may view communication data */
+    private const RBAC_VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+
     const ADMIN_ROLES   = ['Super Admin', 'Principal', 'Vice Principal', 'Admin'];
     const TEACHER_ROLES = ['Super Admin', 'Principal', 'Vice Principal', 'Admin', 'Teacher'];
     const VIEW_ROLES    = ['Super Admin', 'Principal', 'Vice Principal', 'Admin', 'Teacher', 'Accountant', 'HR Manager', 'Operations Manager'];
@@ -45,8 +54,9 @@ class Communication extends MY_Controller
     public function __construct()
     {
         parent::__construct();
+        require_permission('Communication');
         $this->load->library('communication_helper');
-        $this->communication_helper->init($this->firebase, $this->school_name, $this->session_year);
+        $this->communication_helper->init($this->firebase, $this->school_name, $this->session_year, $this->parent_db_key);
     }
 
     // ── Access helpers ──────────────────────────────────────────────────
@@ -110,7 +120,68 @@ class Communication extends MY_Controller
 
     public function index()
     {
-        $data = ['active_tab' => 'dashboard'];
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'comm_view');
+
+        // ── Pre-load dashboard data server-side (no AJAX spinner) ────
+        $role  = $this->_inbox_role();
+        $inbox = $this->firebase->get($this->_comm("Messages/Inbox/{$role}/{$this->admin_id}"));
+        $totalConversations = is_array($inbox) ? count($inbox) : 0;
+        $totalUnread = 0;
+        if (is_array($inbox)) {
+            foreach ($inbox as $conv) {
+                if (is_array($conv)) $totalUnread += (int) ($conv['unread_count'] ?? 0);
+            }
+        }
+
+        $allNotices = $this->firebase->get($this->_comm('Notices'));
+        $noticeCount = 0;
+        $recentNotices = [];
+        if (is_array($allNotices)) {
+            foreach ($allNotices as $id => $n) {
+                if (!is_array($n) || $id === 'Counter') continue;
+                $noticeCount++;
+                $n['id'] = $id;
+                $recentNotices[] = $n;
+            }
+            usort($recentNotices, fn($a, $b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
+            $recentNotices = array_slice($recentNotices, 0, 5);
+        }
+
+        $circulars = $this->firebase->shallow_get($this->_comm('Circulars'));
+        $circularCount = is_array($circulars) ? count(array_filter($circulars, fn($k) => $k !== 'Counter', ARRAY_FILTER_USE_KEY)) : 0;
+
+        $queueKeys = $this->firebase->shallow_get($this->_comm('Queue'));
+        $queuePending = 0; $queueSent = 0; $queueFailed = 0;
+        if (is_array($queueKeys)) {
+            $queueCount = count($queueKeys);
+            if ($queueCount <= 200) {
+                $queue = $this->firebase->get($this->_comm('Queue'));
+                if (is_array($queue)) {
+                    foreach ($queue as $q) {
+                        if (!is_array($q)) continue;
+                        $s = $q['status'] ?? '';
+                        if ($s === 'pending') $queuePending++;
+                        elseif ($s === 'sent') $queueSent++;
+                        elseif ($s === 'failed') $queueFailed++;
+                    }
+                }
+            } else {
+                $queuePending = $queueCount;
+            }
+        }
+
+        $data = [
+            'active_tab'     => 'dashboard',
+            'conversations'  => $totalConversations,
+            'unread_messages'=> $totalUnread,
+            'notices'        => $noticeCount,
+            'circulars'      => $circularCount,
+            'queue_pending'  => $queuePending,
+            'queue_sent'     => $queueSent,
+            'queue_failed'   => $queueFailed,
+            'recent_notices' => $recentNotices,
+        ];
+
         $this->load->view('include/header', $data);
         $this->load->view('communication/index', $data);
         $this->load->view('include/footer');
@@ -118,6 +189,7 @@ class Communication extends MY_Controller
 
     public function messages()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'comm_view');
         $data = ['active_tab' => 'messages'];
         $this->load->view('include/header', $data);
         $this->load->view('communication/messages', $data);
@@ -126,6 +198,7 @@ class Communication extends MY_Controller
 
     public function notices()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'comm_view');
         $data = ['active_tab' => 'notices'];
         $this->load->view('include/header', $data);
         $this->load->view('communication/notices', $data);
@@ -134,6 +207,7 @@ class Communication extends MY_Controller
 
     public function circulars()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'comm_view');
         $data = ['active_tab' => 'circulars'];
         $this->load->view('include/header', $data);
         $this->load->view('communication/circulars', $data);
@@ -142,6 +216,7 @@ class Communication extends MY_Controller
 
     public function templates()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'comm_view');
         $data = ['active_tab' => 'templates'];
         $this->load->view('include/header', $data);
         $this->load->view('communication/templates', $data);
@@ -150,6 +225,7 @@ class Communication extends MY_Controller
 
     public function triggers()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'comm_view');
         $data = ['active_tab' => 'triggers'];
         $this->load->view('include/header', $data);
         $this->load->view('communication/triggers', $data);
@@ -158,6 +234,7 @@ class Communication extends MY_Controller
 
     public function queue()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'comm_view');
         $data = ['active_tab' => 'queue'];
         $this->load->view('include/header', $data);
         $this->load->view('communication/queue', $data);
@@ -166,6 +243,7 @@ class Communication extends MY_Controller
 
     public function logs()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'comm_view');
         $data = ['active_tab' => 'logs'];
         $this->load->view('include/header', $data);
         $this->load->view('communication/logs', $data);
@@ -178,6 +256,7 @@ class Communication extends MY_Controller
 
     public function get_dashboard()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'get_dashboard');
         $this->_require_view();
 
         // Count conversations + unread for current user
@@ -261,6 +340,7 @@ class Communication extends MY_Controller
 
     public function get_conversations()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'get_conversations');
         $this->_require_view();
         $role  = $this->_inbox_role();
         $inbox = $this->firebase->get($this->_comm("Messages/Inbox/{$role}/{$this->admin_id}"));
@@ -293,6 +373,7 @@ class Communication extends MY_Controller
 
     public function get_messages()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'get_messages');
         $this->_require_view();
         $convId = $this->safe_path_segment(trim($this->input->get('conversation_id') ?? ''), 'conversation_id');
 
@@ -341,6 +422,7 @@ class Communication extends MY_Controller
 
     public function create_conversation()
     {
+        $this->_require_role(self::RBAC_MANAGE_ROLES, 'create_conversation');
         $this->_require_teacher();
         $recipientId    = $this->safe_path_segment(trim($this->input->post('recipient_id') ?? ''), 'recipient_id');
         $recipientRole  = trim($this->input->post('recipient_role') ?? '');
@@ -444,6 +526,7 @@ class Communication extends MY_Controller
 
     public function send_message()
     {
+        $this->_require_role(self::RBAC_MANAGE_ROLES, 'send_message');
         $this->_require_teacher();
         $convId  = $this->safe_path_segment(trim($this->input->post('conversation_id') ?? ''), 'conversation_id');
         $message = trim($this->input->post('message') ?? '');
@@ -504,6 +587,7 @@ class Communication extends MY_Controller
 
     public function mark_read()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'mark_read');
         $this->_require_view();
         $convId = $this->safe_path_segment(trim($this->input->post('conversation_id') ?? ''), 'conversation_id');
         $role   = $this->_inbox_role();
@@ -516,6 +600,7 @@ class Communication extends MY_Controller
 
     public function get_unread_count()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'get_unread_count');
         $this->_require_view();
         $role  = $this->_inbox_role();
         $inbox = $this->firebase->get($this->_comm("Messages/Inbox/{$role}/{$this->admin_id}"));
@@ -530,6 +615,7 @@ class Communication extends MY_Controller
 
     public function search_recipients()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'search_recipients');
         $this->_require_teacher();
         $query = strtolower(trim($this->input->get('q') ?? ''));
         if (mb_strlen($query) < 2) $this->json_error('Enter at least 2 characters.');
@@ -576,6 +662,7 @@ class Communication extends MY_Controller
 
     public function get_notices()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'get_notices');
         $this->_require_view();
         $all = $this->firebase->get($this->_comm('Notices'));
         $list = [];
@@ -598,6 +685,7 @@ class Communication extends MY_Controller
 
     public function save_notice()
     {
+        $this->_require_role(self::RBAC_MANAGE_ROLES, 'save_notice');
         $this->_require_admin();
         $id          = trim($this->input->post('id') ?? '');
         $title       = trim($this->input->post('title') ?? '');
@@ -734,6 +822,7 @@ class Communication extends MY_Controller
 
     public function delete_notice()
     {
+        $this->_require_role(self::RBAC_MANAGE_ROLES, 'delete_notice');
         $this->_require_admin();
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'notice_id');
         $this->firebase->delete($this->_comm('Notices'), $id);
@@ -746,6 +835,7 @@ class Communication extends MY_Controller
 
     public function get_circulars()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'get_circulars');
         $this->_require_view();
         $all = $this->firebase->get($this->_comm('Circulars'));
         $list = [];
@@ -768,6 +858,7 @@ class Communication extends MY_Controller
 
     public function save_circular()
     {
+        $this->_require_role(self::RBAC_MANAGE_ROLES, 'save_circular');
         $this->_require_admin();
         $id          = trim($this->input->post('id') ?? '');
         $title       = trim($this->input->post('title') ?? '');
@@ -870,6 +961,7 @@ class Communication extends MY_Controller
 
     public function delete_circular()
     {
+        $this->_require_role(self::RBAC_MANAGE_ROLES, 'delete_circular');
         $this->_require_admin();
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'circular_id');
         $this->firebase->delete($this->_comm('Circulars'), $id);
@@ -878,6 +970,7 @@ class Communication extends MY_Controller
 
     public function acknowledge_circular()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'acknowledge_circular');
         $this->_require_view();
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'circular_id');
         $this->firebase->set(
@@ -893,6 +986,7 @@ class Communication extends MY_Controller
 
     public function get_templates()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'get_templates');
         $this->_require_admin();
         $all = $this->firebase->get($this->_comm('Templates'));
         $list = [];
@@ -908,6 +1002,7 @@ class Communication extends MY_Controller
 
     public function save_template()
     {
+        $this->_require_role(self::RBAC_MANAGE_ROLES, 'save_template');
         $this->_require_admin();
         $id       = trim($this->input->post('id') ?? '');
         $name     = trim($this->input->post('name') ?? '');
@@ -959,6 +1054,7 @@ class Communication extends MY_Controller
 
     public function delete_template()
     {
+        $this->_require_role(self::RBAC_MANAGE_ROLES, 'delete_template');
         $this->_require_admin();
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'template_id');
 
@@ -979,6 +1075,7 @@ class Communication extends MY_Controller
 
     public function preview_template()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'preview_template');
         $this->_require_admin();
         $body    = trim($this->input->post('body') ?? '');
         $subject = trim($this->input->post('subject') ?? '');
@@ -1018,6 +1115,7 @@ class Communication extends MY_Controller
 
     public function get_triggers()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'get_triggers');
         $this->_require_admin();
         $all = $this->firebase->get($this->_comm('Triggers'));
         $list = [];
@@ -1033,6 +1131,7 @@ class Communication extends MY_Controller
 
     public function save_trigger()
     {
+        $this->_require_role(self::RBAC_ADMIN_ROLES, 'save_trigger');
         $this->_require_admin();
         $id            = trim($this->input->post('id') ?? '');
         $name          = trim($this->input->post('name') ?? '');
@@ -1097,6 +1196,7 @@ class Communication extends MY_Controller
 
     public function delete_trigger()
     {
+        $this->_require_role(self::RBAC_ADMIN_ROLES, 'delete_trigger');
         $this->_require_admin();
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'trigger_id');
         $this->firebase->delete($this->_comm('Triggers'), $id);
@@ -1105,6 +1205,7 @@ class Communication extends MY_Controller
 
     public function toggle_trigger()
     {
+        $this->_require_role(self::RBAC_ADMIN_ROLES, 'toggle_trigger');
         $this->_require_admin();
         $id      = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'trigger_id');
         $enabled = ($this->input->post('enabled') ?? '1') === '1';
@@ -1121,6 +1222,7 @@ class Communication extends MY_Controller
 
     public function get_queue()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'get_queue');
         $this->_require_admin();
         $status = trim($this->input->get('status') ?? '');
         $all    = $this->firebase->get($this->_comm('Queue'));
@@ -1149,6 +1251,7 @@ class Communication extends MY_Controller
      */
     public function process_queue()
     {
+        $this->_require_role(self::RBAC_ADMIN_ROLES, 'process_queue');
         $this->_require_admin();
         $all = $this->firebase->get($this->_comm('Queue'));
         if (!is_array($all)) {
@@ -1266,7 +1369,7 @@ class Communication extends MY_Controller
 
             // Deliver to recipient's notification path
             if ($recipientType === 'parent' || $recipientType === 'student') {
-                $student = $this->firebase->get("Users/Parents/{$school}/{$recipientId}");
+                $student = $this->firebase->get("Users/Parents/{$this->parent_db_key}/{$recipientId}");
                 if (is_array($student)) {
                     $cls = $student['Class'] ?? '';
                     $sec = $student['Section'] ?? '';
@@ -1319,6 +1422,7 @@ class Communication extends MY_Controller
 
     public function cancel_queued()
     {
+        $this->_require_role(self::RBAC_ADMIN_ROLES, 'cancel_queued');
         $this->_require_admin();
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'queue_id');
         $q  = $this->firebase->get($this->_comm("Queue/{$id}"));
@@ -1333,6 +1437,7 @@ class Communication extends MY_Controller
 
     public function retry_failed()
     {
+        $this->_require_role(self::RBAC_ADMIN_ROLES, 'retry_failed');
         $this->_require_admin();
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'queue_id');
         $q  = $this->firebase->get($this->_comm("Queue/{$id}"));
@@ -1353,6 +1458,7 @@ class Communication extends MY_Controller
 
     public function get_logs()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'get_logs');
         $this->_require_admin();
         $all = $this->firebase->get($this->_comm('Logs'));
         $list = [];
@@ -1375,6 +1481,7 @@ class Communication extends MY_Controller
 
     public function get_log_stats()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'get_log_stats');
         $this->_require_admin();
 
         $all = $this->firebase->get($this->_comm('Logs'));
@@ -1400,6 +1507,7 @@ class Communication extends MY_Controller
 
     public function send_bulk()
     {
+        $this->_require_role(self::RBAC_ADMIN_ROLES, 'send_bulk');
         $this->_require_admin();
         $title       = trim($this->input->post('title') ?? '');
         $message     = trim($this->input->post('message') ?? '');
@@ -1491,6 +1599,7 @@ class Communication extends MY_Controller
 
     public function get_target_groups()
     {
+        $this->_require_role(self::RBAC_VIEW_ROLES, 'get_target_groups');
         $this->_require_view();
         $groups = [
             ['value' => 'All School', 'label' => 'All School'],

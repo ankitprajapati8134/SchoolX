@@ -19,28 +19,17 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Assets extends MY_Controller
 {
-    const OPS_ADMIN_ROLES  = ['Super Admin', 'Principal', 'Vice Principal'];
-    const AST_MANAGE_ROLES = ['Super Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Store Manager'];
-    const AST_VIEW_ROLES   = ['Super Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Store Manager', 'Accountant', 'Teacher'];
+    private const MANAGE_ROLES = ['Admin', 'Principal'];
+    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
 
     public function __construct()
     {
         parent::__construct();
+        require_permission('Operations');
         $this->load->library('operations_accounting');
         $this->operations_accounting->init(
             $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this, $this->parent_db_key
         );
-    }
-
-    private function _require_manage()
-    {
-        if (!in_array($this->admin_role, self::AST_MANAGE_ROLES, true))
-            $this->json_error('Access denied.', 403);
-    }
-    private function _require_view()
-    {
-        if (!in_array($this->admin_role, self::AST_VIEW_ROLES, true))
-            $this->json_error('Access denied.', 403);
     }
 
     // ── Path Helpers ────────────────────────────────────────────────────
@@ -76,6 +65,7 @@ class Assets extends MY_Controller
 
     public function index()
     {
+        $this->_require_role(self::VIEW_ROLES);
         $tab = $this->uri->segment(2, 'registry');
         $data = ['active_tab' => $tab];
         $this->load->view('include/header', $data);
@@ -89,7 +79,7 @@ class Assets extends MY_Controller
 
     public function get_categories()
     {
-        $this->_require_view();
+        $this->_require_role(self::VIEW_ROLES);
         $cats = $this->firebase->get($this->_cats());
         $list = [];
         if (is_array($cats)) {
@@ -100,7 +90,7 @@ class Assets extends MY_Controller
 
     public function save_category()
     {
-        $this->_require_manage();
+        $this->_require_role(self::MANAGE_ROLES);
         $id     = trim($this->input->post('id') ?? '');
         $name   = trim($this->input->post('name') ?? '');
         $depRate = max(0, (float) ($this->input->post('depreciation_rate') ?? 10));
@@ -127,7 +117,7 @@ class Assets extends MY_Controller
 
     public function delete_category()
     {
-        $this->_require_manage();
+        $this->_require_role(self::MANAGE_ROLES);
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'category_id');
         $assets = $this->firebase->get($this->_assets());
         if (is_array($assets)) {
@@ -148,7 +138,7 @@ class Assets extends MY_Controller
     /** GET — List assets. ?page=1&limit=50 for pagination */
     public function get_assets()
     {
-        $this->_require_view();
+        $this->_require_role(self::VIEW_ROLES);
         $assets = $this->firebase->get($this->_assets());
         $list = [];
         if (is_array($assets)) {
@@ -164,7 +154,7 @@ class Assets extends MY_Controller
     /** POST — Register/update an asset. Creates purchase journal for new assets. */
     public function save_asset()
     {
-        $this->_require_manage();
+        $this->_require_role(self::MANAGE_ROLES);
         $id           = trim($this->input->post('id') ?? '');
         $name         = trim($this->input->post('name') ?? '');
         $categoryId   = trim($this->input->post('category_id') ?? '');
@@ -238,7 +228,7 @@ class Assets extends MY_Controller
 
     public function delete_asset()
     {
-        $this->_require_manage();
+        $this->_require_role(self::MANAGE_ROLES);
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'asset_id');
 
         // Check active assignments
@@ -246,10 +236,29 @@ class Assets extends MY_Controller
         if (is_array($assignments)) {
             foreach ($assignments as $a) {
                 if (($a['asset_id'] ?? '') === $id && ($a['status'] ?? '') === 'Active') {
-                    $this->json_error('Cannot delete: asset is currently assigned.');
+                    return $this->json_error('Cannot delete: asset is currently assigned.');
                 }
             }
         }
+
+        // OPS-5 FIX: Cascade delete maintenance records for this asset
+        $maintenance = $this->firebase->get($this->_maintenance());
+        if (is_array($maintenance)) {
+            foreach ($maintenance as $mid => $m) {
+                if (($m['asset_id'] ?? '') === $id) {
+                    $this->firebase->delete($this->_maintenance(), $mid);
+                }
+            }
+        }
+
+        // OPS-5 FIX: Reverse purchase journal if asset had one
+        // Operations_accounting does not have a reverse_journal() method yet,
+        // so we log a warning for manual follow-up.
+        $asset = $this->firebase->get($this->_assets($id));
+        if (is_array($asset) && !empty($asset['purchase_journal_id'])) {
+            log_message('info', "Asset {$id} deleted — purchase journal '{$asset['purchase_journal_id']}' may need manual reversal.");
+        }
+
         $this->firebase->delete($this->_assets(), $id);
         $this->json_success(['message' => 'Asset deleted.']);
     }
@@ -260,7 +269,7 @@ class Assets extends MY_Controller
 
     public function get_assignments()
     {
-        $this->_require_view();
+        $this->_require_role(self::VIEW_ROLES);
         $filterAssetId = trim($this->input->get('asset_id') ?? '');
         $assignments = $this->firebase->get($this->_assignments());
         $list = [];
@@ -276,7 +285,7 @@ class Assets extends MY_Controller
 
     public function save_assignment()
     {
-        $this->_require_manage();
+        $this->_require_role(self::MANAGE_ROLES);
         $assetId    = $this->safe_path_segment(trim($this->input->post('asset_id') ?? ''), 'asset_id');
         $assignedTo = trim($this->input->post('assigned_to') ?? '');
         $assignType = trim($this->input->post('assign_type') ?? 'staff');
@@ -307,7 +316,7 @@ class Assets extends MY_Controller
 
     public function return_assignment()
     {
-        $this->_require_manage();
+        $this->_require_role(self::MANAGE_ROLES);
         $asnId = $this->safe_path_segment(trim($this->input->post('assignment_id') ?? ''), 'assignment_id');
 
         $asn = $this->firebase->get($this->_assignments($asnId));
@@ -331,7 +340,7 @@ class Assets extends MY_Controller
     /** GET — List maintenance records. ?asset_id=AST0001&page=1&limit=50 */
     public function get_maintenance()
     {
-        $this->_require_view();
+        $this->_require_role(self::VIEW_ROLES);
         $filterAssetId = trim($this->input->get('asset_id') ?? '');
         $maint = $this->firebase->get($this->_maintenance());
         $list = [];
@@ -354,7 +363,7 @@ class Assets extends MY_Controller
 
     public function save_maintenance()
     {
-        $this->_require_manage();
+        $this->_require_role(self::MANAGE_ROLES);
         $id       = trim($this->input->post('id') ?? '');
         $assetId  = $this->safe_path_segment(trim($this->input->post('asset_id') ?? ''), 'asset_id');
         $type     = trim($this->input->post('type') ?? 'Repair');
@@ -405,7 +414,7 @@ class Assets extends MY_Controller
      */
     public function compute_depreciation()
     {
-        $this->_require_manage();
+        $this->_require_role(self::MANAGE_ROLES);
 
         $assets = $this->firebase->get($this->_assets());
         if (!is_array($assets) || empty($assets)) $this->json_error('No assets found.');
@@ -489,7 +498,7 @@ class Assets extends MY_Controller
     /** GET — Depreciation report. */
     public function get_depreciation_report()
     {
-        $this->_require_view();
+        $this->_require_role(self::VIEW_ROLES);
         $assets = $this->firebase->get($this->_assets());
         $list = [];
         if (is_array($assets)) {

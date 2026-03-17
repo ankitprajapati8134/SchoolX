@@ -26,9 +26,13 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class School_config extends MY_Controller
 {
+    /** Only Admin/Principal may configure school settings */
+    private const ADMIN_ROLES = ['Admin', 'Principal'];
+
     public function __construct()
     {
         parent::__construct();
+        require_permission('Configuration');
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -36,6 +40,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function index()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_index');
         $this->load->view('include/header');
         $this->load->view('school_config/index');
         $this->load->view('include/footer');
@@ -47,6 +52,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function get_config()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_get_config');
         $school    = $this->school_name;
         $school_id = $this->school_id;
 
@@ -144,6 +150,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function save_profile()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_save_profile');
         $school    = $this->school_name;
         $school_id = $this->school_id;
 
@@ -213,6 +220,8 @@ class School_config extends MY_Controller
             $this->firebase->update("System/Schools/{$school}/profile", $canonicalData);
         }
 
+        log_audit('Configuration', 'save_profile', $school, 'Updated school profile');
+
         $this->json_success(['message' => 'Profile saved successfully.']);
     }
 
@@ -221,6 +230,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function upload_logo()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_upload_logo');
         $school    = $this->school_name;
         $school_id = $this->school_id;
 
@@ -279,6 +289,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function upload_document()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_upload_document');
         $school = $this->school_name;
         $type   = trim((string) $this->input->post('doc_type', TRUE));
 
@@ -345,6 +356,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function save_board()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_save_board');
         $school = $this->school_name;
 
         $type            = trim((string) $this->input->post('type', TRUE));
@@ -410,6 +422,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function save_classes()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_save_classes');
         $school     = $this->school_name;
         $rawClasses = json_decode($this->input->post('classes') ?? '[]', true);
 
@@ -467,6 +480,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function activate_classes()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_activate_classes');
         $school      = $this->school_name;
         $sessionYear = trim((string) $this->input->post('session', TRUE));
 
@@ -523,6 +537,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function soft_delete_class()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_soft_delete_class');
         $school   = $this->school_name;
         $classKey = trim((string) $this->input->post('class_key', TRUE));
 
@@ -550,6 +565,23 @@ class School_config extends MY_Controller
             return $this->json_error('Class not found.');
         }
 
+        // Bug #43 FIX: Check for enrolled students before soft-deleting.
+        // Scan all sections under the class node in the active session.
+        $classNode  = $this->_class_node_name($classKey);
+        $classPath  = "Schools/{$school}/{$this->session_year}/{$classNode}";
+        $sectionKeys = $this->firebase->shallow_get($classPath);
+        if (is_array($sectionKeys)) {
+            foreach ($sectionKeys as $secKey) {
+                if (strpos($secKey, 'Section ') !== 0) continue;
+                $students = $this->firebase->shallow_get("{$classPath}/{$secKey}/Students/List");
+                if (!empty($students)) {
+                    return $this->json_error(
+                        "Cannot delete: students are enrolled in {$classNode} / {$secKey}. Transfer or remove students first."
+                    );
+                }
+            }
+        }
+
         $ok = $this->firebase->set("Schools/{$school}/Config/Classes", array_values($classes));
         if (!$ok) {
             return $this->json_error('Failed to update class.');
@@ -564,6 +596,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function restore_class()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_restore_class');
         $school   = $this->school_name;
         $classKey = trim((string) $this->input->post('class_key', TRUE));
 
@@ -605,6 +638,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function seed_streams()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_seed_streams');
         $school = $this->school_name;
 
         $defaults = [
@@ -643,6 +677,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function get_sections()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_get_sections');
         $school      = $this->school_name;
         $classKey    = trim((string) $this->input->post('class_key', TRUE));
         $sessionYear = trim((string) $this->input->post('session',   TRUE));
@@ -673,6 +708,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function save_section()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_save_section');
         $school        = $this->school_name;
         $classKey      = trim((string) $this->input->post('class_key', TRUE));
         $sectionLetter = strtoupper(trim((string) $this->input->post('section', TRUE)));
@@ -719,6 +755,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function delete_section()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_delete_section');
         $school        = $this->school_name;
         $classKey      = trim((string) $this->input->post('class_key', TRUE));
         $sectionLetter = strtoupper(trim((string) $this->input->post('section', TRUE)));
@@ -763,6 +800,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function get_subjects()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_get_subjects');
         $school   = $this->school_name;
         $classKey = trim((string) $this->input->post('class_key', TRUE));
 
@@ -776,9 +814,7 @@ class School_config extends MY_Controller
         $subjects = [];
         if (is_array($rawData)) {
             foreach ($rawData as $code => $sub) {
-                if ($code === 'pattern_type') {
-                    continue;
-                }
+                if ($code === 'pattern_type') continue;
                 if (is_array($sub)) {
                     $subjects[] = [
                         'code'     => $code,
@@ -797,10 +833,132 @@ class School_config extends MY_Controller
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // POST  /school_config/get_suggested_subjects
+    // Returns subjects from Subject Master_List grouped by category
+    // for the school's configured board + mapped class range.
+    // ─────────────────────────────────────────────────────────────────────
+    public function get_suggested_subjects()
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_get_suggested_subjects');
+        $school   = $this->school_name;
+        $classKey = trim((string) $this->input->post('class_key', TRUE));
+
+        if ($classKey === '') {
+            return $this->json_error('class_key is required.');
+        }
+
+        // 1. Read school's board config
+        $board = $this->firebase->get("Schools/{$school}/Config/Board") ?? [];
+        $boardType = trim($board['type'] ?? '');
+        if ($boardType === '') {
+            return $this->json_error('No board configured. Set your board in the Board tab first.');
+        }
+
+        // 2. Map class key to master list range
+        $classRange = $this->_class_key_to_range($classKey);
+        if ($classRange === '') {
+            return $this->json_error("Cannot determine class range for '{$classKey}'.");
+        }
+
+        // 3. Find latest pattern for this board
+        // shallow_get returns indexed array of key names like ["CBSE_Pattern_2025_26", "tree", "_created"]
+        // Filter to only keys containing "Pattern" (the naming convention from SA Master List Manager)
+        $boardPath   = "Subject Master_List/{$boardType}";
+        $patternKeys = $this->firebase->shallow_get($boardPath);
+
+        if (!is_array($patternKeys) || empty($patternKeys)) {
+            return $this->json_error("No subject patterns found for board: {$boardType}.");
+        }
+
+        $patterns = array_filter($patternKeys, function ($k) {
+            return stripos($k, 'Pattern') !== false;
+        });
+        $patterns = array_values($patterns);
+        rsort($patterns); // latest pattern first (e.g. 2026_27 > 2025_26)
+        if (empty($patterns)) {
+            return $this->json_error("No patterns available for board: {$boardType}. Keys found: " . implode(', ', $patternKeys));
+        }
+        $pattern = $patterns[0];
+
+        // 4. Read the class range data
+        $masterData = $this->firebase->get("Subject Master_List/{$boardType}/{$pattern}/{$classRange}");
+        if (!is_array($masterData) || empty($masterData)) {
+            return $this->json_error("No subjects found for {$boardType} / {$pattern} / range {$classRange}.");
+        }
+
+        // 5. Build grouped response
+        $groups = [];
+        foreach ($masterData as $groupName => $groupData) {
+            if (in_array($groupName, ['Assessment', 'rules', 'Streams', '_created'], true)) continue;
+            if (!is_array($groupData)) continue;
+
+            $compulsory = !empty($groupData['compulsory']);
+            $options    = $groupData['options'] ?? $groupData;
+            if (!is_array($options)) continue;
+
+            $subjects = [];
+            foreach ($options as $subjectName) {
+                if (!is_string($subjectName) || trim($subjectName) === '') continue;
+                $subjects[] = trim($subjectName);
+            }
+            if (empty($subjects)) continue;
+
+            // Derive category from group name
+            $category = $compulsory ? 'Core' : 'Elective';
+            if (stripos($groupName, 'Language') !== false) $category = 'Language';
+            if (stripos($groupName, 'Vocational') !== false) $category = 'Vocational';
+            if (stripos($groupName, 'Additional') !== false) $category = 'Additional';
+
+            $groups[] = [
+                'group'      => $groupName,
+                'compulsory' => $compulsory,
+                'category'   => $category,
+                'subjects'   => $subjects,
+            ];
+        }
+
+        if (empty($groups)) {
+            return $this->json_error("No subject groups found for range {$classRange}.");
+        }
+
+        $this->json_success([
+            'board'      => $boardType,
+            'pattern'    => $pattern,
+            'classRange' => $classRange,
+            'groups'     => $groups,
+        ]);
+    }
+
+    /**
+     * Map a class key (e.g. "9th", "Nursery") to the master list range.
+     */
+    private function _class_key_to_range(string $classKey): string
+    {
+        $lower = strtolower(trim($classKey));
+        $foundational = [
+            'playgroup' => 'Playgroup', 'play' => 'Playgroup',
+            'nursery'   => 'Nursery',
+            'lkg'       => 'LKG',
+            'ukg'       => 'UKG',
+        ];
+        foreach ($foundational as $kw => $range) {
+            if (strpos($lower, $kw) !== false) return $range;
+        }
+        preg_match('/\d+/', $classKey, $m);
+        $n = isset($m[0]) ? (int) $m[0] : 0;
+        if ($n >= 1 && $n <= 5)  return '1-5';
+        if ($n >= 6 && $n <= 8)  return '6-8';
+        if ($n >= 9 && $n <= 10) return '9-10';
+        if ($n >= 11 && $n <= 12) return '11-12';
+        return '';
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // POST  /school_config/save_subject
     // ─────────────────────────────────────────────────────────────────────
     public function save_subject()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_save_subject');
         $school   = $this->school_name;
         $classKey = trim((string) $this->input->post('class_key', TRUE));
         $name     = trim((string) $this->input->post('name',      TRUE));
@@ -876,6 +1034,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function delete_subject()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_delete_subject');
         $school   = $this->school_name;
         $classKey = trim((string) $this->input->post('class_key', TRUE));
         $code     = trim((string) $this->input->post('code',      TRUE));
@@ -902,6 +1061,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function save_stream()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_save_stream');
         $school    = $this->school_name;
         $streamKey = trim((string) $this->input->post('stream_key', TRUE));
         $label     = trim((string) $this->input->post('label',      TRUE));
@@ -933,6 +1093,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function delete_stream()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_delete_stream');
         $school    = $this->school_name;
         $streamKey = trim((string) $this->input->post('stream_key', TRUE));
 
@@ -953,6 +1114,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function test_sessions()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_test_sessions');
         if (!defined('GRADER_DEBUG') || !GRADER_DEBUG) { show_404(); return; }
         $school = $this->school_name;
         $path   = "Schools/{$school}/Sessions";
@@ -996,6 +1158,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function sync_sessions()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_sync_sessions');
         $school = $this->school_name;
         $path   = "Schools/{$school}/Sessions";
 
@@ -1029,6 +1192,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function csrf_token()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_csrf_token');
         $this->output
             ->set_content_type('application/json')
             ->set_output(json_encode([
@@ -1042,6 +1206,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function test_profile()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_test_profile');
         if (!defined('GRADER_DEBUG') || !GRADER_DEBUG) { show_404(); return; }
         $school = $this->school_name;
         $data   = $this->firebase->get("Schools/{$school}/Config/Profile") ?? [];
@@ -1053,6 +1218,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function test_classes()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_test_classes');
         if (!defined('GRADER_DEBUG') || !GRADER_DEBUG) { show_404(); return; }
         $school = $this->school_name;
         $raw    = $this->firebase->get("Schools/{$school}/Config/Classes") ?? [];
@@ -1065,6 +1231,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function test_sections()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_test_sections');
         if (!defined('GRADER_DEBUG') || !GRADER_DEBUG) { show_404(); return; }
         $school  = $this->school_name;
         $session = $this->session_year;
@@ -1093,6 +1260,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function test_subjects()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_test_subjects');
         if (!defined('GRADER_DEBUG') || !GRADER_DEBUG) { show_404(); return; }
         $school = $this->school_name;
         $raw    = $this->firebase->get("Schools/{$school}/Subject_list") ?? [];
@@ -1104,6 +1272,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function add_session()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_add_session');
         $school  = $this->school_name;
         $session = trim((string) $this->input->post('session', TRUE));
 
@@ -1146,6 +1315,7 @@ class School_config extends MY_Controller
     // ─────────────────────────────────────────────────────────────────────
     public function set_active_session()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_set_active_session');
         $school  = $this->school_name;
         $session = trim((string) $this->input->post('session', TRUE));
 
@@ -1179,6 +1349,8 @@ class School_config extends MY_Controller
 
         // Also update the controller property for this request
         $this->session_year = $session;
+
+        log_audit('Configuration', 'set_active_session', $session, "Changed active session to {$session}");
 
         $this->json_success([
             'message'        => "Active session set to {$session}. All modules will now use this session.",

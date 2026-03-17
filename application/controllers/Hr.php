@@ -23,39 +23,19 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Hr extends MY_Controller
 {
-    // ── Role Constants ──────────────────────────────────────────────────
-    const HR_ADMIN_ROLES  = ['Super Admin', 'Principal', 'HR Manager'];
-    const HR_VIEW_ROLES   = ['Super Admin', 'Principal', 'HR Manager', 'Accountant', 'Vice Principal'];
-    const PAYROLL_ROLES   = ['Super Admin', 'Principal', 'Accountant'];
+    /** Roles for payroll and salary management */
+    private const ADMIN_ROLES = ['Admin', 'Principal'];
+
+    /** Roles for HR operations (departments, recruitment, leave mgmt) */
+    private const HR_ROLES    = ['Admin', 'Principal'];
+
+    /** Roles that may view HR data */
+    private const VIEW_ROLES  = ['Admin', 'Principal', 'Teacher'];
 
     public function __construct()
     {
         parent::__construct();
-    }
-
-    // ====================================================================
-    //  ROLE HELPERS
-    // ====================================================================
-
-    private function _require_hr_admin()
-    {
-        if (!in_array($this->admin_role, self::HR_ADMIN_ROLES, true)) {
-            $this->json_error('Access denied.', 403);
-        }
-    }
-
-    private function _require_hr_view()
-    {
-        if (!in_array($this->admin_role, self::HR_VIEW_ROLES, true)) {
-            $this->json_error('Access denied.', 403);
-        }
-    }
-
-    private function _require_payroll()
-    {
-        if (!in_array($this->admin_role, self::PAYROLL_ROLES, true)) {
-            $this->json_error('Access denied.', 403);
-        }
+        require_permission('HR');
     }
 
     // ====================================================================
@@ -144,10 +124,24 @@ class Hr extends MY_Controller
     private function _next_id(string $prefix, string $type, int $pad = 4): string
     {
         $counterPath = $this->_counters($type);
-        $current = $this->firebase->get($counterPath);
-        $next = is_numeric($current) ? (int) $current + 1 : 1;
-        $this->firebase->set($counterPath, $next);
-        return $prefix . str_pad($next, $pad, '0', STR_PAD_LEFT);
+        $maxAttempts = 3;
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $current = $this->firebase->get($counterPath);
+            $next = is_numeric($current) ? (int) $current + 1 : 1;
+            $this->firebase->set($counterPath, $next);
+
+            // Verify-after-write: re-read to confirm we own this value
+            $verify = $this->firebase->get($counterPath);
+            if ((int) $verify === $next) {
+                return $prefix . str_pad($next, $pad, '0', STR_PAD_LEFT);
+            }
+            // Another writer overwrote — retry with their higher value
+            usleep(50000 * $attempt); // 50ms, 100ms, 150ms backoff
+        }
+        // Fallback: use timestamp-based unique suffix to guarantee uniqueness
+        $fallback = (int) ($this->firebase->get($counterPath) ?? 0) + 1;
+        $this->firebase->set($counterPath, $fallback);
+        return $prefix . str_pad($fallback, $pad, '0', STR_PAD_LEFT) . '_' . substr(bin2hex(random_bytes(2)), 0, 4);
     }
 
     // ====================================================================
@@ -225,9 +219,26 @@ class Hr extends MY_Controller
 
         // Generate voucher number via the Accounting counter
         $counterPath = "{$bp}/Accounts/Voucher_counters/Journal";
-        $currentSeq  = (int) $this->firebase->get($counterPath);
-        $newSeq      = $currentSeq + 1;
-        $this->firebase->set($counterPath, $newSeq);
+        $maxAttempts = 3;
+        $newSeq = 0;
+        $resolved = false;
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $currentSeq = (int) ($this->firebase->get($counterPath) ?? 0);
+            $newSeq     = $currentSeq + 1;
+            $this->firebase->set($counterPath, $newSeq);
+
+            // Verify-after-write: re-read to confirm we own this value
+            $verify = $this->firebase->get($counterPath);
+            if ((int) $verify === $newSeq) {
+                $resolved = true;
+                break;
+            }
+            usleep(50000 * $attempt);
+        }
+        if (!$resolved) {
+            $newSeq = (int) ($this->firebase->get($counterPath) ?? 0) + 1;
+            $this->firebase->set($counterPath, $newSeq);
+        }
         $voucherNo = 'JV-' . str_pad($newSeq, 6, '0', STR_PAD_LEFT);
 
         // Generate entry ID matching Accounting format
@@ -358,9 +369,7 @@ class Hr extends MY_Controller
      */
     public function index()
     {
-        if (!in_array($this->admin_role, self::HR_VIEW_ROLES, true)) {
-            show_error('Access denied.', 403);
-        }
+        $this->_require_role(self::VIEW_ROLES, 'hr_view');
 
         $tab = $this->uri->segment(2, 'dashboard');
         $allowed = ['dashboard', 'departments', 'recruitment', 'leaves', 'payroll', 'appraisals'];
@@ -383,7 +392,7 @@ class Hr extends MY_Controller
      */
     public function get_dashboard()
     {
-        $this->_require_hr_view();
+        $this->_require_role(self::VIEW_ROLES, 'hr_dashboard');
 
         // Staff count from session roster
         $roster = $this->firebase->get("Schools/{$this->school_name}/{$this->session_year}/Teachers");
@@ -486,7 +495,7 @@ class Hr extends MY_Controller
      */
     public function get_departments()
     {
-        $this->_require_hr_view();
+        $this->_require_role(self::VIEW_ROLES, 'get_departments');
 
         $depts = $this->firebase->get($this->_dept());
         $list = [];
@@ -506,7 +515,7 @@ class Hr extends MY_Controller
      */
     public function save_department()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'save_department');
 
         $id          = trim($this->input->post('id') ?? '');
         $name        = trim($this->input->post('name') ?? '');
@@ -559,7 +568,7 @@ class Hr extends MY_Controller
      */
     public function delete_department()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'delete_department');
 
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'id');
 
@@ -603,7 +612,7 @@ class Hr extends MY_Controller
      */
     public function get_jobs()
     {
-        $this->_require_hr_view();
+        $this->_require_role(self::VIEW_ROLES, 'get_jobs');
 
         $filterStatus = trim($this->input->get('status') ?? '');
         $jobs = $this->firebase->get($this->_jobs());
@@ -643,7 +652,7 @@ class Hr extends MY_Controller
      */
     public function save_job()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'save_job');
 
         $id                  = trim($this->input->post('id') ?? '');
         $title               = trim($this->input->post('title') ?? '');
@@ -708,7 +717,7 @@ class Hr extends MY_Controller
      */
     public function delete_job()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'delete_job');
 
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'id');
 
@@ -741,7 +750,7 @@ class Hr extends MY_Controller
      */
     public function get_applicants()
     {
-        $this->_require_hr_view();
+        $this->_require_role(self::HR_ROLES, 'get_applicants');
 
         $filterJob    = trim($this->input->get('job_id') ?? '');
         $filterStatus = trim($this->input->get('status') ?? '');
@@ -774,7 +783,7 @@ class Hr extends MY_Controller
      */
     public function save_applicant()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'save_applicant');
 
         $id            = trim($this->input->post('id') ?? '');
         $jobId         = trim($this->input->post('job_id') ?? '');
@@ -860,7 +869,7 @@ class Hr extends MY_Controller
      */
     public function update_applicant_status()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'update_applicant_status');
 
         $id     = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'id');
         $status = trim($this->input->post('status') ?? '');
@@ -895,7 +904,7 @@ class Hr extends MY_Controller
      */
     public function delete_applicant()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'delete_applicant');
 
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'id');
 
@@ -917,7 +926,7 @@ class Hr extends MY_Controller
      */
     public function get_leave_types()
     {
-        $this->_require_hr_view();
+        $this->_require_role(self::VIEW_ROLES, 'get_leave_types');
 
         $types = $this->firebase->get($this->_leave_types());
         $list = [];
@@ -936,7 +945,7 @@ class Hr extends MY_Controller
      */
     public function save_leave_type()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'save_leave_type');
 
         $id           = trim($this->input->post('id') ?? '');
         $name         = trim($this->input->post('name') ?? '');
@@ -1000,7 +1009,7 @@ class Hr extends MY_Controller
      */
     public function delete_leave_type()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'delete_leave_type');
 
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'id');
 
@@ -1036,7 +1045,7 @@ class Hr extends MY_Controller
      */
     public function get_leave_balances()
     {
-        $this->_require_hr_view();
+        $this->_require_role(self::VIEW_ROLES, 'get_leave_balances');
 
         $year    = trim($this->input->get('year') ?? date('Y'));
         $staffId = trim($this->input->get('staff_id') ?? '');
@@ -1076,7 +1085,7 @@ class Hr extends MY_Controller
      */
     public function allocate_leave_balances()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'allocate_leave');
 
         $year = trim($this->input->post('year') ?? date('Y'));
         if (!preg_match('/^\d{4}$/', $year)) {
@@ -1165,7 +1174,7 @@ class Hr extends MY_Controller
      */
     public function get_leave_requests()
     {
-        $this->_require_hr_view();
+        $this->_require_role(self::VIEW_ROLES, 'get_leave_requests');
 
         $filterStatus  = trim($this->input->get('status') ?? '');
         $filterStaffId = trim($this->input->get('staff_id') ?? '');
@@ -1199,7 +1208,7 @@ class Hr extends MY_Controller
      */
     public function apply_leave()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::VIEW_ROLES, 'apply_leave');
 
         $staffId  = $this->safe_path_segment(trim($this->input->post('staff_id') ?? ''), 'staff_id');
         $typeId   = $this->safe_path_segment(trim($this->input->post('type_id') ?? ''), 'type_id');
@@ -1307,7 +1316,7 @@ class Hr extends MY_Controller
      */
     public function decide_leave()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'decide_leave');
 
         $id       = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'id');
         $decision = trim($this->input->post('decision') ?? '');
@@ -1323,6 +1332,16 @@ class Hr extends MY_Controller
         }
         if (($request['status'] ?? '') !== 'Pending') {
             $this->json_error('Only pending requests can be decided.');
+        }
+
+        // M-04 FIX: Atomically mark request as "Processing" to prevent concurrent approvals
+        // on the same leave request (optimistic lock via status transition).
+        $this->firebase->update($this->_leave_req($id), ['status' => 'Processing']);
+
+        // Re-read to verify we won the race (another thread may have set it too)
+        $recheck = $this->firebase->get($this->_leave_req($id) . '/status');
+        if ($recheck !== 'Processing') {
+            $this->json_error('This request is being processed by another user. Please refresh.');
         }
 
         $staffId  = $request['staff_id'] ?? '';
@@ -1350,6 +1369,18 @@ class Hr extends MY_Controller
                         'used'    => $currentUsed + $paidDays,
                         'balance' => $currentBalance - $paidDays,
                     ]);
+
+                    // M-04 FIX: Post-write verification — re-read balance to detect concurrent deduction
+                    $verifyBal = $this->firebase->get($this->_leave_bal($year, $staffId, $typeId));
+                    if (is_array($verifyBal) && (int) ($verifyBal['balance'] ?? 0) < 0) {
+                        // Race detected: balance went negative — rollback deduction
+                        $this->firebase->update($this->_leave_bal($year, $staffId, $typeId), [
+                            'used'    => $currentUsed,
+                            'balance' => $currentBalance,
+                        ]);
+                        $this->firebase->update($this->_leave_req($id), ['status' => 'Pending']);
+                        $this->json_error('Leave balance was modified concurrently. Please try again.');
+                    }
                 }
             } else {
                 // No balance record — all days are LWP
@@ -1389,7 +1420,7 @@ class Hr extends MY_Controller
      */
     public function cancel_leave()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'cancel_leave');
 
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'id');
 
@@ -1402,6 +1433,9 @@ class Hr extends MY_Controller
         if (!in_array($currentStatus, ['Pending', 'Approved'], true)) {
             $this->json_error('Only Pending or Approved requests can be cancelled.');
         }
+
+        // M-04 FIX: Lock the request by transitioning to Cancelling status
+        $this->firebase->update($this->_leave_req($id), ['status' => 'Cancelling']);
 
         $staffId  = $request['staff_id'] ?? '';
         $typeId   = $request['type_id'] ?? '';
@@ -1448,7 +1482,7 @@ class Hr extends MY_Controller
      */
     public function get_salary_structures()
     {
-        $this->_require_hr_view();
+        $this->_require_role(self::ADMIN_ROLES, 'get_salary_structures');
 
         $staffId = trim($this->input->get('staff_id') ?? '');
 
@@ -1479,7 +1513,7 @@ class Hr extends MY_Controller
      */
     public function save_salary_structure()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::ADMIN_ROLES, 'save_salary_structure');
 
         $staffId = $this->safe_path_segment(trim($this->input->post('staff_id') ?? ''), 'staff_id');
 
@@ -1547,7 +1581,7 @@ class Hr extends MY_Controller
      */
     public function delete_salary_structure()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::ADMIN_ROLES, 'delete_salary_structure');
 
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'salary_id');
 
@@ -1570,7 +1604,7 @@ class Hr extends MY_Controller
      */
     public function get_payroll_runs()
     {
-        $this->_require_payroll();
+        $this->_require_role(self::ADMIN_ROLES, 'get_payroll_runs');
 
         $runs = $this->firebase->get($this->_payroll_runs());
         $list = [];
@@ -1597,7 +1631,7 @@ class Hr extends MY_Controller
      */
     public function preflight_payroll()
     {
-        $this->_require_payroll();
+        $this->_require_role(self::ADMIN_ROLES, 'preflight_payroll');
 
         $month = trim($this->input->get('month') ?? '');
         $year  = trim($this->input->get('year') ?? '');
@@ -1702,7 +1736,7 @@ class Hr extends MY_Controller
      */
     public function generate_payroll()
     {
-        $this->_require_payroll();
+        $this->_require_role(self::ADMIN_ROLES, 'generate_payroll');
 
         $month = trim($this->input->post('month') ?? '');
         $year  = trim($this->input->post('year') ?? '');
@@ -1747,11 +1781,14 @@ class Hr extends MY_Controller
         $staffProfiles = $this->firebase->get("Users/Teachers/{$this->school_name}");
 
         // Validate accounting accounts exist before proceeding (H3)
-        $this->_validate_accounts(['5010', '5020', '2020']);
+        // 2030=PF Payable, 2031=ESI Payable, 2032=TDS Payable,
+        // 2033=Professional Tax Payable, 2034=Other Deductions Payable
+        $this->_validate_accounts(['5010', '5020', '2020', '2030', '2031', '2032', '2033', '2034']);
 
         // Get approved leave requests for this month to calculate LWP days per staff
         $allLeaveReqs = $this->firebase->get($this->_leave_req());
-        $lwpByStaff   = []; // staffId => total LWP days in this month
+        $lwpByStaff     = []; // staffId => total LWP days in this month
+        $lwpDaysByStaff = []; // staffId => array of day-of-month numbers that are LWP
         if (is_array($allLeaveReqs)) {
             $monthStart = sprintf('%04d-%02d-01', (int) $year, array_search($month, $validMonths) + 1);
             $monthEnd   = date('Y-m-t', strtotime($monthStart));
@@ -1772,6 +1809,15 @@ class Hr extends MY_Controller
                     $lwpInMonth   = (int) (new DateTime($overlapStart))->diff(new DateTime($overlapEnd))->days + 1;
                     if (!isset($lwpByStaff[$sid])) $lwpByStaff[$sid] = 0;
                     $lwpByStaff[$sid] += $lwpInMonth;
+
+                    // Track which day-of-month numbers are LWP days (1-based)
+                    if (!isset($lwpDaysByStaff[$sid])) $lwpDaysByStaff[$sid] = [];
+                    $cursor = new DateTime($overlapStart);
+                    $end    = new DateTime($overlapEnd);
+                    while ($cursor <= $end) {
+                        $lwpDaysByStaff[$sid][(int) $cursor->format('j')] = true;
+                        $cursor->modify('+1 day');
+                    }
                 }
             }
         }
@@ -1782,17 +1828,42 @@ class Hr extends MY_Controller
             "Schools/{$this->school_name}/{$this->session_year}/Staff_Attendance/{$monthYear}"
         );
 
-        // Determine working days in the month (exclude Sundays)
-        $monthNum   = array_search($month, $validMonths) + 1;
+        // HR-5 FIX: Exclude Sundays, 2nd & 4th Saturdays, and school holidays
+        $monthNum    = array_search($month, $validMonths) + 1;
         $daysInMonth = (int) date('t', mktime(0, 0, 0, $monthNum, 1, (int) $year));
 
-        $sundays = 0;
+        // Load school holidays for this month
+        $holidays = [];
+        try {
+            $holidayData = $this->firebase->get("Schools/{$this->school_name}/Events/Holidays/{$year}");
+            if (is_array($holidayData)) {
+                foreach ($holidayData as $h) {
+                    $hDate = $h['date'] ?? '';
+                    if ($hDate && (int) date('n', strtotime($hDate)) === $monthNum) {
+                        $holidays[date('j', strtotime($hDate))] = true;
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            // Non-fatal: proceed without holidays
+        }
+
+        $nonWorkingDays = 0;
+        $satCount = 0;
         for ($d = 1; $d <= $daysInMonth; $d++) {
-            if ((int) date('w', mktime(0, 0, 0, $monthNum, $d, (int) $year)) === 0) {
-                $sundays++;
+            $dow = (int) date('w', mktime(0, 0, 0, $monthNum, $d, (int) $year));
+            if ($dow === 0) {
+                $nonWorkingDays++;
+            } elseif ($dow === 6) {
+                $satCount++;
+                if ($satCount === 2 || $satCount === 4) {
+                    $nonWorkingDays++;
+                }
+            } elseif (isset($holidays[$d])) {
+                $nonWorkingDays++;
             }
         }
-        $workingDays = $daysInMonth - $sundays;
+        $workingDays = $daysInMonth - $nonWorkingDays;
 
         // Generate run ID
         $runId = $this->_next_id('PR', 'PayrollRun');
@@ -1800,6 +1871,11 @@ class Hr extends MY_Controller
         $totalGross          = 0;
         $totalDeductions     = 0;
         $totalNet            = 0;
+        $totalPF             = 0;
+        $totalESI            = 0;
+        $totalTDS            = 0;
+        $totalProfTax        = 0;
+        $totalOtherDed       = 0;
         $staffCount          = 0;
         $totalTeachingExp    = 0;
         $totalNonTeachingExp = 0;
@@ -1821,15 +1897,22 @@ class Hr extends MY_Controller
             $position   = $profile['Position'] ?? '';
 
             // Determine absent days from attendance string
-            $daysAbsent = 0;
-            $leaveDays  = 0;
+            // NOTE: Skip days already covered by approved LWP leave to avoid double-counting.
+            // LWP days are deducted separately via $staffLwpDays below.
+            $daysAbsent   = 0;
+            $leaveDays    = 0;
+            $staffLwpSet  = isset($lwpDaysByStaff[$staffId]) ? $lwpDaysByStaff[$staffId] : [];
             if (is_array($attendance) && isset($attendance[$staffId])) {
                 $attStr = (string) $attendance[$staffId];
                 $len    = strlen($attStr);
                 for ($i = 0; $i < $len; $i++) {
+                    $dayNum = $i + 1; // attendance string is 1-indexed by day of month
                     $ch = strtoupper($attStr[$i]);
                     if ($ch === 'A') {
-                        $daysAbsent++;
+                        // Only count as absent if this day is NOT an LWP day
+                        if (!isset($staffLwpSet[$dayNum])) {
+                            $daysAbsent++;
+                        }
                     } elseif ($ch === 'L') {
                         $leaveDays++;
                     }
@@ -1852,11 +1935,12 @@ class Hr extends MY_Controller
             $dailySalary   = ($workingDays > 0) ? round($basic / $workingDays, 2) : 0;
             $lwpDeduction  = round($dailySalary * $staffLwpDays, 2);
 
-            $hra             = (float) ($sal['hra'] ?? 0);
-            $da              = (float) ($sal['da'] ?? 0);
-            $ta              = (float) ($sal['ta'] ?? 0);
-            $medical         = (float) ($sal['medical'] ?? 0);
-            $otherAllowances = (float) ($sal['other_allowances'] ?? 0);
+            // HR-6 FIX: Pro-rate allowances by the same absent fraction as basic
+            $hra             = round((float) ($sal['hra'] ?? 0) * (1 - $absentFraction), 2);
+            $da              = round((float) ($sal['da'] ?? 0) * (1 - $absentFraction), 2);
+            $ta              = round((float) ($sal['ta'] ?? 0) * (1 - $absentFraction), 2);
+            $medical         = round((float) ($sal['medical'] ?? 0) * (1 - $absentFraction), 2);
+            $otherAllowances = round((float) ($sal['other_allowances'] ?? 0) * (1 - $absentFraction), 2);
 
             $gross = round($effectiveBasic + $hra + $da + $ta + $medical + $otherAllowances, 2);
 
@@ -1917,6 +2001,11 @@ class Hr extends MY_Controller
             $totalGross      += $gross;
             $totalDeductions += $employeeDeductions;
             $totalNet        += $netPay;
+            $totalPF         += $pfEmployee;
+            $totalESI        += $esiEmployee;
+            $totalTDS        += $tds;
+            $totalProfTax    += $professionalTax;
+            $totalOtherDed   += $otherDeductions;
             $staffCount++;
         }
 
@@ -1927,6 +2016,11 @@ class Hr extends MY_Controller
         $totalGross          = round($totalGross, 2);
         $totalDeductions     = round($totalDeductions, 2);
         $totalNet            = round($totalNet, 2);
+        $totalPF             = round($totalPF, 2);
+        $totalESI            = round($totalESI, 2);
+        $totalTDS            = round($totalTDS, 2);
+        $totalProfTax        = round($totalProfTax, 2);
+        $totalOtherDed       = round($totalOtherDed, 2);
         $totalTeachingExp    = round($totalTeachingExp, 2);
         $totalNonTeachingExp = round($totalNonTeachingExp, 2);
 
@@ -1955,7 +2049,12 @@ class Hr extends MY_Controller
         // Create individual slips (single batch write instead of N sequential calls)
         $this->firebase->set($this->_payroll_slips($runId), $slips);
 
-        // ── Expense journal entry (Debit salary expenses, Credit salary payable) ──
+        // ── Expense journal entry (Debit salary expenses, Credit payable accounts) ──
+        // DR side: gross salary expense (teaching + non-teaching)
+        // CR side: net salary payable (2020) + statutory deductions to separate liability accounts
+        //   2030 = PF Payable, 2031 = ESI Payable, 2032 = TDS Payable
+        // This ensures 2020 only holds the net amount cleared on payment day,
+        // while statutory liabilities sit in their own accounts until remitted to government.
         $narration = "Salary accrual - {$month} {$year}";
         $journalLines = [];
         if ($totalTeachingExp > 0) {
@@ -1964,7 +2063,22 @@ class Hr extends MY_Controller
         if ($totalNonTeachingExp > 0) {
             $journalLines[] = ['account_code' => '5020', 'dr' => $totalNonTeachingExp, 'cr' => 0];
         }
-        $journalLines[] = ['account_code' => '2020', 'dr' => 0, 'cr' => $totalGross];
+        $journalLines[] = ['account_code' => '2020', 'dr' => 0, 'cr' => $totalNet];
+        if ($totalPF > 0) {
+            $journalLines[] = ['account_code' => '2030', 'dr' => 0, 'cr' => $totalPF];
+        }
+        if ($totalESI > 0) {
+            $journalLines[] = ['account_code' => '2031', 'dr' => 0, 'cr' => $totalESI];
+        }
+        if ($totalTDS > 0) {
+            $journalLines[] = ['account_code' => '2032', 'dr' => 0, 'cr' => $totalTDS];
+        }
+        if ($totalProfTax > 0) {
+            $journalLines[] = ['account_code' => '2033', 'dr' => 0, 'cr' => $totalProfTax];
+        }
+        if ($totalOtherDed > 0) {
+            $journalLines[] = ['account_code' => '2034', 'dr' => 0, 'cr' => $totalOtherDed];
+        }
 
         $journalId = $this->_create_acct_journal($narration, $journalLines, $runId);
 
@@ -1998,7 +2112,7 @@ class Hr extends MY_Controller
      */
     public function get_payroll_slips()
     {
-        $this->_require_payroll();
+        $this->_require_role(self::ADMIN_ROLES, 'get_payroll_slips');
 
         $runId = trim($this->input->get('run_id') ?? '');
         if ($runId === '') {
@@ -2038,7 +2152,7 @@ class Hr extends MY_Controller
      */
     public function finalize_payroll()
     {
-        $this->_require_payroll();
+        $this->_require_role(self::ADMIN_ROLES, 'finalize_payroll');
 
         $runId = $this->safe_path_segment(trim($this->input->post('run_id') ?? ''), 'run_id');
 
@@ -2076,12 +2190,17 @@ class Hr extends MY_Controller
      * Params: run_id, payment_mode (Cash|Bank)
      *
      * Creates accounting entries:
-     *   Debit  Salary Payable (2020) — reduces liability
+     *   Debit  Salary Payable (2020) — reduces liability (net salary only)
      *   Credit Cash (1010) or Bank (1020) — payment out
+     *
+     * NOTE: Statutory deductions (PF/ESI/TDS) were credited to separate liability
+     * accounts (2030/2031/2032) during accrual in generate_payroll(). Those accounts
+     * should be cleared separately when the statutory payments are actually remitted
+     * to the government (e.g., DR 2030 PF Payable / CR 1020 Bank).
      */
     public function mark_payroll_paid()
     {
-        $this->_require_payroll();
+        $this->_require_role(self::ADMIN_ROLES, 'mark_payroll_paid');
 
         $runId       = $this->safe_path_segment(trim($this->input->post('run_id') ?? ''), 'run_id');
         $paymentMode = trim($this->input->post('payment_mode') ?? 'Bank');
@@ -2147,7 +2266,7 @@ class Hr extends MY_Controller
      */
     public function get_payslip()
     {
-        $this->_require_hr_view();
+        $this->_require_role(self::ADMIN_ROLES, 'get_payslip');
 
         $runId   = trim($this->input->get('run_id') ?? '');
         $staffId = trim($this->input->get('staff_id') ?? '');
@@ -2198,7 +2317,7 @@ class Hr extends MY_Controller
      */
     public function delete_payroll_run()
     {
-        $this->_require_payroll();
+        $this->_require_role(self::ADMIN_ROLES, 'delete_payroll_run');
 
         $runId = $this->safe_path_segment(trim($this->input->post('run_id') ?? ''), 'run_id');
 
@@ -2240,7 +2359,7 @@ class Hr extends MY_Controller
      */
     public function get_appraisals()
     {
-        $this->_require_hr_view();
+        $this->_require_role(self::VIEW_ROLES, 'get_appraisals');
 
         $filterStaffId = trim($this->input->get('staff_id') ?? '');
         $filterStatus  = trim($this->input->get('status') ?? '');
@@ -2273,7 +2392,7 @@ class Hr extends MY_Controller
      */
     public function save_appraisal()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'save_appraisal');
 
         $id               = trim($this->input->post('id') ?? '');
         $staffId          = $this->safe_path_segment(trim($this->input->post('staff_id') ?? ''), 'staff_id');
@@ -2360,7 +2479,7 @@ class Hr extends MY_Controller
      */
     public function submit_appraisal()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'submit_appraisal');
 
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'id');
 
@@ -2392,7 +2511,7 @@ class Hr extends MY_Controller
      */
     public function review_appraisal()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'review_appraisal');
 
         $id       = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'id');
         $comments = trim($this->input->post('comments') ?? '');
@@ -2424,7 +2543,7 @@ class Hr extends MY_Controller
      */
     public function delete_appraisal()
     {
-        $this->_require_hr_admin();
+        $this->_require_role(self::HR_ROLES, 'delete_appraisal');
 
         $id = $this->safe_path_segment(trim($this->input->post('id') ?? ''), 'id');
 
@@ -2450,7 +2569,7 @@ class Hr extends MY_Controller
      */
     public function get_staff_list()
     {
-        $this->_require_hr_view();
+        $this->_require_role(self::VIEW_ROLES, 'get_staff_list');
 
         // Get roster
         $roster = $this->firebase->get("Schools/{$this->school_name}/{$this->session_year}/Teachers");
@@ -2496,7 +2615,7 @@ class Hr extends MY_Controller
      */
     public function get_report()
     {
-        $this->_require_hr_view();
+        $this->_require_role(self::VIEW_ROLES, 'get_report');
 
         $type = trim($this->input->get('type') ?? 'staff');
 

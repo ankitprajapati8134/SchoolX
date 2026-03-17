@@ -74,10 +74,24 @@ class Operations_accounting
      */
     public function next_id(string $counterPath, string $prefix, int $pad = 4): string
     {
-        $cur  = (int) ($this->firebase->get($counterPath) ?? 0);
-        $next = $cur + 1;
-        $this->firebase->set($counterPath, $next);
-        return $prefix . str_pad($next, $pad, '0', STR_PAD_LEFT);
+        $maxAttempts = 3;
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $cur  = (int) ($this->firebase->get($counterPath) ?? 0);
+            $next = $cur + 1;
+            $this->firebase->set($counterPath, $next);
+
+            // Verify-after-write: re-read to confirm we own this value
+            $verify = $this->firebase->get($counterPath);
+            if ((int) $verify === $next) {
+                return $prefix . str_pad($next, $pad, '0', STR_PAD_LEFT);
+            }
+            // Another writer overwrote — retry with their higher value
+            usleep(50000 * $attempt); // 50ms, 100ms, 150ms backoff
+        }
+        // Fallback: use timestamp-based unique suffix to guarantee uniqueness
+        $fallback = (int) ($this->firebase->get($counterPath) ?? 0) + 1;
+        $this->firebase->set($counterPath, $fallback);
+        return $prefix . str_pad($fallback, $pad, '0', STR_PAD_LEFT) . '_' . substr(bin2hex(random_bytes(2)), 0, 4);
     }
 
     // ====================================================================

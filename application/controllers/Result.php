@@ -33,11 +33,18 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Result extends MY_Controller
 {
     /** Roles allowed to design templates, compute results, configure cumulative. */
-    const ADMIN_ROLES = ['Super Admin', 'Admin'];
+    private const ADMIN_ROLES = ['Super Admin', 'Admin'];
+
+    /** Roles allowed to enter/save marks (Teachers limited to own classes via _teacher_can_access). */
+    private const MARKS_ENTRY_ROLES = ['Super Admin', 'Admin', 'Teacher'];
+
+    /** Roles allowed to view results, marks, report cards. */
+    private const VIEW_ROLES = ['Admin', 'Principal', 'Teacher'];
 
     public function __construct()
     {
         parent::__construct();
+        require_permission('Results');
         $this->load->library('exam_engine');
         $this->exam_engine->init($this->firebase, $this->school_name, $this->session_year);
     }
@@ -64,6 +71,7 @@ class Result extends MY_Controller
      */
     public function index()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_results');
         $school = $this->school_name;
         $year   = $this->session_year;
 
@@ -118,6 +126,7 @@ class Result extends MY_Controller
      */
     public function marks_entry($examId = null)
     {
+        $this->_require_role(self::VIEW_ROLES, 'marks_entry');
         $school    = $this->school_name;
         $year      = $this->session_year;
         $structure = $this->exam_engine->get_class_structure();
@@ -149,6 +158,7 @@ class Result extends MY_Controller
      */
     public function marks_sheet($examId = null, $classKey = null, $sectionKey = null, $subject = null)
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_marks_sheet');
         $school = $this->school_name;
         $year   = $this->session_year;
 
@@ -216,6 +226,7 @@ class Result extends MY_Controller
      */
     public function class_result($examId = null)
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_class_result');
         $school    = $this->school_name;
         $year      = $this->session_year;
         $structure = $this->exam_engine->get_class_structure();
@@ -245,6 +256,7 @@ class Result extends MY_Controller
      */
     public function student_result($userId = null)
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_student_result');
         $school = $this->school_name;
         $year   = $this->session_year;
 
@@ -375,6 +387,7 @@ class Result extends MY_Controller
      */
     public function report_card($userId = null, $examId = null)
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_report_card');
         $school = $this->school_name;
         $year   = $this->session_year;
 
@@ -666,6 +679,8 @@ class Result extends MY_Controller
         $path = "Schools/{$school}/{$year}/Results/Templates/{$examId}/{$classKey}/{$sectionKey}/{$subject}";
         $this->firebase->set($path, $template);
 
+        log_audit('Results', 'save_template', $examId, "Saved marks template for {$classKey}/{$sectionKey}/{$subject}");
+
         $this->json_success(['message' => 'Template saved.', 'totalMaxMarks' => $totalMax]);
     }
 
@@ -674,6 +689,7 @@ class Result extends MY_Controller
      */
     public function get_template()
     {
+        $this->_require_role(self::VIEW_ROLES, 'get_template');
         header('Content-Type: application/json');
 
         $school     = $this->school_name;
@@ -704,6 +720,7 @@ class Result extends MY_Controller
      */
     public function save_marks()
     {
+        $this->_require_role(self::MARKS_ENTRY_ROLES, 'save_marks');
         header('Content-Type: application/json');
 
         $school = $this->school_name;
@@ -810,6 +827,8 @@ class Result extends MY_Controller
         $stalePath = "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}/_stale";
         $this->firebase->set($stalePath, true);
 
+        log_audit('Results', 'save_marks', $examId, "Saved marks for {$count} student(s) in {$subject}");
+
         $result = ['message' => "Marks saved for {$count} student(s)."];
         if (!empty($warnings)) {
             $result['warnings'] = $warnings;
@@ -822,6 +841,7 @@ class Result extends MY_Controller
      */
     public function get_marks()
     {
+        $this->_require_role(self::VIEW_ROLES, 'get_marks');
         header('Content-Type: application/json');
 
         $school     = $this->school_name;
@@ -959,11 +979,9 @@ class Result extends MY_Controller
         uasort($studentResults, fn($a, $b) => $b['Percentage'] <=> $a['Percentage']);
         $this->exam_engine->assign_ranks_assoc($studentResults, 'Percentage');
 
-        // Write to Computed node (one set() per student)
+        // EX-2 FIX: Single batch write instead of N individual writes
         $basePath = "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}";
-        foreach ($studentResults as $uid => $res) {
-            $this->firebase->set("{$basePath}/{$uid}", $res);
-        }
+        $this->firebase->set($basePath, $studentResults);
 
         // ── Fix H4: Clear stale flag after fresh computation ────────────
         $this->firebase->delete("{$basePath}", '_stale');
@@ -1110,6 +1128,14 @@ class Result extends MY_Controller
                 }
             }
 
+            // EX-5 FIX: Track exam coverage for this student
+            $totalExams = count($examIds);
+            $examsAppeared = 0;
+            foreach ($examIds as $eid) {
+                if (isset($allExamResults[$eid][$uid])) $examsAppeared++;
+            }
+            $isPartial = ($examsAppeared < $totalExams);
+
             // Load grading scale from first available exam
             $scale      = 'Percentage';
             $passingPct = 33;
@@ -1140,6 +1166,9 @@ class Result extends MY_Controller
                 'PassFail'      => $overallPass,
                 'Subjects'      => $subjResults,
                 'ComputedAt'    => (int) round(microtime(true) * 1000),
+                'ExamsCovered'  => $examsAppeared,    // EX-5 FIX
+                'TotalExams'    => $totalExams,       // EX-5 FIX
+                'IsPartial'     => $isPartial,        // EX-5 FIX
             ];
         }
 
@@ -1147,11 +1176,9 @@ class Result extends MY_Controller
         uasort($studentCumulative, fn($a, $b) => $b['WeightedTotal'] <=> $a['WeightedTotal']);
         $this->exam_engine->assign_ranks_assoc($studentCumulative, 'WeightedTotal');
 
-        // Write
+        // EX-2 FIX: Single batch write instead of N individual writes
         $basePath = "Schools/{$school}/{$year}/Results/Cumulative/{$classKey}/{$sectionKey}";
-        foreach ($studentCumulative as $uid => $res) {
-            $this->firebase->set("{$basePath}/{$uid}", $res);
-        }
+        $this->firebase->set($basePath, $studentCumulative);
 
         $this->json_success([
             'message' => 'Cumulative computed for ' . count($studentCumulative) . ' student(s).',
@@ -1165,6 +1192,7 @@ class Result extends MY_Controller
      */
     public function get_cumulative_data()
     {
+        $this->_require_role(self::VIEW_ROLES, 'get_cumulative_data');
         header('Content-Type: application/json');
 
         $school     = $this->school_name;
@@ -1234,6 +1262,7 @@ class Result extends MY_Controller
      */
     public function get_class_result_data()
     {
+        $this->_require_role(self::VIEW_ROLES, 'get_class_result_data');
         header('Content-Type: application/json');
 
         $school     = $this->school_name;
@@ -1309,6 +1338,7 @@ class Result extends MY_Controller
      */
     public function get_exam_status()
     {
+        $this->_require_role(self::VIEW_ROLES, 'get_exam_status');
         header('Content-Type: application/json');
 
         $school     = $this->school_name;

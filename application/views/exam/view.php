@@ -44,7 +44,12 @@
       }
     }
   }
-  ksort($byDate);
+  // EX-3 FIX: Sort dates chronologically, not lexicographically (DD-MM-YYYY string sort is wrong)
+  uksort($byDate, function($a, $b) {
+      $dA = DateTime::createFromFormat('d-m-Y', $a);
+      $dB = DateTime::createFromFormat('d-m-Y', $b);
+      return ($dA ? $dA->getTimestamp() : 0) <=> ($dB ? $dB->getTimestamp() : 0);
+  });
   $uniqueClasses = count(array_unique($allClasses));
   $totalDates    = count($byDate);
 ?>

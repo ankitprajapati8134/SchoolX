@@ -9,6 +9,15 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Attendance extends MY_Controller
 {
+    /** Roles for attendance settings and device management */
+    private const MANAGE_ROLES = ['Admin', 'Principal'];
+
+    /** Roles that may mark attendance */
+    private const MARK_ROLES   = ['Admin', 'Principal', 'Teacher'];
+
+    /** Roles that may view attendance data */
+    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+
     /** Routes that skip session auth (use API-key auth instead) */
     protected $public_routes = [
         'admin_login/index',
@@ -19,6 +28,16 @@ class Attendance extends MY_Controller
 
     /** Valid attendance mark characters */
     private $valid_marks = ['P', 'A', 'L', 'H', 'T', 'V'];
+
+    public function __construct()
+    {
+        parent::__construct();
+        // Skip RBAC for API routes (auth handled separately)
+        $method = strtolower($this->router->fetch_method());
+        if ($method !== 'api_punch') {
+            require_permission('Attendance');
+        }
+    }
 
     /** Month names → numbers */
     private $month_map = [
@@ -42,6 +61,7 @@ class Attendance extends MY_Controller
      */
     public function index()
     {
+        $this->_require_role(self::VIEW_ROLES);
         $data = [];
         $this->load->view('include/header', $data);
         $this->load->view('attendance/index', $data);
@@ -53,6 +73,7 @@ class Attendance extends MY_Controller
      */
     public function student_attendance()
     {
+        $this->_require_role(self::VIEW_ROLES);
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -69,6 +90,7 @@ class Attendance extends MY_Controller
      */
     public function staff_attendance()
     {
+        $this->_require_role(self::VIEW_ROLES);
         $data['months'] = $this->academic_months;
 
         $this->load->view('include/header', $data);
@@ -81,6 +103,7 @@ class Attendance extends MY_Controller
      */
     public function settings()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'att_settings');
         $this->load->view('include/header');
         $this->load->view('attendance/settings');
         $this->load->view('include/footer');
@@ -91,6 +114,7 @@ class Attendance extends MY_Controller
      */
     public function analytics()
     {
+        $this->_require_role(self::VIEW_ROLES);
         $data['Classes'] = $this->_build_class_list();
         $data['months']  = $this->academic_months;
 
@@ -104,6 +128,7 @@ class Attendance extends MY_Controller
      */
     public function punch_log()
     {
+        $this->_require_role(self::VIEW_ROLES);
         $this->load->view('include/header');
         $this->load->view('attendance/punch_log');
         $this->load->view('include/footer');
@@ -119,6 +144,7 @@ class Attendance extends MY_Controller
      */
     public function fetch_student_attendance()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_student_att');
         $class   = trim((string) $this->input->post('class'));
         $section = trim((string) $this->input->post('section'));
         $month   = trim((string) $this->input->post('month'));
@@ -129,6 +155,11 @@ class Attendance extends MY_Controller
 
         $class   = $this->safe_path_segment($class, 'class');
         $section = $this->safe_path_segment($section, 'section');
+
+        // H-01 FIX: Teachers can only view attendance for their assigned classes
+        if (!$this->_teacher_can_access($class, "Section {$section}")) {
+            return $this->json_error('You are not assigned to this class/section.', 403);
+        }
 
         if (!isset($this->month_map[$month])) {
             return $this->json_error('Invalid month.');
@@ -221,6 +252,7 @@ class Attendance extends MY_Controller
      */
     public function save_student_attendance()
     {
+        $this->_require_role(self::MARK_ROLES, 'save_student_att');
         $class   = trim((string) $this->input->post('class'));
         $section = trim((string) $this->input->post('section'));
         $month   = trim((string) $this->input->post('month'));
@@ -233,6 +265,11 @@ class Attendance extends MY_Controller
 
         $class   = $this->safe_path_segment($class, 'class');
         $section = $this->safe_path_segment($section, 'section');
+
+        // H-01 FIX: Teachers can only mark attendance for their assigned classes
+        if (!$this->_teacher_can_access($class, "Section {$section}")) {
+            return $this->json_error('You are not assigned to this class/section.', 403);
+        }
 
         if (!isset($this->month_map[$month])) {
             return $this->json_error('Invalid month.');
@@ -300,6 +337,7 @@ class Attendance extends MY_Controller
      */
     public function mark_student_day()
     {
+        $this->_require_role(self::MARK_ROLES, 'mark_student_day');
         $class      = $this->safe_path_segment(trim((string) $this->input->post('class')), 'class');
         $section    = $this->safe_path_segment(trim((string) $this->input->post('section')), 'section');
         $month      = trim((string) $this->input->post('month'));
@@ -310,6 +348,10 @@ class Attendance extends MY_Controller
 
         if (!$class || !$section || !$month || !$studentId || !$day || !$mark) {
             return $this->json_error('Missing required fields.');
+        }
+        // H-01 FIX: Teachers can only mark attendance for their assigned classes
+        if (!$this->_teacher_can_access($class, "Section {$section}")) {
+            return $this->json_error('You are not assigned to this class/section.', 403);
         }
         if (!preg_match('/^[A-Za-z0-9_]+$/', $studentId)) {
             return $this->json_error('Invalid student ID.');
@@ -361,6 +403,7 @@ class Attendance extends MY_Controller
      */
     public function bulk_mark_student()
     {
+        $this->_require_role(self::MARK_ROLES, 'bulk_mark_student');
         $class   = $this->safe_path_segment(trim((string) $this->input->post('class')), 'class');
         $section = $this->safe_path_segment(trim((string) $this->input->post('section')), 'section');
         $month   = trim((string) $this->input->post('month'));
@@ -369,6 +412,10 @@ class Attendance extends MY_Controller
 
         if (!$class || !$section || !$month || !$day || !$mark) {
             return $this->json_error('Missing required fields.');
+        }
+        // H-01 FIX: Teachers can only bulk-mark attendance for their assigned classes
+        if (!$this->_teacher_can_access($class, "Section {$section}")) {
+            return $this->json_error('You are not assigned to this class/section.', 403);
         }
         if (!in_array($mark, $this->valid_marks)) {
             return $this->json_error('Invalid mark.');
@@ -417,6 +464,7 @@ class Attendance extends MY_Controller
      */
     public function get_student_summary()
     {
+        $this->_require_role(self::VIEW_ROLES, 'student_summary');
         $studentId = trim((string) $this->input->post('student_id'));
         $class     = $this->safe_path_segment(trim((string) $this->input->post('class')), 'class');
         $section   = $this->safe_path_segment(trim((string) $this->input->post('section')), 'section');
@@ -468,6 +516,7 @@ class Attendance extends MY_Controller
      */
     public function fetch_staff_attendance()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_staff_att');
         $month = trim((string) $this->input->post('month'));
 
         if (!$month || !isset($this->month_map[$month])) {
@@ -534,6 +583,7 @@ class Attendance extends MY_Controller
      */
     public function save_staff_attendance()
     {
+        $this->_require_role(self::MARK_ROLES, 'save_staff_att');
         $month   = trim((string) $this->input->post('month'));
         $attData = $this->input->post('attendance');
         $lateData = $this->input->post('late');
@@ -589,6 +639,7 @@ class Attendance extends MY_Controller
      */
     public function mark_staff_day()
     {
+        $this->_require_role(self::MARK_ROLES, 'mark_staff_day');
         $month    = trim((string) $this->input->post('month'));
         $staffId  = trim((string) $this->input->post('staff_id'));
         $day      = (int) $this->input->post('day');
@@ -644,6 +695,7 @@ class Attendance extends MY_Controller
      */
     public function bulk_mark_staff()
     {
+        $this->_require_role(self::MARK_ROLES, 'bulk_mark_staff');
         $month = trim((string) $this->input->post('month'));
         $day   = (int) $this->input->post('day');
         $mark  = strtoupper(trim((string) $this->input->post('mark')));
@@ -695,6 +747,7 @@ class Attendance extends MY_Controller
      */
     public function get_settings()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'get_settings');
         $path = "Schools/{$this->school_name}/Config/Attendance";
         $config = $this->firebase->get($path);
 
@@ -722,6 +775,7 @@ class Attendance extends MY_Controller
      */
     public function save_settings()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'save_settings');
         $allowed = [
             'late_threshold_student', 'late_threshold_staff',
             'working_days', 'biometric_enabled', 'rfid_enabled', 'face_recognition_enabled',
@@ -756,6 +810,7 @@ class Attendance extends MY_Controller
      */
     public function get_holidays()
     {
+        $this->_require_role(self::VIEW_ROLES, 'get_holidays');
         $path = "Schools/{$this->school_name}/Config/Attendance/holidays";
         $holidays = $this->firebase->get($path);
 
@@ -770,6 +825,7 @@ class Attendance extends MY_Controller
      */
     public function save_holidays()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'save_holidays');
         $holidays = $this->input->post('holidays');
         if (is_string($holidays)) {
             $holidays = json_decode($holidays, true);
@@ -801,6 +857,7 @@ class Attendance extends MY_Controller
      */
     public function fetch_devices()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'fetch_devices');
         $path = "Schools/{$this->school_name}/Config/Devices";
         $devices = $this->firebase->get($path);
 
@@ -829,6 +886,7 @@ class Attendance extends MY_Controller
      */
     public function register_device()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'register_device');
         $name     = trim((string) $this->input->post('name'));
         $type     = trim((string) $this->input->post('type'));
         $location = trim((string) $this->input->post('location'));
@@ -879,6 +937,7 @@ class Attendance extends MY_Controller
      */
     public function update_device()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'update_device');
         $deviceId = trim((string) $this->input->post('device_id'));
         if (!$deviceId || !preg_match('/^[A-Za-z0-9_]+$/', $deviceId)) {
             return $this->json_error('Invalid device ID.');
@@ -911,6 +970,7 @@ class Attendance extends MY_Controller
      */
     public function delete_device()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'delete_device');
         $deviceId = trim((string) $this->input->post('device_id'));
         if (!$deviceId || !preg_match('/^[A-Za-z0-9_]+$/', $deviceId)) {
             return $this->json_error('Invalid device ID.');
@@ -936,6 +996,7 @@ class Attendance extends MY_Controller
      */
     public function regenerate_key()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'regenerate_key');
         $deviceId = trim((string) $this->input->post('device_id'));
         if (!$deviceId || !preg_match('/^[A-Za-z0-9_]+$/', $deviceId)) {
             return $this->json_error('Invalid device ID.');
@@ -1027,6 +1088,32 @@ class Attendance extends MY_Controller
             http_response_code(400);
             echo json_encode(['status' => 'error', 'message' => 'Invalid person_id format.']);
             return;
+        }
+
+        // ── C-05 FIX: Verify person_id belongs to the authenticated school ──
+        $schoolName_pre = $auth['school_name'];
+        // Resolve parent_db_key for this school (legacy schools use school_code, SCH_ schools use school_id)
+        $schoolMeta = $this->firebase->get("System/Schools/{$schoolName_pre}");
+        $parentDbKey = $schoolName_pre; // default
+        if (is_array($schoolMeta)) {
+            if (!empty($schoolMeta['school_code']) && strpos($schoolName_pre, 'SCH_') !== 0) {
+                $parentDbKey = $schoolMeta['school_code'];
+            }
+        }
+        if ($personType === 'student') {
+            $personCheck = $this->firebase->get("Users/Parents/{$parentDbKey}/{$personId}/Name");
+            if (!$personCheck) {
+                http_response_code(403);
+                echo json_encode(['status' => 'error', 'message' => 'Person ID does not belong to this school.']);
+                return;
+            }
+        } elseif ($personType === 'staff') {
+            $staffCheck = $this->firebase->get("Users/Teachers/{$schoolName_pre}/{$personId}/Name");
+            if (!$staffCheck) {
+                http_response_code(403);
+                echo json_encode(['status' => 'error', 'message' => 'Staff ID does not belong to this school.']);
+                return;
+            }
         }
 
         // Reject low-confidence face recognition punches
@@ -1177,6 +1264,7 @@ class Attendance extends MY_Controller
      */
     public function fetch_analytics()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_analytics');
         $month = trim((string) $this->input->post('month'));
         $classFilter = trim((string) $this->input->post('class'));
 
@@ -1247,6 +1335,7 @@ class Attendance extends MY_Controller
      */
     public function fetch_monthly_trend()
     {
+        $this->_require_role(self::VIEW_ROLES, 'monthly_trend');
         $classFilter   = trim((string) $this->input->post('class'));
         $sectionFilter = trim((string) $this->input->post('section'));
 
@@ -1313,6 +1402,7 @@ class Attendance extends MY_Controller
      */
     public function fetch_individual_report()
     {
+        $this->_require_role(self::VIEW_ROLES, 'individual_report');
         $personId   = trim((string) $this->input->post('person_id'));
         $personType = trim((string) $this->input->post('person_type'));
         $class      = trim((string) $this->input->post('class'));
@@ -1335,6 +1425,24 @@ class Attendance extends MY_Controller
             }
             $class   = $this->safe_path_segment($class, 'class');
             $section = $this->safe_path_segment($section, 'section');
+        }
+
+        // Look up person name for confirmation
+        $personName = '';
+        $personClass = '';
+        $personSection = '';
+        if ($personType === 'student') {
+            $profile = $this->firebase->get("Users/Parents/{$this->parent_db_key}/{$personId}");
+            if (is_array($profile)) {
+                $personName    = $profile['Name'] ?? $profile['name'] ?? '';
+                $personClass   = $profile['Class'] ?? '';
+                $personSection = $profile['Section'] ?? '';
+            }
+        } else {
+            $staffData = $this->firebase->get("Users/Teachers/{$this->school_id}/{$personId}");
+            if (is_array($staffData)) {
+                $personName = $staffData['Name'] ?? $staffData['Profile']['name'] ?? '';
+            }
         }
 
         $monthlyData = [];
@@ -1376,8 +1484,13 @@ class Attendance extends MY_Controller
             : 0;
 
         return $this->json_success([
-            'months' => $monthlyData,
-            'totals' => $grandTotals,
+            'person_name'    => $personName,
+            'person_class'   => $personClass,
+            'person_section' => $personSection,
+            'person_id'      => $personId,
+            'person_type'    => $personType,
+            'months'         => $monthlyData,
+            'totals'         => $grandTotals,
         ]);
     }
 
@@ -1387,6 +1500,7 @@ class Attendance extends MY_Controller
      */
     public function compute_summary()
     {
+        $this->_require_role(self::VIEW_ROLES, 'compute_summary');
         $month = trim((string) $this->input->post('month'));
         if (!$month || !isset($this->month_map[$month])) {
             return $this->json_error('Invalid month.');
@@ -1448,6 +1562,7 @@ class Attendance extends MY_Controller
      */
     public function fetch_punch_log()
     {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_punch_log');
         $date = trim((string) $this->input->post('date'));
         if (!$date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
             $date = date('Y-m-d');
@@ -1477,6 +1592,7 @@ class Attendance extends MY_Controller
      */
     public function api_get_classes()
     {
+        $this->_require_role(self::VIEW_ROLES, 'api_get_classes');
         header('Content-Type: application/json');
         $classes = $this->_build_class_list();
         return $this->json_success(['classes' => $classes]);
@@ -1488,6 +1604,7 @@ class Attendance extends MY_Controller
      */
     public function api_get_students()
     {
+        $this->_require_role(self::VIEW_ROLES, 'api_get_students');
         $class   = $this->safe_path_segment(trim((string) $this->input->post('class')), 'class');
         $section = $this->safe_path_segment(trim((string) $this->input->post('section')), 'section');
 
@@ -1517,6 +1634,7 @@ class Attendance extends MY_Controller
      */
     public function api_get_attendance()
     {
+        $this->_require_role(self::VIEW_ROLES, 'api_get_attendance');
         $class   = $this->safe_path_segment(trim((string) $this->input->post('class')), 'class');
         $section = $this->safe_path_segment(trim((string) $this->input->post('section')), 'section');
 
@@ -1569,6 +1687,7 @@ class Attendance extends MY_Controller
      */
     public function api_mark_attendance()
     {
+        $this->_require_role(self::MARK_ROLES, 'api_mark_attendance');
         $class   = $this->safe_path_segment(trim((string) $this->input->post('class')), 'class');
         $section = $this->safe_path_segment(trim((string) $this->input->post('section')), 'section');
         $attData = $this->input->post('attendance');
@@ -1576,6 +1695,10 @@ class Attendance extends MY_Controller
 
         if (!$class || !$section || !$attData) {
             return $this->json_error('class, section, and attendance required.');
+        }
+        // H-01 FIX: Teachers can only mark attendance for their assigned classes
+        if (!$this->_teacher_can_access($class, "Section {$section}")) {
+            return $this->json_error('You are not assigned to this class/section.', 403);
         }
 
         if (is_string($attData)) $attData = json_decode($attData, true);
@@ -1689,27 +1812,78 @@ class Attendance extends MY_Controller
         }
         if (!$rawKey || strlen($rawKey) < 16) return false;
 
+        // ── C-03 FIX: Rate limit failed API key attempts — max 20 per IP per 15 min ──
+        $clientIp = $this->input->ip_address();
+        $ipKey    = preg_replace('/[^a-zA-Z0-9]/', '_', $clientIp);
+        $ratePath = "System/RateLimits/api_key/{$ipKey}";
+        $rateData = $this->firebase->get($ratePath);
+        $windowStart = time() - 900;
+        if (is_array($rateData)) {
+            $recentCount = 0;
+            foreach ($rateData as $ts => $v) {
+                if ((int) $ts >= $windowStart) $recentCount++;
+                else $this->firebase->delete($ratePath, (string) $ts);
+            }
+            if ($recentCount >= 20) {
+                log_message('error', "API key rate limit exceeded for IP: {$clientIp}");
+                return false;
+            }
+        }
+
         $keyHash = hash('sha256', $rawKey);
+
+        // M-09 FIX: File-based API key cache to avoid Firebase read on every biometric punch.
+        // Cache valid keys for 5 minutes. Cache file keyed by key hash.
+        $cacheDir  = APPPATH . 'cache/api_keys/';
+        $cacheFile = $cacheDir . $keyHash . '.json';
+        $cacheTTL  = 300; // 5 minutes
+
+        if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < $cacheTTL) {
+            $cached = json_decode(file_get_contents($cacheFile), true);
+            if (is_array($cached) && !empty($cached['school_name'])) {
+                return $cached;
+            }
+        }
 
         // We need to search across all schools — but we don't know the school yet
         // So we check System-level key index first
         $lookup = $this->firebase->get("System/API_Keys/{$keyHash}");
         if (is_array($lookup) && !empty($lookup['school_name'])) {
+            $this->_cache_api_key($cacheDir, $cacheFile, $lookup);
             return $lookup;
         }
 
-        // Fallback: if the school name is passed in the request
         // Fallback: if the school name is passed in the request header — sanitize to prevent path injection
         $schoolHint = trim($_SERVER['HTTP_X_SCHOOL'] ?? '');
         if ($schoolHint && preg_match('/^[A-Za-z0-9 _\-]+$/', $schoolHint)) {
             $lookup = $this->firebase->get("Schools/{$schoolHint}/Config/API_Keys/{$keyHash}");
             if (is_array($lookup)) {
                 $lookup['school_name'] = $schoolHint;
+                $this->_cache_api_key($cacheDir, $cacheFile, $lookup);
                 return $lookup;
             }
         }
 
+        // Log failed attempt for rate limiting
+        $this->firebase->set("{$ratePath}/" . time() . '_' . mt_rand(1000, 9999), 1);
+
         return false;
+    }
+
+    /**
+     * M-09 FIX: Write validated API key data to file cache.
+     */
+    private function _cache_api_key(string $cacheDir, string $cacheFile, array $data): void
+    {
+        try {
+            if (!is_dir($cacheDir)) {
+                mkdir($cacheDir, 0700, true);
+            }
+            file_put_contents($cacheFile, json_encode($data), LOCK_EX);
+            chmod($cacheFile, 0600);
+        } catch (Exception $e) {
+            log_message('error', 'API key cache write failed: ' . $e->getMessage());
+        }
     }
 
     /**

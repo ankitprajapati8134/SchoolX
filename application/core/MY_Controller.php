@@ -57,9 +57,22 @@ class MY_Controller extends CI_Controller
     {
         parent::__construct();
 
+        // ── HTTPS enforcement (PHP-level fallback if .htaccess redirect is not active) ──
+        // Activated by FORCE_HTTPS=true in .env
+        if (
+            getenv('FORCE_HTTPS') === 'true'
+            && (!isset($_SERVER['HTTPS']) || $_SERVER['HTTPS'] !== 'on')
+            && (!isset($_SERVER['HTTP_X_FORWARDED_PROTO']) || $_SERVER['HTTP_X_FORWARDED_PROTO'] !== 'https')
+        ) {
+            header('Location: https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'], true, 301);
+            exit;
+        }
+
         $this->load->library('firebase');
         $this->load->library('session');
         $this->load->helper('url');
+        $this->load->helper('rbac');
+        $this->load->helper('audit');
 
         // [FIX-5] + [A-02] Full security + no-cache headers
         $this->_send_security_headers();
@@ -114,6 +127,17 @@ class MY_Controller extends CI_Controller
                 redirect('admin_login');
             }
 
+            // ── Session year whitelist check ─────────────────────────────
+            $available = $this->available_sessions;
+            if (!empty($available) && is_array($available)
+                && !in_array($this->session_year, $available, true)) {
+                log_message('error',
+                    'MY_Controller: session_year [' . $this->session_year
+                    . '] not in whitelist — forcing logout.'
+                );
+                $this->_force_logout('Invalid academic session. Please log in again.');
+            }
+
             $now = time();
 
             // ── [BUG-1+2 FIX] [A-01] Live subscription re-check every 5 min ──
@@ -124,7 +148,9 @@ class MY_Controller extends CI_Controller
             //
             $lastCheck = (int) $this->session->userdata('sub_check_ts');
 
-            if ($now - $lastCheck >= 300) {
+            // M-06 FIX: Reduced subscription re-check interval from 300s (5 min) to 60s (1 min)
+            // to minimize the window where a revoked subscription still grants access.
+            if ($now - $lastCheck >= 60) {
                 // Subscription status check — try new path, then legacy fallback
                 $liveStatus = $this->firebase->get("System/Schools/{$this->school_id}/subscription/status");
                 if ($liveStatus === null || $liveStatus === false || $liveStatus === '') {
@@ -149,7 +175,7 @@ class MY_Controller extends CI_Controller
                     // Firebase on every request, but don't kick the user out.
                     log_message('error',
                         'MY_Controller: Firebase unreachable during sub check for school=['
-                        . $this->school_name . ']. Skipping — will retry in 5 min.'
+                        . $this->school_name . ']. Skipping — will retry in 60s.'
                     );
                     $this->session->set_userdata('sub_check_ts', $now);
                 }
@@ -185,7 +211,7 @@ class MY_Controller extends CI_Controller
             $sent = $this->input->post($token_name)
                  ?? $this->input->get_request_header('X-CSRF-Token', TRUE);
 
-            if ($sent !== $token_hash) {
+            if (!is_string($sent) || !hash_equals($token_hash, $sent)) {
                 log_message('error',
                     'CSRF failure route=' . $route_key
                     . ' ip=' . $this->input->ip_address()
@@ -197,8 +223,25 @@ class MY_Controller extends CI_Controller
             }
         }
 
+        // ── Normalize features: module keys → sidebar display names ────────
+        // Superadmin stores features as keys ('student_management','fees',…)
+        // but sidebar checks display names ('Student Management','Fees Management',…).
+        $this->school_features = $this->_normalize_features($this->school_features);
+
         // ── [A-03] Share common vars with all views ───────────────────────
         // 'current_session' added so account_book.php gets the right variable.
+        // ── [RBAC] Load permissions (cached in session at login) ────────
+        $rbac_permissions = $this->session->userdata('rbac_permissions');
+        if (!is_array($rbac_permissions)) {
+            // First request after login or session doesn't have it yet — load now
+            $rbac_permissions = load_role_permissions(
+                $this->firebase,
+                $this->school_name,
+                $this->admin_role ?? ''
+            );
+            $this->session->set_userdata('rbac_permissions', $rbac_permissions);
+        }
+
         $this->load->vars([
             'school_id'            => $this->school_id,           // SCH_XXXXXX
             'school_code'          => $this->school_code,         // login code
@@ -212,6 +255,7 @@ class MY_Controller extends CI_Controller
             'admin_name'           => $this->admin_name,
             'admin_role'           => $this->admin_role,
             'school_features'      => $this->school_features,
+            'rbac_permissions'     => $rbac_permissions,           // [RBAC] module permissions
             'subscription_warning' => $this->session->userdata('subscription_warning'),
         ]);
     }
@@ -233,6 +277,88 @@ class MY_Controller extends CI_Controller
         header('X-Content-Type-Options: nosniff');
         header('X-XSS-Protection: 1; mode=block');
         header('Referrer-Policy: strict-origin-when-cross-origin');
+        header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+
+        // ── HSTS — only sent over HTTPS to prevent header injection over HTTP ──
+        // After initial testing, increase max-age to 31536000 (1 year).
+        if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
+            header('Strict-Transport-Security: max-age=86400; includeSubDomains');
+        }
+
+        // H-03 FIX: Content-Security-Policy — restrict resource loading
+        // Allows self, Google Fonts, Font Awesome CDN, DataTables, and inline styles/scripts
+        // (inline needed for CI3 views with embedded <script>/<style> blocks)
+        $csp = "default-src 'self'; "
+            . "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.datatables.net; "
+            . "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.datatables.net https://api.fontshare.com; "
+            . "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.fontshare.com; "
+            . "img-src 'self' data: blob: https://*.googleapis.com https://*.firebasestorage.googleapis.com; "
+            . "connect-src 'self' https://*.firebaseio.com https://*.firebasedatabase.app https://cdnjs.cloudflare.com; "
+            . "frame-ancestors 'none'; "
+            . "base-uri 'self'; "
+            . "form-action 'self';";
+
+        // When HTTPS is active, add upgrade-insecure-requests to auto-upgrade
+        // any leftover http:// references in views/templates
+        if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
+            $csp = "upgrade-insecure-requests; " . $csp;
+        }
+
+        header("Content-Security-Policy: " . $csp);
+    }
+
+    /**
+     * Convert module keys stored in Firebase to sidebar display names.
+     *
+     * Superadmin_schools saves features as module keys: 'student_management','fees',…
+     * The sidebar (header.php) checks for display names: 'Student Management','Fees Management',…
+     * This method bridges the gap, and also handles legacy schools that may already
+     * have display names stored.
+     */
+    private function _normalize_features($features): array
+    {
+        if (!is_array($features) || empty($features)) return [];
+
+        // Module key → sidebar display name(s) used in header.php in_array() checks
+        $map = [
+            'student_management' => ['Student Management'],
+            'staff_management'   => ['Staff Management'],
+            'fees'               => ['Fees Management'],
+            'accounts'           => ['Account Management'],
+            'exams'              => ['Exam Management'],
+            'results'            => ['Exam Management'],
+            'attendance'         => ['Student Management'],
+            'notices'            => ['Notice and Announcement'],
+            'gallery'            => ['School Management'],
+            'timetable'          => ['School Management', 'Class Management'],
+            'id_cards'           => ['Student Management'],
+            'homework'           => ['School Management'],
+            'sms_alerts'         => [],
+            'parent_app'         => [],
+            'teacher_app'        => [],
+        ];
+
+        $normalized = [];
+        foreach ($features as $f) {
+            $f = trim((string)$f);
+            if ($f === '') continue;
+            if (isset($map[$f])) {
+                // Module key — map to display names
+                foreach ($map[$f] as $name) {
+                    $normalized[$name] = true;
+                }
+            } else {
+                // Already a display name (legacy) or unknown — keep as-is
+                $normalized[$f] = true;
+            }
+        }
+
+        // Core features always available for any plan
+        $normalized['School Management']  = true;
+        $normalized['Class Management']   = true;
+        $normalized['Subject Management'] = true;
+
+        return array_keys($normalized);
     }
 
     /**
@@ -358,9 +484,12 @@ class MY_Controller extends CI_Controller
         $role = $this->admin_role ?? '';
 
         // Super Admin always passes
-        if ($role === 'Super Admin') return;
+        if (strcasecmp($role, 'Super Admin') === 0) return;
 
-        if (in_array($role, $allowed, true)) return;
+        // Case-insensitive role match (Firebase role values may vary in casing)
+        foreach ($allowed as $a) {
+            if (strcasecmp($role, $a) === 0) return;
+        }
 
         $label = $action ? " ({$action})" : '';
         log_message('error',

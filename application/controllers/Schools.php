@@ -3,6 +3,12 @@ defined('BASEPATH') or exit('No direct script access allowed');
 
 class Schools extends MY_Controller
 {
+    /** Roles for school management */
+    private const ADMIN_ROLES = ['Admin', 'Principal'];
+
+    /** Roles that may view school data */
+    private const VIEW_ROLES  = ['Admin', 'Principal', 'Teacher'];
+
     public function __construct()
     {
         parent::__construct();
@@ -49,16 +55,27 @@ class Schools extends MY_Controller
 
     public function fees()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_fees');
         $this->load->view('include/header');
         $this->load->view('fees');
         $this->load->view('include/footer');
     }
 
     // ── Delete School (Super Admin only) ────────────────────────────────
-    public function delete_school($schoolId)
+    public function delete_school($schoolId = null)
     {
         if ($this->admin_role !== 'Super Admin') {
             show_error('Access denied. Super Admin only.', 403);
+            return;
+        }
+        if (empty($schoolId) || !$this->safe_path_segment($schoolId)) {
+            show_error('Invalid school ID.', 400);
+            return;
+        }
+        // Cross-tenant guard: logged-in admin must own this school or be SA-panel ("Our Panel")
+        $adminSchoolId = $this->school_id ?? '';
+        if ($adminSchoolId !== $schoolId && ($this->session->userdata('admin_type') ?? '') !== 'Our Panel') {
+            show_error('You can only delete your own school.', 403);
             return;
         }
         $schoolName = $this->CM->get_school_name_by_id($schoolId);
@@ -79,10 +96,20 @@ class Schools extends MY_Controller
     }
 
     // ── Edit School (Super Admin only) ──────────────────────────────────
-    public function edit_school($schoolId)
+    public function edit_school($schoolId = null)
     {
         if ($this->admin_role !== 'Super Admin') {
             show_error('Access denied. Super Admin only.', 403);
+            return;
+        }
+        if (empty($schoolId) || !$this->safe_path_segment($schoolId)) {
+            show_error('Invalid school ID.', 400);
+            return;
+        }
+        // Cross-tenant guard: logged-in admin must own this school or be SA-panel ("Our Panel")
+        $adminSchoolId = $this->school_id ?? '';
+        if ($adminSchoolId !== $schoolId && ($this->session->userdata('admin_type') ?? '') !== 'Our Panel') {
+            show_error('You can only edit your own school.', 403);
             return;
         }
         $session_year  = $this->session_year;
@@ -199,6 +226,7 @@ class Schools extends MY_Controller
     // ── School Profile ────────────────────────────────────────────────────
     public function schoolProfile()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_school_profile');
         $school_name = $this->school_name;
 
         // BUG FIX #8 — cast to array defensively
@@ -427,6 +455,7 @@ class Schools extends MY_Controller
     // ── School Gallery ────────────────────────────────────────────────────
     public function schoolgallery()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_gallery');
         $this->load->view('include/header');
         $this->load->view('schoolgallery');
         $this->load->view('include/footer');
@@ -435,6 +464,7 @@ class Schools extends MY_Controller
     // ── Gallery: fetch event albums ─────────────────────────────────────
     public function fetchGalleryAlbums()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_gallery_albums');
         header('Content-Type: application/json');
         $school_name = $this->school_name;
 
@@ -510,6 +540,7 @@ class Schools extends MY_Controller
     // ── Gallery: fetch media for a specific event album ─────────────────
     public function fetchAlbumMedia()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_album_media');
         header('Content-Type: application/json');
         $school_name = $this->school_name;
         $eventId     = trim($this->input->get('event_id') ?? '');
@@ -580,6 +611,7 @@ class Schools extends MY_Controller
     // ── Gallery: delete media ───────────────────────────────────────────
     public function deleteMedia()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'delete_media');
         header('Content-Type: application/json');
 
         $school_name = $this->school_name;
@@ -640,6 +672,7 @@ class Schools extends MY_Controller
     // ── Gallery: upload media to event album ────────────────────────────
     public function uploadMedia()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'upload_media');
         header('Content-Type: application/json');
 
         $school_name = $this->school_name;
@@ -738,6 +771,7 @@ class Schools extends MY_Controller
     // ── Gallery: set event cover image ──────────────────────────────────
     public function setEventCover()
     {
+        $this->_require_role(self::ADMIN_ROLES, 'set_event_cover');
         header('Content-Type: application/json');
         $school_name = $this->school_name;
         $eventId     = trim($this->input->post('event_id') ?? '');
