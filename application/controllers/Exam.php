@@ -314,10 +314,10 @@ class Exam extends MY_Controller
         $cumulativePath = "Schools/{$school}/{$year}/Results/Cumulative";
         $cumulativeKeys = $this->firebase->shallow_get($cumulativePath);
         if (is_array($cumulativeKeys)) {
-            foreach ($cumulativeKeys as $ck) {
+            foreach (array_keys($cumulativeKeys) as $ck) {
                 $sectionKeys = $this->firebase->shallow_get("{$cumulativePath}/{$ck}");
                 if (is_array($sectionKeys)) {
-                    foreach ($sectionKeys as $sk) {
+                    foreach (array_keys($sectionKeys) as $sk) {
                         $this->firebase->set("{$cumulativePath}/{$ck}/{$sk}/_stale", [
                             'reason' => "Exam {$id} deleted",
                             'deleted_at' => date('c'),

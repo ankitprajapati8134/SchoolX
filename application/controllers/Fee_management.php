@@ -2282,15 +2282,17 @@ class Fee_management extends MY_Controller
                         // Firebase stores fees nested: Classes Fees/Class 8th/Section A/{title}
                         $feeData = $classFees[$classKey][$sectionKey] ?? [];
 
-                        $monthlyTotal = 0;
+                        // Fee structure is {month: {title: amount}} — sum per unpaid month
+                        $unpaidAmount = 0;
                         if (is_array($feeData)) {
-                            foreach ($feeData as $title => $amt) {
-                                if (!is_numeric($amt)) continue;
-                                $monthlyTotal += (float) $amt;
+                            foreach ($unpaidMonths as $m) {
+                                if (!isset($feeData[$m]) || !is_array($feeData[$m])) continue;
+                                foreach ($feeData[$m] as $title => $amt) {
+                                    if (!is_numeric($amt)) continue;
+                                    $unpaidAmount += (float) $amt;
+                                }
                             }
                         }
-
-                        $unpaidAmount = $monthlyTotal * count($unpaidMonths);
                         if ($unpaidAmount > 0) {
                             $carriedForward[$userId] = [
                                 'student_name'  => $name,

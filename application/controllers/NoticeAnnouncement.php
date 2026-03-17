@@ -447,6 +447,11 @@ class NoticeAnnouncement extends MY_Controller
     public function delete($id)
     {
         $this->_require_role(self::MANAGE_ROLES, 'delete_notice');
+        $id = preg_replace('/[^a-zA-Z0-9_-]/', '', $id);
+        if ($id === '') {
+            redirect('NoticeAnnouncement');
+            return;
+        }
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
         $path = 'Schools/' . $school_name . '/' . $session_year . '/All Notices/' . $id;

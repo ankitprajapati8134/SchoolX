@@ -509,8 +509,18 @@ class Admin extends MY_Controller
         }
         $modalId = $this->safe_path_segment($modalId, 'modal_id');
 
-        // Prevent updating Credentials via this endpoint
-        unset($userData['Credentials'], $userData['AccessHistory']);
+        // Whitelist: only allow safe profile fields (SEC-4)
+        $allowed = [
+            'Name', 'Email', 'Phone', 'Gender', 'Address', 'DOB',
+            'Qualification', 'Designation', 'Department', 'Photo',
+            'Father_Name', 'Mother_Name', 'Blood_Group', 'Religion',
+            'Aadhar', 'PAN', 'Experience', 'Joining_Date', 'Bio',
+        ];
+        $userData = array_intersect_key($userData, array_flip($allowed));
+
+        if (empty($userData)) {
+            $this->json_error('No valid fields to update.', 400);
+        }
 
         try {
             $this->firebase->update("Users/Admin/{$school_id}/{$modalId}", $userData);

@@ -1146,8 +1146,12 @@ class Fees extends MY_Controller
             log_message('error', "submit_fees: PARTIAL MONTH MARKING — student=$userId, receipt=$receiptNo, failed_months=" . implode(',', $failedMonths) . ". Pending flag retained for manual reconciliation.");
         }
 
-        // Mark fee submission as completed — clear pending flag
-        $this->firebase->delete("Schools/$school_name/$session_year/Accounts/Pending_fees", $receiptKey);
+        // Mark fee submission as completed — clear pending flag only if all months marked successfully
+        if (empty($failedMonths)) {
+            $this->firebase->delete("Schools/$school_name/$session_year/Accounts/Pending_fees", $receiptKey);
+        } else {
+            log_message('error', "submit_fees: Pending flag RETAINED for receipt=$receiptNo (student=$userId) due to failed months: " . implode(',', $failedMonths) . ". Requires manual reconciliation.");
+        }
 
         // ── Accounting integration via Operations_accounting library
         $journalParams = [

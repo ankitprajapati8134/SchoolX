@@ -2009,6 +2009,7 @@ class Sis extends MY_Controller
 
             $success = 0;
             $error   = 0;
+            $skipped = [];
 
             $studentIdCount = $this->CM->get_data("Users/Parents/{$school_id}/Count");
             if (!$studentIdCount) $studentIdCount = 1;
@@ -2077,7 +2078,15 @@ class Sis extends MY_Controller
                     ],
                 ];
 
-                $this->firebase->set("Users/Parents/{$school_id}/{$studentId}", $studentData);
+                // Check for duplicate — ensures no existing profile is overwritten
+                $existing = $this->firebase->get("Users/Parents/{$school_id}/{$studentId}");
+                if (!empty($existing)) {
+                    $skipped[] = "Row " . ($success + $error + count($skipped) + 1) . ": {$studentName} — ID {$studentId} already exists";
+                    $studentIdCount++;
+                    continue;
+                }
+
+                $this->firebase->update("Users/Parents/{$school_id}/{$studentId}", $studentData);
                 $this->CM->addKey_pair_data("Schools/{$school_name}/{$session_year}/{$combinedClass}/Students/", [$studentId => ['Name' => $studentName]]);
                 $this->CM->addKey_pair_data("Schools/{$school_name}/{$session_year}/{$combinedClass}/Students/List/", [$studentId => $studentName]);
 
@@ -2143,7 +2152,11 @@ class Sis extends MY_Controller
             }
 
             $this->CM->addKey_pair_data("Users/Parents/{$school_id}/", ['Count' => $studentIdCount]);
-            $this->session->set_flashdata('import_result', "Imported Successfully: {$success} | Failed: {$error}");
+            $msg = "Imported Successfully: {$success} | Failed: {$error}";
+            if (!empty($skipped)) {
+                $msg .= " | Skipped (ID collision): " . count($skipped) . " — " . implode('; ', $skipped);
+            }
+            $this->session->set_flashdata('import_result', $msg);
             redirect('sis/all_student');
         } catch (Exception $e) {
             log_message('error', 'IMPORT ERROR: ' . $e->getMessage());

@@ -724,7 +724,7 @@ class Attendance extends MY_Controller
         }
 
         $count = 0;
-        foreach ($teacherKeys as $staffId) {
+        foreach ($teacherKeys as $staffId => $v) {
             if (!is_string($staffId) || trim($staffId) === '') continue;
             $attPath = "Schools/{$school}/{$session}/Staff_Attendance/{$attKey}/{$staffId}";
             $existing = $this->firebase->get($attPath);
