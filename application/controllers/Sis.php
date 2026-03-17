@@ -1049,6 +1049,20 @@ class Sis extends MY_Controller
             ['status' => 'Active']
         );
 
+        // Re-add student to session roster (reverse of issue_tc roster removal)
+        $student = $this->firebase->get("Users/Parents/{$school_id}/{$userId}");
+        if (!empty($student) && is_array($student)) {
+            $classOrd   = $student['Class']   ?? '';
+            $sectionLtr = $student['Section'] ?? '';
+            $session    = $this->session_year;
+            if (!empty($classOrd) && !empty($sectionLtr)) {
+                $rosterBase = "Schools/{$school_name}/{$session}/Class {$classOrd}/Section {$sectionLtr}/Students";
+                $rosterEntry = ['Name' => $student['Name'] ?? $userId];
+                // Primary roster path
+                $this->firebase->set("{$rosterBase}/List/{$userId}", $rosterEntry);
+            }
+        }
+
         $this->_log_history($school_id, $userId, 'TC_CANCELLED',
             'Transfer Certificate cancelled — student re-activated.'
         );
@@ -2291,6 +2305,7 @@ class Sis extends MY_Controller
                     'Transfer Certificate' => ['url' => $documentUrls['Transfer Certificate'] ?? '', 'thumbnail' => $thumbnailUrls['Transfer Certificate'] ?? ''],
                     'Photo'                => ['url' => $photoUpload['document'] ?? '', 'thumbnail' => $photoUpload['thumbnail'] ?? ''],
                 ],
+                "Status" => "Active",
             ];
 
             $this->firebase->set("Users/Parents/{$school_id}/{$studentId}", $studentData);
@@ -2348,6 +2363,10 @@ class Sis extends MY_Controller
             $this->CM->addKey_pair_data('Exits/', [$phoneNumber => $school_id]);
             $this->CM->addKey_pair_data('User_ids_pno/', [$phoneNumber => $studentId]);
             $this->CM->addKey_pair_data("Users/Parents/{$school_id}/", ['Count' => $studentIdCount + 1]);
+
+            // Update Students_Index (matches save_admission pattern)
+            $gender = $normalizedPostData['gender'] ?? '';
+            $this->_update_student_index($school_name, $studentId, $studentName, $className, $section, 'Active', $gender);
 
             echo json_encode(['status' => 'success', 'message' => 'Student admission successful']);
             return;
@@ -3149,6 +3168,7 @@ class Sis extends MY_Controller
             "Pre School"=>$app['previous_school']??'', "Pre Class"=>$app['previous_class']??'', "Pre Marks"=>$app['previous_marks']??'',
             "Profile Pic"=>"",
             "Doc"=>["Aadhar Card"=>["thumbnail"=>"","url"=>""],"Birth Certificate"=>["thumbnail"=>"","url"=>""],"Photo"=>["thumbnail"=>"","url"=>""],"Transfer Certificate"=>["thumbnail"=>"","url"=>""]],
+            "Status"=>"Active",
         ];
 
         $this->firebase->set("Users/Parents/{$school_id}/{$studentId}", $studentData);
@@ -3162,6 +3182,15 @@ class Sis extends MY_Controller
             $this->firebase->update('Exits', [$phone => $school_id]);
             $this->firebase->update('User_ids_pno', [$phone => $studentId]);
         }
+
+        // Update Students_Index (matches save_admission pattern)
+        $gender = $app['gender'] ?? '';
+        $this->_update_student_index($school_name, $studentId, $app['student_name'] ?? '', $className, $section, 'Active', $gender);
+
+        // Initialize Month Fee markers as unpaid (0) for all 12 months
+        $months = ['April','May','June','July','August','September','October','November','December','January','February','March'];
+        $monthFeeData = array_fill_keys($months, 0);
+        $this->firebase->set("Schools/{$school_name}/{$session}/{$combinedPath}/Students/{$studentId}/Month Fee", $monthFeeData);
 
         $history = $app['history'] ?? [];
         $history[] = ['action'=>"Enrolled as {$studentId} in Class {$className} Section {$section}",'by'=>$this->admin_name,'timestamp'=>$now];

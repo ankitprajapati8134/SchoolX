@@ -358,9 +358,14 @@ class Inventory extends MY_Controller
             // Verify the write
             $verified = (int) ($this->firebase->get($this->_items($itemId) . '/current_stock') ?? 0);
             if ($verified !== $newStock) {
-                // Another writer conflicted — re-read and retry once
+                // Another writer conflicted — check if our write already applied
                 $retryStock = (int) ($this->firebase->get($this->_items($itemId) . '/current_stock') ?? 0);
-                $this->firebase->set($this->_items($itemId) . '/current_stock', $retryStock + $qty);
+                if ($retryStock < $freshStock + $qty) {
+                    // Our addition was lost or partially applied — re-apply on fresh value
+                    $newStock = $retryStock + $qty;
+                    $this->firebase->set($this->_items($itemId) . '/current_stock', $newStock);
+                }
+                // else: fresh stock already includes our addition — no action needed
             }
 
             $this->firebase->update($this->_purchases($poId), ['status' => 'Completed']);
@@ -447,8 +452,17 @@ class Inventory extends MY_Controller
             // Verify the write
             $verified = (int) ($this->firebase->get($this->_items($itemId) . '/current_stock') ?? 0);
             if ($verified !== $newStock) {
+                // Another writer conflicted — check if our write already applied
                 $retryStock = (int) ($this->firebase->get($this->_items($itemId) . '/current_stock') ?? 0);
-                $this->firebase->set($this->_items($itemId) . '/current_stock', $retryStock - $qty);
+                if ($retryStock > $freshStock - $qty) {
+                    // Our subtraction was lost or partially applied — re-apply on fresh value
+                    if ($retryStock < $qty) {
+                        $this->json_error("Insufficient stock after conflict. Available: {$retryStock}.");
+                    }
+                    $newStock = $retryStock - $qty;
+                    $this->firebase->set($this->_items($itemId) . '/current_stock', $newStock);
+                }
+                // else: fresh stock already reflects our subtraction — no action needed
             }
 
             $this->json_success(['id' => $issId, 'message' => "Issued {$qty} {$item['unit']} of {$item['name']}."]);

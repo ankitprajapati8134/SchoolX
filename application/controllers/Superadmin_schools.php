@@ -220,7 +220,10 @@ class Superadmin_schools extends MY_Superadmin_Controller
 
         // ── 1. Indexes/School_names — name → school_id (uniqueness + reverse lookup) ─
         try {
-            $this->firebase->set("Indexes/School_names/{$nameKey}", $school_id);
+            $result = $this->firebase->set("Indexes/School_names/{$nameKey}", $school_id);
+            if ($result === false) {
+                throw new \Exception("Failed to write to Indexes/School_names/{$nameKey}");
+            }
             $rollbackPaths[] = "Indexes/School_names/{$nameKey}";
         } catch (Exception $e) {
             log_message('error', 'SA onboard: Indexes/School_names write failed — ' . $e->getMessage());
@@ -230,7 +233,10 @@ class Superadmin_schools extends MY_Superadmin_Controller
 
         // ── 2. Indexes/School_codes/{code} → school_id  (Admin_login fast path) ─
         try {
-            $this->firebase->set("Indexes/School_codes/{$school_code}", $school_id);
+            $result = $this->firebase->set("Indexes/School_codes/{$school_code}", $school_id);
+            if ($result === false) {
+                throw new \Exception("Failed to write to Indexes/School_codes/{$school_code}");
+            }
             $rollbackPaths[] = "Indexes/School_codes/{$school_code}";
         } catch (Exception $e) {
             log_message('error', 'SA onboard: Indexes/School_codes write failed — ' . $e->getMessage());
@@ -240,7 +246,7 @@ class Superadmin_schools extends MY_Superadmin_Controller
 
         // ── 3. System/Schools/{school_id}/subscription  (PRIMARY subscription data) ─
         try {
-            $this->firebase->set("System/Schools/{$school_id}/subscription", [
+            $result = $this->firebase->set("System/Schools/{$school_id}/subscription", [
                 'status'      => 'Active',
                 'plan_id'     => $plan_id,
                 'expiry_date' => $expiry,
@@ -250,6 +256,9 @@ class Superadmin_schools extends MY_Superadmin_Controller
                 'features'    => array_keys(array_filter($plan_data['modules'] ?? [])),
                 'modules'     => $plan_data['modules'] ?? [],
             ]);
+            if ($result === false) {
+                throw new \Exception("Failed to write to System/Schools/{$school_id}/subscription");
+            }
             $rollbackPaths[] = "System/Schools/{$school_id}/subscription";
         } catch (Exception $e) {
             $this->_rollback_onboard($rollbackPaths);
@@ -259,7 +268,7 @@ class Superadmin_schools extends MY_Superadmin_Controller
         // ── 4. System/Schools/{school_id}/profile (THE canonical profile node) ─
         // school_name stored as a DATA FIELD — it is never the Firebase key.
         try {
-            $this->firebase->set("System/Schools/{$school_id}/profile", [
+            $result = $this->firebase->set("System/Schools/{$school_id}/profile", [
                 'school_name'       => $name,           // canonical human-readable name (data field)
                 'name'              => $name,            // legacy alias — kept for backward compat; readers should prefer school_name
                 'school_id'         => $school_id,       // SCH_XXXXXX — self-reference
@@ -275,6 +284,9 @@ class Superadmin_schools extends MY_Superadmin_Controller
                 'created_at'        => $now,
                 'created_by'        => $this->sa_id,
             ]);
+            if ($result === false) {
+                throw new \Exception("Failed to write to System/Schools/{$school_id}/profile");
+            }
             $rollbackPaths[] = "System/Schools/{$school_id}/profile";
         } catch (Exception $e) {
             log_message('error', 'SA onboard: profile write failed — ' . $e->getMessage());
@@ -284,7 +296,7 @@ class Superadmin_schools extends MY_Superadmin_Controller
 
         // ── 5. System/Schools/{school_id} top-level — status + identifiers + stats ─
         try {
-            $this->firebase->update("System/Schools/{$school_id}", [
+            $result = $this->firebase->update("System/Schools/{$school_id}", [
                 'status'    => 'active',
                 'school_id' => $school_id,
                 'School Id' => $school_code,
@@ -294,6 +306,9 @@ class Superadmin_schools extends MY_Superadmin_Controller
                     'last_updated'   => $now,
                 ],
             ]);
+            if ($result === false) {
+                throw new \Exception("Failed to write to System/Schools/{$school_id}");
+            }
             $rollbackPaths[] = "System/Schools/{$school_id}";
         } catch (Exception $e) {
             log_message('error', 'SA onboard: top-level identifiers write failed — ' . $e->getMessage());
@@ -303,7 +318,7 @@ class Superadmin_schools extends MY_Superadmin_Controller
 
         // ── 6. Users/Admin/{code}/{admin_id}  (first admin account) ──────────
         try {
-            $this->firebase->set("Users/Admin/{$school_code}/{$admin_id}", [
+            $result = $this->firebase->set("Users/Admin/{$school_code}/{$admin_id}", [
                 'Status'      => 'Active',
                 'Role'        => 'Admin',
                 'Name'        => $admin_name,
@@ -319,6 +334,9 @@ class Superadmin_schools extends MY_Superadmin_Controller
                 ],
                 'AccessHistory' => ['LoginAttempts' => 0],
             ]);
+            if ($result === false) {
+                throw new \Exception("Failed to write to Users/Admin/{$school_code}/{$admin_id}");
+            }
             $rollbackPaths[] = "Users/Admin/{$school_code}/{$admin_id}";
         } catch (Exception $e) {
             log_message('error', 'SA onboard: Admin account creation failed — ' . $e->getMessage());
@@ -332,8 +350,14 @@ class Superadmin_schools extends MY_Superadmin_Controller
         // Login reads Schools/{school_id}/Sessions to populate the session switcher.
         // Without this, login computes session from system date, ignoring the onboarded year.
         try {
-            $this->firebase->set("Schools/{$school_id}/Sessions", [$session_yr]);
-            $this->firebase->set("Schools/{$school_id}/Config/ActiveSession", $session_yr);
+            $result = $this->firebase->set("Schools/{$school_id}/Sessions", [$session_yr]);
+            if ($result === false) {
+                throw new \Exception("Failed to write to Schools/{$school_id}/Sessions");
+            }
+            $result = $this->firebase->set("Schools/{$school_id}/Config/ActiveSession", $session_yr);
+            if ($result === false) {
+                throw new \Exception("Failed to write to Schools/{$school_id}/Config/ActiveSession");
+            }
         } catch (Exception $e) {
             log_message('error', 'SA onboard: Sessions write failed — ' . $e->getMessage());
         }

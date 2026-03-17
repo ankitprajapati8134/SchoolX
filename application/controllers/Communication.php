@@ -1530,19 +1530,14 @@ class Communication extends MY_Controller
         // Collect recipients based on target group
         $recipients = [];
 
+        // COMM-2 fix: use SIS/Students_Index (1 read) instead of traversing class/section tree (N reads)
         if ($targetGroup === 'All Students' || $targetGroup === 'All School') {
-            $sessionKeys = $this->firebase->shallow_get("Schools/{$school}/{$session}");
-            foreach ((array) $sessionKeys as $classKey) {
-                if (strpos($classKey, 'Class ') !== 0) continue;
-                $sectionKeys = $this->firebase->shallow_get("Schools/{$school}/{$session}/{$classKey}");
-                foreach ((array) $sectionKeys as $sectionKey) {
-                    if (strpos($sectionKey, 'Section ') !== 0) continue;
-                    $students = $this->firebase->get("Schools/{$school}/{$session}/{$classKey}/{$sectionKey}/Students/List");
-                    if (is_array($students)) {
-                        foreach ($students as $sid => $sName) {
-                            $recipients[] = ['id' => $sid, 'name' => (string) $sName, 'type' => 'student'];
-                        }
-                    }
+            $index = $this->firebase->get("Schools/{$school}/SIS/Students_Index");
+            if (is_array($index)) {
+                foreach ($index as $sid => $info) {
+                    if (!is_array($info)) continue;
+                    if (($info['status'] ?? '') !== 'Active') continue;
+                    $recipients[] = ['id' => $sid, 'name' => (string) ($info['name'] ?? $sid), 'type' => 'student'];
                 }
             }
         }
@@ -1562,10 +1557,25 @@ class Communication extends MY_Controller
             $this->json_error('Too many recipients. Maximum is ' . self::MAX_BULK_RECIPIENTS . '.');
         }
 
-        // Queue each recipient
-        foreach ($recipients as $r) {
-            $queueId = $this->_next_id('Queue', 'QUE', 5);
-            $this->firebase->set($this->_comm("Queue/{$queueId}"), [
+        if (empty($recipients)) {
+            $this->json_error('No recipients found for the selected target group.');
+        }
+
+        // PERF-1 fix: bulk-allocate queue IDs (2 Firebase ops instead of 2*N)
+        $totalRecipients = count($recipients);
+        $counterPath     = $this->_counter('Queue');
+        $curCounter      = (int) ($this->firebase->get($counterPath) ?? 0);
+        $newCounter      = $curCounter + $totalRecipients;
+        $this->firebase->set($counterPath, $newCounter);
+
+        // Build all queue items in a single batch
+        $now       = date('c');
+        $batchData = [];
+        $startId   = $curCounter + 1;
+
+        foreach ($recipients as $i => $r) {
+            $queueId = 'QUE' . str_pad($startId + $i, 5, '0', STR_PAD_LEFT);
+            $batchData[$queueId] = [
                 'trigger_id'        => '',
                 'template_id'       => '',
                 'channel'           => $channel,
@@ -1580,15 +1590,18 @@ class Communication extends MY_Controller
                 'attempts'          => 0,
                 'max_attempts'      => 3,
                 'error_message'     => '',
-                'created_at'        => date('c'),
-                'scheduled_at'      => date('c'),
+                'created_at'        => $now,
+                'scheduled_at'      => $now,
                 'sent_at'           => '',
                 'source'            => 'bulk',
                 'event_type'        => '',
                 'created_by'        => $this->admin_id,
-            ]);
-            $queued++;
+            ];
         }
+
+        // PERF-1 fix: single batch write instead of N individual writes
+        $this->firebase->update($this->_comm('Queue'), $batchData);
+        $queued = $totalRecipients;
 
         $this->json_success(['queued' => $queued, 'message' => "{$queued} messages queued for delivery."]);
     }

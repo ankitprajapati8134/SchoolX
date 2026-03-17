@@ -1832,15 +1832,27 @@ class Hr extends MY_Controller
         $monthNum    = array_search($month, $validMonths) + 1;
         $daysInMonth = (int) date('t', mktime(0, 0, 0, $monthNum, 1, (int) $year));
 
-        // Load school holidays for this month
+        // Load school holidays for this month (HR-11 FIX: merge both Events and Attendance holiday sources)
         $holidays = [];
         try {
+            // Source 1: Events module — array of [{date: "YYYY-MM-DD", ...}]
             $holidayData = $this->firebase->get("Schools/{$this->school_name}/Events/Holidays/{$year}");
             if (is_array($holidayData)) {
                 foreach ($holidayData as $h) {
                     $hDate = $h['date'] ?? '';
                     if ($hDate && (int) date('n', strtotime($hDate)) === $monthNum) {
                         $holidays[date('j', strtotime($hDate))] = true;
+                    }
+                }
+            }
+            // Source 2: Attendance settings — {"YYYY-MM-DD": "Holiday Name", ...}
+            $attHolidays = $this->firebase->get("Schools/{$this->school_name}/Config/Attendance/holidays");
+            if (is_array($attHolidays)) {
+                foreach ($attHolidays as $date => $name) {
+                    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $m)) {
+                        if ((int) $m[1] === (int) $year && (int) $m[2] === $monthNum) {
+                            $holidays[(int) $m[3]] = true;
+                        }
                     }
                 }
             }

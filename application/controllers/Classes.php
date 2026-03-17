@@ -682,6 +682,10 @@ class Classes extends MY_Controller
             // Update user profile
             $batchTransfer["Users/Parents/{$school_id}/{$stuId}/Class"]   = $cleanClass;
             $batchTransfer["Users/Parents/{$school_id}/{$stuId}/Section"] = $cleanSection;
+
+            // SIS-14: Update Students_Index with new class/section
+            $batchTransfer["Schools/{$school}/SIS/Students_Index/{$stuId}/class"]   = $cleanClass;
+            $batchTransfer["Schools/{$school}/SIS/Students_Index/{$stuId}/section"] = $cleanSection;
         }
 
         // Single atomic multi-path update

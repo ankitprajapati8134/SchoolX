@@ -1389,13 +1389,11 @@ class Fee_management extends MY_Controller
                         if ($refundAmt <= 0) break;
                         if (!isset($monthFee[$m]) || (int)$monthFee[$m] !== 1) continue;
 
-                        // Calculate this month's fee total from structure
+                        // Calculate this month's fee total from structure {month: {title: amount}}
                         $mTotal = 0;
-                        if (is_array($classFees)) {
-                            foreach ($classFees as $title => $val) {
-                                if (is_array($val) && isset($val[$m])) {
-                                    $mTotal += floatval(str_replace(',', '', $val[$m]));
-                                }
+                        if (isset($classFees[$m]) && is_array($classFees[$m])) {
+                            foreach ($classFees[$m] as $title => $amt) {
+                                $mTotal += floatval(str_replace(',', '', $amt));
                             }
                         }
                         if ($mTotal <= 0) $mTotal = $refundAmt; // fallback: consume remaining

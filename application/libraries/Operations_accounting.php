@@ -357,16 +357,29 @@ class Operations_accounting
             $this->firebase->set("{$bp}/Accounts/Ledger_index/by_account/{$acCode}/{$entryId}", true);
         }
 
-        // Update closing balances
+        // Update closing balances — verify-after-write + retry for concurrency safety
         foreach ($affected as $code => $amounts) {
             $balPath = "{$bp}/Accounts/Closing_balances/{$code}";
-            $current = $this->firebase->get($balPath);
-            if (!is_array($current)) $current = ['period_dr' => 0, 'period_cr' => 0];
-            $this->firebase->set($balPath, [
-                'period_dr'     => round((float) ($current['period_dr'] ?? 0) + $amounts['dr'], 2),
-                'period_cr'     => round((float) ($current['period_cr'] ?? 0) + $amounts['cr'], 2),
-                'last_computed' => date('c'),
-            ]);
+            for ($retry = 0; $retry < 3; $retry++) {
+                $current = $this->firebase->get($balPath);
+                if (!is_array($current)) $current = ['period_dr' => 0, 'period_cr' => 0];
+                $newBal = [
+                    'period_dr'     => round((float) ($current['period_dr'] ?? 0) + $amounts['dr'], 2),
+                    'period_cr'     => round((float) ($current['period_cr'] ?? 0) + $amounts['cr'], 2),
+                    'last_computed' => date('c'),
+                ];
+                $this->firebase->set($balPath, $newBal);
+                $verify = $this->firebase->get($balPath);
+                if (is_array($verify)
+                    && abs((float) ($verify['period_dr'] ?? 0) - $newBal['period_dr']) < 0.01
+                    && abs((float) ($verify['period_cr'] ?? 0) - $newBal['period_cr']) < 0.01) {
+                    break;
+                }
+                usleep(50000 * ($retry + 1));
+                if ($retry === 2) {
+                    log_message('error', "Closing balance verify-after-write failed for {$code} after 3 retries (journal {$entryId})");
+                }
+            }
         }
 
         return $entryId;
@@ -497,21 +510,34 @@ class Operations_accounting
         $this->firebase->set("{$bp}/Accounts/Ledger_index/by_account/{$cashBankCode}/{$entryId}", true);
         $this->firebase->set("{$bp}/Accounts/Ledger_index/by_account/{$feeIncomeCode}/{$entryId}", true);
 
-        // Update closing balances
+        // Update closing balances — verify-after-write + retry for concurrency safety
         $balPath = "{$bp}/Accounts/Closing_balances";
         foreach ([$cashBankCode, $feeIncomeCode] as $ac) {
-            $cur = $this->firebase->get("{$balPath}/{$ac}");
-            if (!is_array($cur)) $cur = ['period_dr' => 0, 'period_cr' => 0];
-            $pDr = (float) ($cur['period_dr'] ?? 0);
-            $pCr = (float) ($cur['period_cr'] ?? 0);
-            if ($ac === $cashBankCode) {
-                $pDr += $amount;
-            } else {
-                $pCr += $amount;
+            for ($retry = 0; $retry < 3; $retry++) {
+                $cur = $this->firebase->get("{$balPath}/{$ac}");
+                if (!is_array($cur)) $cur = ['period_dr' => 0, 'period_cr' => 0];
+                $pDr = (float) ($cur['period_dr'] ?? 0);
+                $pCr = (float) ($cur['period_cr'] ?? 0);
+                if ($ac === $cashBankCode) {
+                    $newDr = round($pDr + $amount, 2);
+                    $newCr = round($pCr, 2);
+                } else {
+                    $newDr = round($pDr, 2);
+                    $newCr = round($pCr + $amount, 2);
+                }
+                $newBal = ['period_dr' => $newDr, 'period_cr' => $newCr, 'last_computed' => date('c')];
+                $this->firebase->set("{$balPath}/{$ac}", $newBal);
+                $verify = $this->firebase->get("{$balPath}/{$ac}");
+                if (is_array($verify)
+                    && abs((float) ($verify['period_dr'] ?? 0) - $newDr) < 0.01
+                    && abs((float) ($verify['period_cr'] ?? 0) - $newCr) < 0.01) {
+                    break;
+                }
+                usleep(50000 * ($retry + 1));
+                if ($retry === 2) {
+                    log_message('error', "Fee closing balance verify-after-write failed for {$ac} after 3 retries (entry {$entryId})");
+                }
             }
-            $this->firebase->set("{$balPath}/{$ac}", [
-                'period_dr' => round($pDr, 2), 'period_cr' => round($pCr, 2), 'last_computed' => date('c'),
-            ]);
         }
 
         return $entryId;

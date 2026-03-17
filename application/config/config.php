@@ -11,9 +11,15 @@ $_is_https = (
     || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
     || (isset($_SERVER['HTTP_X_FORWARDED_SSL']) && $_SERVER['HTTP_X_FORWARDED_SSL'] === 'on')
 );
+// SEC-13 FIX: Validate HTTP_HOST against allowlist to prevent host-header injection
+$_allowed_hosts = ['localhost', '127.0.0.1', 'localhost:8080'];
+if (getenv('APP_HOST')) $_allowed_hosts[] = getenv('APP_HOST');
+$_host = (isset($_SERVER['HTTP_HOST']) && in_array($_SERVER['HTTP_HOST'], $_allowed_hosts, true))
+    ? $_SERVER['HTTP_HOST']
+    : 'localhost';
 $config['base_url'] =
     ($_is_https ? 'https' : 'http')
-    . '://' . $_SERVER['HTTP_HOST']
+    . '://' . $_host
     . '/Grader/school/';
 
 $config['index_page'] = '';
@@ -103,7 +109,7 @@ $config['cookie_httponly'] = TRUE;    // FIX: prevents JavaScript from reading t
 $config['cookie_samesite'] = 'Strict'; // M-08 FIX: Strict prevents cross-site cookie leakage
 
 $config['standardize_newlines']  = FALSE;
-$config['global_xss_filtering']  = FALSE;
+$config['global_xss_filtering']  = TRUE;   // SEC-2 FIX: apply XSS filter to all input globally
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CSRF PROTECTION
