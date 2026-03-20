@@ -476,9 +476,149 @@ class Superadmin_plans extends MY_Superadmin_Controller
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    //  PAYMENT / INVOICE MANAGEMENT
+    //
+    //  Data model (System/Payments/{INV_ID}):
+    //    amount       – total invoice amount for the billing period
+    //    amount_paid  – sum of all collections against this invoice
+    //    balance      – amount − amount_paid  (auto-computed)
+    //    status       – pending | partial | paid | overdue | failed
+    //    transactions – { TXN_ID: {date,amount,mode,note,recorded_by,recorded_at} }
+    //    + school_uid, plan_id, plan_name, billing_cycle, invoice_date,
+    //      due_date, period_start, period_end, notes, created_*
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Migrate a legacy flat record to the new invoice model.
+     * Called lazily on read – adds amount_paid, balance, transactions if missing.
+     */
+    private function _migrate_payment(string $pid, array &$p): void
+    {
+        if (isset($p['balance'])) return; // already migrated
+
+        $amount      = (float)($p['amount'] ?? 0);
+        $status      = $p['status'] ?? 'pending';
+        $amount_paid = ($status === 'paid') ? $amount : 0.0;
+        $balance     = $amount - $amount_paid;
+        $txns        = [];
+
+        if ($status === 'paid') {
+            $txnId = 'TXN_' . strtoupper(substr(md5($pid . 'legacy'), 0, 8));
+            $txns[$txnId] = [
+                'date'        => $p['paid_date'] ?? ($p['created_at'] ?? date('Y-m-d')),
+                'amount'      => $amount,
+                'mode'        => '—',
+                'note'        => 'Migrated from legacy record',
+                'recorded_by' => 'system',
+                'recorded_at' => date('Y-m-d H:i:s'),
+            ];
+        }
+
+        $patch = [
+            'amount_paid'  => $amount_paid,
+            'balance'      => $balance,
+            'transactions' => !empty($txns) ? $txns : null,
+        ];
+
+        // Derive correct status
+        if ($status !== 'failed') {
+            $patch['status'] = $this->_derive_status($amount, $amount_paid, $p['due_date'] ?? '');
+        }
+
+        $this->firebase->update("System/Payments/{$pid}", $patch);
+
+        // Merge into local array so caller sees updated values
+        $p['amount_paid']  = $amount_paid;
+        $p['balance']      = $balance;
+        $p['status']       = $patch['status'] ?? $status;
+        if (!empty($txns)) $p['transactions'] = $txns;
+    }
+
+    /**
+     * Derive invoice status from balance + due_date.
+     */
+    private function _derive_status(float $amount, float $amount_paid, string $due_date): string
+    {
+        if ($amount_paid >= $amount) return 'paid';
+        $today = date('Y-m-d');
+        if ($amount_paid > 0) {
+            return ($due_date && $due_date < $today) ? 'overdue' : 'partial';
+        }
+        return ($due_date && $due_date < $today) ? 'overdue' : 'pending';
+    }
+
+    /**
+     * Sync school subscription when an invoice is fully paid.
+     */
+    private function _sync_school_sub(string $school_uid, array $invoice, string $paid_date): void
+    {
+        if (!preg_match("/^[A-Za-z0-9 ',_\-]+$/u", $school_uid)) return;
+
+        $subUpdate = [
+            'last_payment_date'   => $paid_date,
+            'last_payment_amount' => (float)($invoice['amount'] ?? 0),
+        ];
+
+        $periodEnd = $invoice['period_end'] ?? '';
+        if ($periodEnd) {
+            $planInfo = [];
+            try { $planInfo = $this->firebase->get("System/Plans/" . ($invoice['plan_id'] ?? '')) ?? []; } catch (Exception $e) {}
+            $grace = (int)($planInfo['grace_days'] ?? 7);
+            $subUpdate['expiry_date'] = $periodEnd;
+            $subUpdate['grace_end']   = date('Y-m-d', strtotime($periodEnd . " +{$grace} days"));
+            $subUpdate['status']      = 'Active';
+        }
+
+        $this->firebase->update("System/Schools/{$school_uid}/subscription", $subUpdate);
+        $this->firebase->update("System/Schools/{$school_uid}", ['status' => 'active']);
+        if ($periodEnd) {
+            $this->firebase->update("System/Schools/{$school_uid}/profile", ['status' => 'active']);
+        }
+    }
+
+    /**
+     * Helper: compute next billing period for a school.
+     * Returns [period_start, period_end, due_date, cycle_months].
+     */
+    private function _next_billing_period(string $school_uid, array $sub, array $plan_data, array $allPayments): array
+    {
+        $billing_cycle = $plan_data['billing_cycle'] ?? ($sub['billing_cycle'] ?? 'annual');
+        $cycleMonths   = ($billing_cycle === 'monthly') ? 1 : (($billing_cycle === 'quarterly') ? 3 : 12);
+
+        // Find latest paid invoice's period_end
+        $latestPeriodEnd = '';
+        $latestPaidDate  = $sub['last_payment_date'] ?? '';
+        foreach ($allPayments as $pid => $pay) {
+            if (!is_array($pay)) continue;
+            if (($pay['school_uid'] ?? '') !== $school_uid) continue;
+            if (($pay['status'] ?? '') !== 'paid') continue;
+            $pe = $pay['period_end'] ?? '';
+            if ($pe > $latestPeriodEnd) $latestPeriodEnd = $pe;
+            $pd = $pay['paid_date'] ?? '';
+            if ($pd > $latestPaidDate) $latestPaidDate = $pd;
+        }
+
+        $baseDate = $latestPeriodEnd ?: $latestPaidDate ?: ($sub['expiry_date'] ?? '');
+        if ($baseDate) {
+            $periodStart = date('Y-m-d', strtotime($baseDate . ' +1 day'));
+        } else {
+            $periodStart = date('Y-m-d');
+        }
+        $periodEnd = date('Y-m-d', strtotime($periodStart . " +{$cycleMonths} months -1 day"));
+
+        return [
+            'period_start' => $periodStart,
+            'period_end'   => $periodEnd,
+            'due_date'     => $periodStart,
+            'cycle_months' => $cycleMonths,
+            'last_paid_date'  => $latestPaidDate,
+            'last_period_end' => $latestPeriodEnd,
+        ];
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // GET  /superadmin/plans/payments
-    // Payment records management
     // ─────────────────────────────────────────────────────────────────────────
 
     public function payments()
@@ -486,11 +626,11 @@ class Superadmin_plans extends MY_Superadmin_Controller
         $schools = [];
         $plans   = [];
         try {
-            $raw  = $this->firebase->get('System/Schools') ?? [];
+            $raw = $this->firebase->get('System/Schools') ?? [];
             foreach ($raw as $name => $school) {
                 if (!is_array($school)) continue;
-                $saP            = is_array($school['profile']      ?? null) ? $school['profile']      : [];
-                $sub            = is_array($school['subscription'] ?? null) ? $school['subscription'] : [];
+                $saP = is_array($school['profile']      ?? null) ? $school['profile']      : [];
+                $sub = is_array($school['subscription'] ?? null) ? $school['subscription'] : [];
                 $schools[$name] = [
                     'name'        => $saP['name']      ?? $name,
                     'plan_name'   => $sub['plan_name'] ?? '—',
@@ -500,8 +640,9 @@ class Superadmin_plans extends MY_Superadmin_Controller
             $rawPlans = $this->firebase->get('System/Plans') ?? [];
             foreach ($rawPlans as $pid => $p) {
                 $plans[$pid] = [
-                    'name'  => $p['name']  ?? $pid,
-                    'price' => (float)($p['price'] ?? 0),
+                    'name'          => $p['name']  ?? $pid,
+                    'price'         => (float)($p['price'] ?? 0),
+                    'billing_cycle' => $p['billing_cycle'] ?? 'annual',
                 ];
             }
         } catch (Exception $e) {}
@@ -518,17 +659,55 @@ class Superadmin_plans extends MY_Superadmin_Controller
 
     // ─────────────────────────────────────────────────────────────────────────
     // POST  /superadmin/plans/fetch_payments
+    // Returns all invoices, auto-migrates legacy records, auto-marks overdue.
     // ─────────────────────────────────────────────────────────────────────────
 
     public function fetch_payments()
     {
         try {
-            $raw  = $this->firebase->get('System/Payments') ?? [];
-            $rows = [];
+            $raw     = $this->firebase->get('System/Payments') ?? [];
+            $schools = $this->firebase->get('System/Schools')  ?? [];
+            $today   = date('Y-m-d');
+            $rows    = [];
+
+            // Build school name lookup
+            $schoolNames = [];
+            foreach ($schools as $uid => $s) {
+                if (!is_array($s)) continue;
+                $prof = is_array($s['profile'] ?? null) ? $s['profile'] : [];
+                $schoolNames[$uid] = $prof['name'] ?? $uid;
+            }
+
             foreach ($raw as $pid => $p) {
                 if (!is_array($p)) continue;
-                $rows[] = array_merge(['payment_id' => $pid], $p);
+
+                // Lazy migration of legacy flat records
+                $this->_migrate_payment($pid, $p);
+
+                // Auto-mark overdue: (pending|partial) + due_date in the past
+                $status   = $p['status'] ?? 'pending';
+                $due_date = $p['due_date'] ?? '';
+                if (in_array($status, ['pending', 'partial']) && $due_date && $due_date < $today) {
+                    $this->firebase->update("System/Payments/{$pid}", [
+                        'status'     => 'overdue',
+                        'updated_at' => date('Y-m-d H:i:s'),
+                        'updated_by' => 'system_auto',
+                    ]);
+                    $p['status'] = 'overdue';
+                }
+
+                // Compute days until due / days overdue
+                $days_due = null;
+                if ($due_date) {
+                    $days_due = (int) round((strtotime($due_date) - strtotime($today)) / 86400);
+                }
+
+                $p['payment_id']  = $pid;
+                $p['school_name'] = $schoolNames[$p['school_uid'] ?? ''] ?? ($p['school_uid'] ?? '—');
+                $p['days_due']    = $days_due;
+                $rows[] = $p;
             }
+
             usort($rows, fn($a, $b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
             $this->json_success(['rows' => $rows]);
         } catch (Exception $e) {
@@ -537,18 +716,257 @@ class Superadmin_plans extends MY_Superadmin_Controller
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // POST  /superadmin/plans/get_school_plan
+    // Returns plan + billing info + outstanding balance for a school.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function get_school_plan()
+    {
+        $school_uid = trim($this->input->post('school_uid', TRUE) ?? '');
+        if (empty($school_uid)) { $this->json_error('School ID required.'); return; }
+        if (!preg_match("/^[A-Za-z0-9 ',_\-]+$/u", $school_uid)) {
+            $this->json_error('Invalid school identifier.'); return;
+        }
+
+        try {
+            $sub       = $this->firebase->get("System/Schools/{$school_uid}/subscription") ?? [];
+            $plan_id   = $sub['plan_id']   ?? '';
+            $plan_name = $sub['plan_name'] ?? '';
+            $price     = 0;
+            $plan_data = [];
+
+            if ($plan_id) {
+                $plan_data = $this->firebase->get("System/Plans/{$plan_id}") ?? [];
+                $plan_name = $plan_data['name']          ?? $plan_name;
+                $price     = (float)($plan_data['price'] ?? 0);
+            }
+
+            $billing_cycle = $plan_data['billing_cycle'] ?? ($sub['billing_cycle'] ?? 'annual');
+            $allPayments   = $this->firebase->get('System/Payments') ?? [];
+
+            // Compute outstanding balance across all unpaid invoices
+            $outstanding_balance = 0;
+            $outstanding_id      = '';
+            foreach ($allPayments as $payId => $pay) {
+                if (!is_array($pay)) continue;
+                if (($pay['school_uid'] ?? '') !== $school_uid) continue;
+                $st = $pay['status'] ?? '';
+                if (in_array($st, ['pending', 'partial', 'overdue'])) {
+                    $bal = isset($pay['balance']) ? (float)$pay['balance'] : ((float)($pay['amount'] ?? 0) - (float)($pay['amount_paid'] ?? 0));
+                    $outstanding_balance += $bal;
+                    if (!$outstanding_id) $outstanding_id = $payId;
+                }
+            }
+
+            $next = $this->_next_billing_period($school_uid, $sub, $plan_data, $allPayments);
+
+            $this->json_success([
+                'plan_id'             => $plan_id,
+                'plan_name'           => $plan_name,
+                'price'               => $price,
+                'billing_cycle'       => $billing_cycle,
+                'expiry_date'         => $sub['expiry_date'] ?? '',
+                'sub_status'          => $sub['status'] ?? 'Inactive',
+                'last_paid_date'      => $next['last_paid_date'],
+                'last_period_end'     => $next['last_period_end'],
+                'next_due_date'       => $next['due_date'],
+                'next_period_start'   => $next['period_start'],
+                'next_period_end'     => $next['period_end'],
+                'cycle_months'        => $next['cycle_months'],
+                'grace_days'          => (int)($plan_data['grace_days'] ?? 7),
+                'outstanding_balance' => $outstanding_balance,
+                'outstanding_id'      => $outstanding_id,
+            ]);
+        } catch (Exception $e) {
+            $this->json_error('Failed to fetch school plan.');
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // POST  /superadmin/plans/generate_invoice
+    // Creates an invoice for the next billing period.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function generate_invoice()
+    {
+        $school_uid = trim($this->input->post('school_uid', TRUE) ?? '');
+        if (empty($school_uid)) { $this->json_error('School ID required.'); return; }
+        if (!preg_match("/^[A-Za-z0-9 ',_\-]+$/u", $school_uid)) {
+            $this->json_error('Invalid school identifier.'); return;
+        }
+
+        try {
+            $sub     = $this->firebase->get("System/Schools/{$school_uid}/subscription") ?? [];
+            $plan_id = $sub['plan_id'] ?? '';
+            if (empty($plan_id)) { $this->json_error('No plan assigned to this school.'); return; }
+
+            $plan_data     = $this->firebase->get("System/Plans/{$plan_id}") ?? [];
+            $billing_cycle = $plan_data['billing_cycle'] ?? 'annual';
+            $price         = (float)($plan_data['price'] ?? 0);
+            if ($price <= 0) { $this->json_error('Plan has no price set.'); return; }
+
+            $allPayments = $this->firebase->get('System/Payments') ?? [];
+
+            // Block if there's an existing unpaid invoice with balance remaining
+            foreach ($allPayments as $payId => $pay) {
+                if (!is_array($pay)) continue;
+                if (($pay['school_uid'] ?? '') !== $school_uid) continue;
+                $st = $pay['status'] ?? '';
+                if (in_array($st, ['pending', 'partial', 'overdue'])) {
+                    $bal = isset($pay['balance']) ? (float)$pay['balance'] : ((float)($pay['amount'] ?? 0) - (float)($pay['amount_paid'] ?? 0));
+                    if ($bal > 0) {
+                        $this->json_error("Outstanding invoice {$payId} has ₹" . number_format($bal, 2) . " remaining. Collect or write off before generating a new invoice.");
+                        return;
+                    }
+                }
+            }
+
+            $next       = $this->_next_billing_period($school_uid, $sub, $plan_data, $allPayments);
+            $payment_id = 'INV_' . strtoupper(substr(md5(uniqid($school_uid, true)), 0, 8));
+            $now        = date('Y-m-d H:i:s');
+
+            $this->firebase->set("System/Payments/{$payment_id}", [
+                'school_uid'    => $school_uid,
+                'amount'        => $price,
+                'amount_paid'   => 0,
+                'balance'       => $price,
+                'plan_id'       => $plan_id,
+                'plan_name'     => $plan_data['name'] ?? $plan_id,
+                'billing_cycle' => $billing_cycle,
+                'status'        => 'pending',
+                'invoice_date'  => date('Y-m-d'),
+                'due_date'      => $next['due_date'],
+                'paid_date'     => '',
+                'period_start'  => $next['period_start'],
+                'period_end'    => $next['period_end'],
+                'transactions'  => null,
+                'notes'         => 'Auto-generated invoice',
+                'created_by'    => $this->sa_id,
+                'created_at'    => $now,
+            ]);
+
+            $this->sa_log('invoice_generated', $school_uid, ['payment_id' => $payment_id, 'amount' => $price]);
+            $this->json_success([
+                'payment_id' => $payment_id,
+                'due_date'   => $next['due_date'],
+                'amount'     => $price,
+                'message'    => "Invoice {$payment_id} created — ₹" . number_format($price, 2)
+                              . " due " . $next['due_date'],
+            ]);
+        } catch (Exception $e) {
+            $this->json_error('Failed to generate invoice.');
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // POST  /superadmin/plans/collect_payment
+    // Records a payment transaction against an existing invoice.
+    // Supports partial payments — updates amount_paid, balance, status.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function collect_payment()
+    {
+        $invoice_id = trim($this->input->post('invoice_id',    TRUE) ?? '');
+        $pay_amount = (float)($this->input->post('pay_amount', TRUE) ?? 0);
+        $pay_date   = trim($this->input->post('pay_date',      TRUE) ?? date('Y-m-d'));
+        $pay_mode   = trim($this->input->post('pay_mode',      TRUE) ?? '—');
+        $pay_note   = trim($this->input->post('pay_note',      TRUE) ?? '');
+
+        if (empty($invoice_id) || !preg_match('/^(PAY|INV)_[A-Z0-9]+$/', $invoice_id)) {
+            $this->json_error('Invalid invoice ID.'); return;
+        }
+        if ($pay_amount <= 0) {
+            $this->json_error('Payment amount must be greater than zero.'); return;
+        }
+
+        try {
+            $inv = $this->firebase->get("System/Payments/{$invoice_id}");
+            if (empty($inv) || !is_array($inv)) {
+                $this->json_error('Invoice not found.'); return;
+            }
+
+            // Migrate legacy records if needed
+            $this->_migrate_payment($invoice_id, $inv);
+
+            $amount      = (float)($inv['amount']      ?? 0);
+            $amount_paid = (float)($inv['amount_paid']  ?? 0);
+            $balance     = (float)($inv['balance']      ?? ($amount - $amount_paid));
+
+            if ($balance <= 0) {
+                $this->json_error('This invoice is already fully paid.'); return;
+            }
+
+            // Cap payment at balance (no overpayment on a single invoice)
+            $actual_pay = min($pay_amount, $balance);
+            $new_paid   = $amount_paid + $actual_pay;
+            $new_bal    = $amount - $new_paid;
+            $new_status = $this->_derive_status($amount, $new_paid, $inv['due_date'] ?? '');
+
+            // Create transaction record
+            $txnId = 'TXN_' . strtoupper(substr(md5(uniqid($invoice_id, true)), 0, 8));
+            $now   = date('Y-m-d H:i:s');
+
+            $update = [
+                'amount_paid'           => $new_paid,
+                'balance'               => $new_bal,
+                'status'                => $new_status,
+                'updated_at'            => $now,
+                'updated_by'            => $this->sa_id,
+                "transactions/{$txnId}" => [
+                    'date'        => $pay_date,
+                    'amount'      => $actual_pay,
+                    'mode'        => $pay_mode,
+                    'note'        => $pay_note,
+                    'recorded_by' => $this->sa_id,
+                    'recorded_at' => $now,
+                ],
+            ];
+
+            // If fully paid, set paid_date
+            if ($new_status === 'paid') {
+                $update['paid_date'] = $pay_date;
+            }
+
+            $this->firebase->update("System/Payments/{$invoice_id}", $update);
+
+            // If fully paid, sync school subscription
+            if ($new_status === 'paid') {
+                $this->_sync_school_sub($inv['school_uid'] ?? '', $inv, $pay_date);
+            }
+
+            $this->sa_log('payment_collected', $inv['school_uid'] ?? '', [
+                'invoice_id' => $invoice_id, 'txn_id' => $txnId, 'amount' => $actual_pay,
+            ]);
+
+            $msg = "₹" . number_format($actual_pay, 2) . " collected against {$invoice_id}.";
+            if ($new_bal > 0) {
+                $msg .= " Balance remaining: ₹" . number_format($new_bal, 2);
+            } else {
+                $msg .= " Invoice fully paid!";
+            }
+
+            $this->json_success([
+                'txn_id'      => $txnId,
+                'amount_paid' => $actual_pay,
+                'new_balance' => $new_bal,
+                'new_status'  => $new_status,
+                'message'     => $msg,
+            ]);
+        } catch (Exception $e) {
+            $this->json_error('Failed to record payment.');
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // POST  /superadmin/plans/add_payment
+    // Quick-add: creates a new invoice (optionally with an immediate payment).
     // ─────────────────────────────────────────────────────────────────────────
 
     public function add_payment()
     {
-        // Accept school_uid or school_name (test compatibility)
-        $school_uid   = trim($this->input->post('school_uid',   TRUE)
-                     ?? $this->input->post('school_name', TRUE) ?? '');
+        $school_uid   = trim($this->input->post('school_uid',   TRUE) ?? $this->input->post('school_name', TRUE) ?? '');
         $amount       = (float)($this->input->post('amount',    TRUE) ?? 0);
-        // Accept plan_id or plan_name (test compatibility)
-        $plan_id      = trim($this->input->post('plan_id',      TRUE)
-                     ?? $this->input->post('plan_name', TRUE) ?? '');
+        $plan_id      = trim($this->input->post('plan_id',      TRUE) ?? $this->input->post('plan_name', TRUE) ?? '');
         $status       = trim($this->input->post('status',       TRUE) ?? 'pending');
         $invoice_date = trim($this->input->post('invoice_date', TRUE) ?? date('Y-m-d'));
         $due_date     = trim($this->input->post('due_date',     TRUE) ?? '');
@@ -556,6 +974,7 @@ class Superadmin_plans extends MY_Superadmin_Controller
         $period_start = trim($this->input->post('period_start', TRUE) ?? '');
         $period_end   = trim($this->input->post('period_end',   TRUE) ?? '');
         $notes        = trim($this->input->post('notes',        TRUE) ?? '');
+        $pay_mode     = trim($this->input->post('pay_mode',     TRUE) ?? '—');
 
         if (empty($school_uid) || $amount <= 0 || empty($plan_id)) {
             $this->json_error('School, amount and plan are required.'); return;
@@ -563,7 +982,7 @@ class Superadmin_plans extends MY_Superadmin_Controller
         if (!preg_match("/^[A-Za-z0-9 ',_\-]+$/u", $school_uid)) {
             $this->json_error('Invalid school identifier.'); return;
         }
-        if (!in_array($status, ['paid', 'pending', 'overdue', 'failed'])) {
+        if (!in_array($status, ['paid', 'pending', 'partial', 'overdue', 'failed'])) {
             $this->json_error('Invalid payment status.'); return;
         }
         if (!preg_match('/^PLAN_[A-Z0-9]+$/', $plan_id)) {
@@ -574,43 +993,62 @@ class Superadmin_plans extends MY_Superadmin_Controller
         try { $plan_data = $this->firebase->get("System/Plans/{$plan_id}") ?? []; } catch (Exception $e) {}
 
         $now        = date('Y-m-d H:i:s');
-        $payment_id = 'PAY_' . strtoupper(substr(md5(uniqid($school_uid, true)), 0, 8));
+        $payment_id = 'INV_' . strtoupper(substr(md5(uniqid($school_uid, true)), 0, 8));
+
+        // Determine initial amounts
+        $initial_paid = 0;
+        $txns         = null;
+        if ($status === 'paid') {
+            $initial_paid = $amount;
+            $txnId = 'TXN_' . strtoupper(substr(md5(uniqid($payment_id, true)), 0, 8));
+            $txns = [$txnId => [
+                'date'        => $paid_date ?: date('Y-m-d'),
+                'amount'      => $amount,
+                'mode'        => $pay_mode,
+                'note'        => $notes ?: 'Full payment',
+                'recorded_by' => $this->sa_id,
+                'recorded_at' => $now,
+            ]];
+        }
 
         try {
             $this->firebase->set("System/Payments/{$payment_id}", [
                 'school_uid'    => $school_uid,
                 'amount'        => $amount,
+                'amount_paid'   => $initial_paid,
+                'balance'       => $amount - $initial_paid,
                 'plan_id'       => $plan_id,
                 'plan_name'     => $plan_data['name']          ?? $plan_id,
                 'billing_cycle' => $plan_data['billing_cycle'] ?? 'annual',
-                'status'        => $status,
+                'status'        => $status === 'paid' ? 'paid' : $this->_derive_status($amount, $initial_paid, $due_date),
                 'invoice_date'  => $invoice_date,
                 'due_date'      => $due_date,
-                'paid_date'     => $paid_date,
+                'paid_date'     => ($status === 'paid') ? ($paid_date ?: date('Y-m-d')) : '',
                 'period_start'  => $period_start,
                 'period_end'    => $period_end,
+                'transactions'  => $txns,
                 'notes'         => $notes,
                 'created_by'    => $this->sa_id,
                 'created_at'    => $now,
             ]);
 
-            // If paid, sync last_payment_date onto school subscription
-            if ($status === 'paid' && !empty($paid_date)) {
-                $this->firebase->update("System/Schools/{$school_uid}/subscription", [
-                    'last_payment_date'   => $paid_date,
-                    'last_payment_amount' => $amount,
-                ]);
+            if ($status === 'paid') {
+                $this->_sync_school_sub($school_uid, [
+                    'amount' => $amount, 'period_end' => $period_end, 'plan_id' => $plan_id,
+                ], $paid_date ?: date('Y-m-d'));
             }
 
             $this->sa_log('payment_added', $school_uid, ['payment_id' => $payment_id, 'amount' => $amount]);
-            $this->json_success(['payment_id' => $payment_id, 'message' => 'Payment recorded.']);
+            $this->json_success(['payment_id' => $payment_id, 'message' => 'Invoice created.']);
         } catch (Exception $e) {
-            $this->json_error('Failed to save payment.');
+            $this->json_error('Failed to save invoice.');
         }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // POST  /superadmin/plans/update_payment
+    // Updates invoice metadata (status, notes). Does NOT record payments —
+    // use collect_payment for that.
     // ─────────────────────────────────────────────────────────────────────────
 
     public function update_payment()
@@ -619,40 +1057,47 @@ class Superadmin_plans extends MY_Superadmin_Controller
         $status     = trim($this->input->post('status',     TRUE) ?? '');
         $paid_date  = trim($this->input->post('paid_date',  TRUE) ?? '');
         $notes      = trim($this->input->post('notes',      TRUE) ?? '');
+        $due_date   = trim($this->input->post('due_date',   TRUE) ?? '');
 
-        if (empty($payment_id) || !preg_match('/^PAY_[A-Z0-9]+$/', $payment_id)) {
-            $this->json_error('Invalid payment ID.'); return;
+        if (empty($payment_id) || !preg_match('/^(PAY|INV)_[A-Z0-9]+$/', $payment_id)) {
+            $this->json_error('Invalid invoice ID.'); return;
         }
-        if (!empty($status) && !in_array($status, ['paid', 'pending', 'overdue', 'failed'])) {
+        if (!empty($status) && !in_array($status, ['paid', 'pending', 'partial', 'overdue', 'failed'])) {
             $this->json_error('Invalid payment status.'); return;
         }
 
         try {
             $existing = $this->firebase->get("System/Payments/{$payment_id}");
-            if (empty($existing)) { $this->json_error('Payment record not found.'); return; }
+            if (empty($existing)) { $this->json_error('Invoice not found.'); return; }
 
             $update = ['updated_at' => date('Y-m-d H:i:s'), 'updated_by' => $this->sa_id];
-            if ($status)    $update['status']    = $status;
-            if ($paid_date) $update['paid_date'] = $paid_date;
-            if ($notes !== '') $update['notes']  = $notes;
+            if ($status)         $update['status']    = $status;
+            if ($paid_date)      $update['paid_date'] = $paid_date;
+            if ($due_date)       $update['due_date']  = $due_date;
+            if ($notes !== '')   $update['notes']     = $notes;
+
+            // If force-marking as paid, set amount_paid = amount, balance = 0
+            if ($status === 'paid') {
+                $amt = (float)($existing['amount'] ?? 0);
+                $update['amount_paid'] = $amt;
+                $update['balance']     = 0;
+                $update['paid_date']   = $paid_date ?: date('Y-m-d');
+            }
 
             $this->firebase->update("System/Payments/{$payment_id}", $update);
 
-            // Sync last_payment_date on the school if marked paid
-            if ($status === 'paid' && !empty($paid_date)) {
-                $uid = $existing['school_uid'] ?? '';
-                if ($uid && preg_match("/^[A-Za-z0-9 ',_\-]+$/u", $uid)) {
-                    $this->firebase->update("System/Schools/{$uid}/subscription", [
-                        'last_payment_date'   => $paid_date,
-                        'last_payment_amount' => $existing['amount'] ?? 0,
-                    ]);
-                }
+            if ($status === 'paid') {
+                $this->_sync_school_sub(
+                    $existing['school_uid'] ?? '',
+                    $existing,
+                    $update['paid_date']
+                );
             }
 
             $this->sa_log('payment_updated', $existing['school_uid'] ?? '', ['payment_id' => $payment_id]);
-            $this->json_success(['message' => 'Payment updated.']);
+            $this->json_success(['message' => 'Invoice updated.']);
         } catch (Exception $e) {
-            $this->json_error('Failed to update payment.');
+            $this->json_error('Failed to update invoice.');
         }
     }
 
@@ -663,19 +1108,72 @@ class Superadmin_plans extends MY_Superadmin_Controller
     public function delete_payment()
     {
         $payment_id = trim($this->input->post('payment_id', TRUE) ?? '');
-        if (empty($payment_id) || !preg_match('/^PAY_[A-Z0-9]+$/', $payment_id)) {
-            $this->json_error('Invalid payment ID.'); return;
+        if (empty($payment_id) || !preg_match('/^(PAY|INV)_[A-Z0-9]+$/', $payment_id)) {
+            $this->json_error('Invalid invoice ID.'); return;
         }
 
         try {
             $existing = $this->firebase->get("System/Payments/{$payment_id}");
-            if (empty($existing)) { $this->json_error('Payment not found.'); return; }
+            if (empty($existing)) { $this->json_error('Invoice not found.'); return; }
 
             $this->firebase->delete('System/Payments', $payment_id);
             $this->sa_log('payment_deleted', $existing['school_uid'] ?? '', ['payment_id' => $payment_id]);
-            $this->json_success(['message' => 'Payment deleted.']);
+            $this->json_success(['message' => 'Invoice deleted.']);
         } catch (Exception $e) {
-            $this->json_error('Failed to delete payment.');
+            $this->json_error('Failed to delete invoice.');
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // POST  /superadmin/plans/fetch_school_payments
+    // Full ledger for a single school.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function fetch_school_payments()
+    {
+        $school_uid = trim($this->input->post('school_uid', TRUE) ?? '');
+        if (empty($school_uid)) { $this->json_error('School ID required.'); return; }
+
+        try {
+            $allPayments = $this->firebase->get('System/Payments') ?? [];
+            $sub         = $this->firebase->get("System/Schools/{$school_uid}/subscription") ?? [];
+            $plan_id     = $sub['plan_id'] ?? '';
+            $plan_data   = [];
+            if ($plan_id) {
+                $plan_data = $this->firebase->get("System/Plans/{$plan_id}") ?? [];
+            }
+
+            $rows     = [];
+            $totalPaid     = 0;
+            $totalBilled   = 0;
+            $totalBalance  = 0;
+
+            foreach ($allPayments as $pid => $p) {
+                if (!is_array($p)) continue;
+                if (($p['school_uid'] ?? '') !== $school_uid) continue;
+                $this->_migrate_payment($pid, $p);
+                $p['payment_id'] = $pid;
+                $rows[] = $p;
+
+                $totalBilled  += (float)($p['amount']      ?? 0);
+                $totalPaid    += (float)($p['amount_paid']  ?? 0);
+                $totalBalance += (float)($p['balance']      ?? 0);
+            }
+
+            usort($rows, fn($a, $b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
+
+            $this->json_success([
+                'rows'          => $rows,
+                'total_billed'  => $totalBilled,
+                'total_paid'    => $totalPaid,
+                'total_balance' => $totalBalance,
+                'plan_name'     => $plan_data['name'] ?? ($sub['plan_name'] ?? '—'),
+                'billing_cycle' => $plan_data['billing_cycle'] ?? ($sub['billing_cycle'] ?? '—'),
+                'expiry_date'   => $sub['expiry_date'] ?? '',
+                'sub_status'    => $sub['status'] ?? 'Inactive',
+            ]);
+        } catch (Exception $e) {
+            $this->json_error('Failed to fetch school payments.');
         }
     }
 }

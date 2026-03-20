@@ -31,8 +31,14 @@ class Accounting extends MY_Controller
     //  ROLE CONSTANTS
     // =========================================================================
 
-    private const ADMIN_ROLES   = ['Admin', 'Super Admin', 'Our Panel'];
-    private const FINANCE_ROLES = ['Admin', 'Super Admin', 'Our Panel', 'Accountant', 'Finance'];
+    private const ADMIN_ROLES   = ['Admin', 'Super Admin', 'Our Panel', 'Principal'];
+    private const FINANCE_ROLES = ['Admin', 'Super Admin', 'Our Panel', 'Accountant', 'Finance', 'Principal', 'Vice Principal'];
+
+    public function __construct()
+    {
+        parent::__construct();
+        require_permission('Accounting');
+    }
 
     // =========================================================================
     //  PATH HELPERS
@@ -78,16 +84,7 @@ class Accounting extends MY_Controller
     //  PRIVATE SECURITY & AUDIT HELPERS
     // =========================================================================
 
-    /**
-     * Require the current admin to have one of the allowed roles.
-     * Sends a 403 JSON error and exits if not.
-     */
-    private function _require_role(array $allowed): void
-    {
-        if (!in_array($this->admin_role, $allowed, true)) {
-            $this->json_error('Insufficient permissions for this operation.', 403);
-        }
-    }
+    // _require_role() inherited from MY_Controller
 
     /**
      * Write an audit trail entry for every write operation.
@@ -154,6 +151,45 @@ class Accounting extends MY_Controller
 
         $all = $this->firebase->get($this->_coa());
         if (!is_array($all)) $all = [];
+
+        // Auto-seed on first access if chart is empty (Admin/Principal only)
+        if (empty($all) && in_array($this->admin_role, self::ADMIN_ROLES, true)) {
+            $ts       = date('c');
+            $defaults = $this->_default_coa_template($ts);
+            foreach ($defaults as $code => $acct) {
+                $this->firebase->set($this->_coa() . "/{$code}", $acct);
+            }
+            $all = $defaults;
+            log_message('info',
+                "get_chart: auto-seeded " . count($defaults) . " accounts on first access"
+                . " school=[{$this->school_name}] admin=[{$this->admin_id}]"
+            );
+        }
+
+        // Merge closing balances (period dr/cr from journal entries)
+        $closingBals = $this->firebase->get($this->_bal());
+        if (is_array($closingBals)) {
+            foreach ($all as $code => &$acct) {
+                if (!is_array($acct)) continue;
+                $cb = $closingBals[$code] ?? null;
+                $periodDr = (float) ($cb['period_dr'] ?? 0);
+                $periodCr = (float) ($cb['period_cr'] ?? 0);
+                $openBal  = (float) ($acct['opening_balance'] ?? 0);
+
+                // Current balance = opening + net movement (Dr increases Assets/Expenses, Cr increases Liabilities/Income/Equity)
+                $normalSide = $acct['normal_side'] ?? 'Dr';
+                if ($normalSide === 'Dr') {
+                    $currentBal = $openBal + $periodDr - $periodCr;
+                } else {
+                    $currentBal = $openBal + $periodCr - $periodDr;
+                }
+
+                $acct['period_dr']       = round($periodDr, 2);
+                $acct['period_cr']       = round($periodCr, 2);
+                $acct['current_balance'] = round($currentBal, 2);
+            }
+            unset($acct);
+        }
 
         // Sort by code
         uksort($all, 'strnatcmp');
@@ -232,10 +268,23 @@ class Accounting extends MY_Controller
             $data['created_at'] = date('c');
         }
 
-        $oldData = $isEdit ? $this->firebase->get($this->_coa() . "/{$code}") : null;
-        $this->firebase->set($this->_coa() . "/{$code}", $data);
-        $this->_audit($isEdit ? 'update_account' : 'create_account', 'chart_of_accounts', $code, $oldData, $data);
-        $this->json_success(['message' => $isEdit ? 'Account updated.' : 'Account created.']);
+        // H-04 FIX: Wrap financial writes in try/catch
+        try {
+            $oldData = $isEdit ? $this->firebase->get($this->_coa() . "/{$code}") : null;
+
+            // Preserve is_system and created_at on edit
+            if ($isEdit && is_array($oldData)) {
+                if (!empty($oldData['is_system'])) $data['is_system'] = true;
+                if (!empty($oldData['created_at'])) $data['created_at'] = $oldData['created_at'];
+            }
+
+            $this->firebase->set($this->_coa() . "/{$code}", $data);
+            $this->_audit($isEdit ? 'update_account' : 'create_account', 'chart_of_accounts', $code, $oldData, $data);
+            $this->json_success(['message' => $isEdit ? 'Account updated.' : 'Account created.']);
+        } catch (\Exception $e) {
+            log_message('error', 'save_account failed: ' . $e->getMessage());
+            return $this->json_error('Failed to save account. Please try again.');
+        }
     }
 
     /** POST: Delete (deactivate) an account */
@@ -269,17 +318,54 @@ class Accounting extends MY_Controller
     {
         $this->_require_role(self::ADMIN_ROLES);
 
-        $existing = $this->firebase->shallow_get($this->_coa());
-        if (!empty($existing)) {
-            return $this->json_error('Chart already has accounts. Clear first or add individually.');
+        $ts = date('c');
+        $defaults = $this->_default_coa_template($ts);
+
+        // Load existing accounts — merge (skip existing codes, add missing)
+        $existing = $this->firebase->get($this->_coa());
+        if (!is_array($existing)) $existing = [];
+
+        $createdCodes = [];
+        $skippedCodes = [];
+
+        foreach ($defaults as $code => $acct) {
+            if (isset($existing[$code]) && is_array($existing[$code])) {
+                $skippedCodes[] = $code;
+                continue;
+            }
+            $this->firebase->set($this->_coa() . "/{$code}", $acct);
+            $createdCodes[] = $code;
         }
 
-        $ts = date('c');
-        $accounts = $this->_default_coa_template($ts);
+        $created = count($createdCodes);
+        $skipped = count($skippedCodes);
 
-        $this->firebase->set($this->_coa(), $accounts);
-        $this->_audit('seed_default_chart', 'chart_of_accounts', 'all', null, ['count' => count($accounts)]);
-        $this->json_success(['message' => 'Default chart seeded with ' . count($accounts) . ' accounts.']);
+        log_message('info',
+            "seed_default_chart: school=[{$this->school_name}] admin=[{$this->admin_id}] "
+            . "created=[" . implode(',', $createdCodes) . "] "
+            . "skipped=[" . implode(',', $skippedCodes) . "]"
+        );
+
+        $this->_audit('seed_default_chart', 'chart_of_accounts', 'all', null, [
+            'created'        => $created,
+            'skipped'        => $skipped,
+            'created_codes'  => $createdCodes,
+            'total_defaults' => count($defaults),
+        ]);
+
+        if ($created === 0) {
+            $this->json_success([
+                'message' => "All " . count($defaults) . " default accounts already exist. Nothing to add.",
+                'added'   => [],
+                'skipped' => $skippedCodes,
+            ]);
+        } else {
+            $this->json_success([
+                'message' => "Seeded {$created} default accounts." . ($skipped ? " {$skipped} already existed (kept as-is)." : ''),
+                'added'   => $createdCodes,
+                'skipped' => $skippedCodes,
+            ]);
+        }
     }
 
     /** POST: Migrate existing Account_book entries to ChartOfAccounts */
@@ -464,6 +550,22 @@ class Accounting extends MY_Controller
         $offset = ($page - 1) * $limit;
         $entries = array_slice($entries, $offset, $limit);
 
+        // Enrich line items with account names from Chart of Accounts
+        $coa = $this->firebase->get($this->_coa());
+        if (!is_array($coa)) $coa = [];
+        foreach ($entries as &$entry) {
+            if (!empty($entry['lines']) && is_array($entry['lines'])) {
+                foreach ($entry['lines'] as &$line) {
+                    $code = $line['account_code'] ?? '';
+                    if ($code !== '' && empty($line['account_name'])) {
+                        $line['account_name'] = $coa[$code]['name'] ?? '';
+                    }
+                }
+                unset($line);
+            }
+        }
+        unset($entry);
+
         $this->json_success([
             'entries'  => $entries,
             'total'    => $total,
@@ -577,55 +679,63 @@ class Accounting extends MY_Controller
             }
         }
 
-        // Generate voucher number
-        $safeVType = $this->safe_path_segment($vType, 'voucher_type');
-        $prefix = $this->_voucher_prefix($vType);
-        $counterPath = $this->_bp() . "/Accounts/Voucher_counters/{$safeVType}";
-        $currentSeq = (int) $this->firebase->get($counterPath);
-        $newSeq = $currentSeq + 1;
-        $voucherNo = $prefix . str_pad($newSeq, 6, '0', STR_PAD_LEFT);
-        // Write counter immediately to minimise race window
-        $this->firebase->set($counterPath, $newSeq);
+        // H-04 FIX: Wrap all financial writes in try/catch to prevent partial
+        //    writes and provide clear error feedback for ledger operations.
+        try {
+            // Generate voucher number (read counter but DON'T write yet)
+            $safeVType = $this->safe_path_segment($vType, 'voucher_type');
+            $prefix = $this->_voucher_prefix($vType);
+            $counterPath = $this->_bp() . "/Accounts/Voucher_counters/{$safeVType}";
+            $currentSeq = (int) $this->firebase->get($counterPath);
+            $newSeq = $currentSeq + 1;
+            $voucherNo = $prefix . str_pad($newSeq, 6, '0', STR_PAD_LEFT);
 
-        // Build entry
-        $entryId = $this->_generate_entry_id('JE');
-        $entry = [
-            'date'         => $date,
-            'voucher_no'   => $voucherNo,
-            'voucher_type' => $vType,
-            'narration'    => $narration,
-            'lines'        => $cleanLines,
-            'total_dr'     => round($totalDr, 2),
-            'total_cr'     => round($totalCr, 2),
-            'source'       => $source,
-            'source_ref'   => $sourceRef ?: null,
-            'is_finalized' => false,
-            'status'       => 'active',
-            'created_by'   => $this->admin_id,
-            'created_at'   => date('c'),
-        ];
+            // Build entry
+            $entryId = $this->_generate_entry_id('JE');
+            $entry = [
+                'date'         => $date,
+                'voucher_no'   => $voucherNo,
+                'voucher_type' => $vType,
+                'narration'    => $narration,
+                'lines'        => $cleanLines,
+                'total_dr'     => round($totalDr, 2),
+                'total_cr'     => round($totalCr, 2),
+                'source'       => $source,
+                'source_ref'   => $sourceRef ?: null,
+                'is_finalized' => false,
+                'status'       => 'active',
+                'created_by'   => $this->admin_id,
+                'created_at'   => date('c'),
+            ];
 
-        // Write entry
-        $this->firebase->set($this->_ledger() . "/{$entryId}", $entry);
+            // Write entry FIRST — if this fails, counter stays unchanged (no orphan)
+            $this->firebase->set($this->_ledger() . "/{$entryId}", $entry);
 
-        // Write index entries
-        $safeDateSeg = $this->safe_path_segment($date, 'date');
-        $this->firebase->set($this->_idx() . "/by_date/{$safeDateSeg}/{$entryId}", true);
-        foreach (array_keys($affectedAccounts) as $acCode) {
-            $safeAc = $this->safe_path_segment($acCode, 'account_code');
-            $this->firebase->set($this->_idx() . "/by_account/{$safeAc}/{$entryId}", true);
+            // Entry saved successfully — now commit the counter increment
+            $this->firebase->set($counterPath, $newSeq);
+
+            // Write index entries
+            $safeDateSeg = $this->safe_path_segment($date, 'date');
+            $this->firebase->set($this->_idx() . "/by_date/{$safeDateSeg}/{$entryId}", true);
+            foreach (array_keys($affectedAccounts) as $acCode) {
+                $safeAc = $this->safe_path_segment($acCode, 'account_code');
+                $this->firebase->set($this->_idx() . "/by_account/{$safeAc}/{$entryId}", true);
+            }
+
+            // Update closing balances cache
+            $this->_update_balances($affectedAccounts, 'add');
+
+            $this->_audit('create', 'journal_entry', $entryId, null, $entry);
+
+            $this->json_success([
+                'message'    => 'Journal entry saved.',
+                'entry_id'   => $entryId,
+                'voucher_no' => $voucherNo,
+            ]);
+        } catch (\Exception $e) {
+            log_message('error', 'save_journal_entry failed: ' . $e->getMessage());
+            return $this->json_error('Failed to save journal entry. Please try again.');
         }
-
-        // Update closing balances cache
-        $this->_update_balances($affectedAccounts, 'add');
-
-        $this->_audit('create', 'journal_entry', $entryId, null, $entry);
-
-        $this->json_success([
-            'message'    => 'Journal entry saved.',
-            'entry_id'   => $entryId,
-            'voucher_no' => $voucherNo,
-        ]);
     }
 
     /** POST: Soft-delete a non-finalized journal entry */
@@ -647,38 +757,46 @@ class Accounting extends MY_Controller
         // Check period lock
         $this->_check_period_lock($entry['date'] ?? '');
 
-        // Reverse closing balances
-        $affectedAccounts = [];
-        foreach ($entry['lines'] ?? [] as $line) {
-            $ac = $line['account_code'] ?? '';
-            if (!$ac) continue;
-            $affectedAccounts[$ac] = [
-                'dr' => ($affectedAccounts[$ac]['dr'] ?? 0) + ($line['dr'] ?? 0),
-                'cr' => ($affectedAccounts[$ac]['cr'] ?? 0) + ($line['cr'] ?? 0),
-            ];
-        }
-        $this->_update_balances($affectedAccounts, 'subtract');
+        // H-04 FIX: Wrap financial deletes in try/catch.
+        // Write order: soft-delete FIRST (marks entry so retry won't double-reverse),
+        // then reverse balances, then clean indices.
+        try {
+            // Soft-delete FIRST — prevents double-reversal on retry
+            $this->firebase->update($this->_ledger() . "/{$entryId}", [
+                'status'     => 'deleted',
+                'deleted_by' => $this->admin_id,
+                'deleted_at' => date('c'),
+            ]);
 
-        // Remove indices
-        $date = $entry['date'] ?? '';
-        if ($date) {
-            $safeDateSeg = $this->safe_path_segment($date, 'date');
-            $this->firebase->delete($this->_idx() . "/by_date/{$safeDateSeg}", $entryId);
-        }
-        foreach (array_keys($affectedAccounts) as $acCode) {
-            $safeAc = $this->safe_path_segment($acCode, 'account_code');
-            $this->firebase->delete($this->_idx() . "/by_account/{$safeAc}", $entryId);
-        }
+            // Reverse closing balances
+            $affectedAccounts = [];
+            foreach ($entry['lines'] ?? [] as $line) {
+                $ac = $line['account_code'] ?? '';
+                if (!$ac) continue;
+                $affectedAccounts[$ac] = [
+                    'dr' => ($affectedAccounts[$ac]['dr'] ?? 0) + ($line['dr'] ?? 0),
+                    'cr' => ($affectedAccounts[$ac]['cr'] ?? 0) + ($line['cr'] ?? 0),
+                ];
+            }
+            $this->_update_balances($affectedAccounts, 'subtract');
 
-        // Soft-delete: mark as deleted instead of removing
-        $this->firebase->update($this->_ledger() . "/{$entryId}", [
-            'status'     => 'deleted',
-            'deleted_by' => $this->admin_id,
-            'deleted_at' => date('c'),
-        ]);
+            // Remove indices
+            $date = $entry['date'] ?? '';
+            if ($date) {
+                $safeDateSeg = $this->safe_path_segment($date, 'date');
+                $this->firebase->delete($this->_idx() . "/by_date/{$safeDateSeg}", $entryId);
+            }
+            foreach (array_keys($affectedAccounts) as $acCode) {
+                $safeAc = $this->safe_path_segment($acCode, 'account_code');
+                $this->firebase->delete($this->_idx() . "/by_account/{$safeAc}", $entryId);
+            }
 
-        $this->_audit('delete', 'journal_entry', $entryId, $entry, null);
-        $this->json_success(['message' => 'Entry deleted.']);
+            $this->_audit('delete', 'journal_entry', $entryId, $entry, null);
+            $this->json_success(['message' => 'Entry deleted.']);
+        } catch (\Exception $e) {
+            log_message('error', 'delete_journal_entry failed: ' . $e->getMessage());
+            return $this->json_error('Failed to delete journal entry. Please try again.');
+        }
     }
 
     /** POST: Finalize an entry (make immutable) */
@@ -808,81 +926,89 @@ class Accounting extends MY_Controller
         }
         unset($line);
 
-        // Create ledger entry
-        $safeVType = $this->safe_path_segment($vType, 'voucher_type');
-        $prefix = $this->_voucher_prefix($vType);
-        $counterPath = $this->_bp() . "/Accounts/Voucher_counters/{$safeVType}";
-        $seq = (int) $this->firebase->get($counterPath) + 1;
-        $voucherNo = $prefix . str_pad($seq, 6, '0', STR_PAD_LEFT);
-        // Write counter immediately to minimise race window
-        $this->firebase->set($counterPath, $seq);
+        // H-04 FIX: Wrap all financial writes in try/catch
+        try {
+            // Create ledger entry (read counter but DON'T write yet)
+            $safeVType = $this->safe_path_segment($vType, 'voucher_type');
+            $prefix = $this->_voucher_prefix($vType);
+            $counterPath = $this->_bp() . "/Accounts/Voucher_counters/{$safeVType}";
+            $seq = (int) $this->firebase->get($counterPath) + 1;
+            $voucherNo = $prefix . str_pad($seq, 6, '0', STR_PAD_LEFT);
 
-        $entryId = $this->_generate_entry_id('IE');
-        $ledgerEntry = [
-            'date'         => $date,
-            'voucher_no'   => $voucherNo,
-            'voucher_type' => $vType,
-            'narration'    => $description,
-            'lines'        => $lines,
-            'total_dr'     => $amount,
-            'total_cr'     => $amount,
-            'source'       => $type,
-            'source_ref'   => null,
-            'is_finalized' => false,
-            'status'       => 'active',
-            'created_by'   => $this->admin_id,
-            'created_at'   => date('c'),
-        ];
-
-        $this->firebase->set($this->_ledger() . "/{$entryId}", $ledgerEntry);
-
-        // Indices
-        $safeDateSeg = $this->safe_path_segment($date, 'date');
-        $this->firebase->set($this->_idx() . "/by_date/{$safeDateSeg}/{$entryId}", true);
-        foreach ($lines as $line) {
-            $safeAc = $this->safe_path_segment($line['account_code'], 'account_code');
-            $this->firebase->set($this->_idx() . "/by_account/{$safeAc}/{$entryId}", true);
-        }
-
-        // Update balances
-        $affected = [];
-        foreach ($lines as $line) {
-            $ac = $line['account_code'];
-            $affected[$ac] = [
-                'dr' => ($affected[$ac]['dr'] ?? 0) + $line['dr'],
-                'cr' => ($affected[$ac]['cr'] ?? 0) + $line['cr'],
+            $entryId = $this->_generate_entry_id('IE');
+            $ledgerEntry = [
+                'date'         => $date,
+                'voucher_no'   => $voucherNo,
+                'voucher_type' => $vType,
+                'narration'    => $description,
+                'lines'        => $lines,
+                'total_dr'     => $amount,
+                'total_cr'     => $amount,
+                'source'       => $type,
+                'source_ref'   => null,
+                'is_finalized' => false,
+                'status'       => 'active',
+                'created_by'   => $this->admin_id,
+                'created_at'   => date('c'),
             ];
+
+            // Write entry FIRST — if this fails, counter stays unchanged (no orphan)
+            $this->firebase->set($this->_ledger() . "/{$entryId}", $ledgerEntry);
+
+            // Entry saved successfully — now commit the counter
+            $this->firebase->set($counterPath, $seq);
+
+            // Indices
+            $safeDateSeg = $this->safe_path_segment($date, 'date');
+            $this->firebase->set($this->_idx() . "/by_date/{$safeDateSeg}/{$entryId}", true);
+            foreach ($lines as $line) {
+                $safeAc = $this->safe_path_segment($line['account_code'], 'account_code');
+                $this->firebase->set($this->_idx() . "/by_account/{$safeAc}/{$entryId}", true);
+            }
+
+            // Update balances
+            $affected = [];
+            foreach ($lines as $line) {
+                $ac = $line['account_code'];
+                $affected[$ac] = [
+                    'dr' => ($affected[$ac]['dr'] ?? 0) + $line['dr'],
+                    'cr' => ($affected[$ac]['cr'] ?? 0) + $line['cr'],
+                ];
+            }
+            $this->_update_balances($affected, 'add');
+
+            // Save income/expense record
+            $recordId = $entryId;
+            $record = [
+                'type'              => $type,
+                'date'              => $date,
+                'account_code'      => $accountCode,
+                'amount'            => $amount,
+                'payment_mode'      => $payMode,
+                'bank_account_code' => $bankCode ?: null,
+                'description'       => $description,
+                'category'          => $category,
+                'vendor'            => $vendor,
+                'receipt_no'        => $receiptNo,
+                'ledger_entry_id'   => $entryId,
+                'status'            => 'active',
+                'created_by'        => $this->admin_id,
+                'created_at'        => date('c'),
+            ];
+
+            $this->firebase->set($this->_ie_path() . "/{$recordId}", $record);
+
+            $this->_audit('create', 'income_expense', $recordId, null, $record);
+
+            $this->json_success([
+                'message'    => ucfirst($type) . ' recorded.',
+                'record_id'  => $recordId,
+                'voucher_no' => $voucherNo,
+            ]);
+        } catch (\Exception $e) {
+            log_message('error', 'save_income_expense failed: ' . $e->getMessage());
+            return $this->json_error('Failed to save ' . $type . ' record. Please try again.');
         }
-        $this->_update_balances($affected, 'add');
-
-        // Save income/expense record
-        $recordId = $entryId;
-        $record = [
-            'type'              => $type,
-            'date'              => $date,
-            'account_code'      => $accountCode,
-            'amount'            => $amount,
-            'payment_mode'      => $payMode,
-            'bank_account_code' => $bankCode ?: null,
-            'description'       => $description,
-            'category'          => $category,
-            'vendor'            => $vendor,
-            'receipt_no'        => $receiptNo,
-            'ledger_entry_id'   => $entryId,
-            'status'            => 'active',
-            'created_by'        => $this->admin_id,
-            'created_at'        => date('c'),
-        ];
-
-        $this->firebase->set($this->_ie_path() . "/{$recordId}", $record);
-
-        $this->_audit('create', 'income_expense', $recordId, null, $record);
-
-        $this->json_success([
-            'message'    => ucfirst($type) . ' recorded.',
-            'record_id'  => $recordId,
-            'voucher_no' => $voucherNo,
-        ]);
     }
 
     /** POST: Soft-delete income/expense + its ledger entry */
@@ -985,8 +1111,8 @@ class Accounting extends MY_Controller
         $this->_require_role(self::FINANCE_ROLES);
 
         $accountCode = trim((string) $this->input->post('account_code'));
-        $dateFrom    = trim((string) $this->input->post('date_from'));
-        $dateTo      = trim((string) $this->input->post('date_to'));
+        $dateFrom    = $this->_normalise_date((string) $this->input->post('date_from'));
+        $dateTo      = $this->_normalise_date((string) $this->input->post('date_to'));
 
         if (!$accountCode) return $this->json_error('Account code required.');
 
@@ -1001,8 +1127,15 @@ class Accounting extends MY_Controller
     {
         $safeCode = $this->safe_path_segment($accountCode, 'account_code');
 
-        // Get account details and opening balance from CoA
-        $acct = $this->firebase->get($this->_coa() . "/{$safeCode}");
+        // Get full CoA for account details + contra name resolution
+        $coa = $this->firebase->get($this->_coa());
+        if (!is_array($coa)) $coa = [];
+
+        $acct = $coa[$safeCode] ?? null;
+        if (!is_array($acct)) {
+            $this->json_error("Account {$accountCode} not found in Chart of Accounts.");
+            return;
+        }
         $openBal = (float) ($acct['opening_balance'] ?? 0);
         $normalSide = $acct['normal_side'] ?? 'Dr';
 
@@ -1024,22 +1157,44 @@ class Accounting extends MY_Controller
             $entryDate = $entry['date'] ?? '';
             if ($dateTo && $entryDate > $dateTo) continue;
 
-            // Find this account's dr/cr in the entry lines
+            // Find this account's dr/cr in the entry lines, and identify contra accounts
             $dr = 0;
             $cr = 0;
+            $contraAccounts = [];
             foreach ($entry['lines'] ?? [] as $line) {
-                if (($line['account_code'] ?? '') === $accountCode) {
+                $lineCode = $line['account_code'] ?? '';
+                if ($lineCode === $accountCode) {
                     $dr += (float) ($line['dr'] ?? 0);
                     $cr += (float) ($line['cr'] ?? 0);
+                } elseif ($lineCode !== '') {
+                    // This is a contra account — the other side of the entry
+                    $contraAccounts[$lineCode] = $line['account_name']
+                        ?? ($coa[$lineCode]['name'] ?? $lineCode);
                 }
+            }
+
+            // Skip entries where this account has zero impact (index stale or rounding)
+            if ($dr == 0 && $cr == 0) continue;
+
+            // Build readable contra label
+            $contraLabel = '';
+            $contraKeys = array_keys($contraAccounts);
+            if (count($contraKeys) === 1) {
+                $contraLabel = $contraKeys[0] . ' - ' . $contraAccounts[$contraKeys[0]];
+            } elseif (count($contraKeys) > 1) {
+                $contraLabel = implode(', ', $contraKeys) . ' (Multiple)';
             }
 
             $allTxns[] = [
                 'date'       => $entryDate,
                 'voucher_no' => $entry['voucher_no'] ?? '',
+                'type'       => $entry['voucher_type'] ?? 'Journal',
+                'source'     => $entry['source'] ?? '',
+                'source_ref' => $entry['source_ref'] ?? '',
                 'narration'  => $entry['narration'] ?? '',
-                'dr'         => $dr,
-                'cr'         => $cr,
+                'contra'     => $contraLabel,
+                'dr'         => round($dr, 2),
+                'cr'         => round($cr, 2),
                 'entry_id'   => $id,
             ];
         }
@@ -1077,10 +1232,21 @@ class Accounting extends MY_Controller
         }
         unset($txn);
 
+        // Compute totals
+        $totalDr = 0;
+        $totalCr = 0;
+        foreach ($transactions as $txn) {
+            $totalDr += $txn['dr'];
+            $totalCr += $txn['cr'];
+        }
+
         $this->json_success([
             'account'         => $acct,
+            'account_code'    => $accountCode,
             'opening_balance' => $effectiveOpenBal,
             'transactions'    => $transactions,
+            'total_dr'        => round($totalDr, 2),
+            'total_cr'        => round($totalCr, 2),
             'closing_balance' => round($runningBal, 2),
         ]);
     }
@@ -1406,42 +1572,79 @@ class Accounting extends MY_Controller
     //  TAB 6: FINANCIAL REPORTS
     // =========================================================================
 
-    /** POST: Trial Balance.
-     *
-     * When as_of_date is provided, recomputes period movements from ledger
-     * entries up to that date AND includes each account's opening_balance,
-     * so the trial balance reflects true account balances at a point in time.
+    /**
+     * Parse a date input that may be YYYY-MM-DD (HTML5 date input) or
+     * MM/DD/YYYY (some browsers/locales). Returns YYYY-MM-DD or ''.
      */
+    private function _normalise_date(string $raw): string
+    {
+        $raw = trim($raw);
+        if ($raw === '') return '';
+
+        // Already YYYY-MM-DD
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) return $raw;
+
+        // Try MM/DD/YYYY or DD/MM/YYYY or any parseable format
+        $ts = strtotime($raw);
+        if ($ts !== false) return date('Y-m-d', $ts);
+
+        return '';
+    }
+
+    /**
+     * Compute per-account dr/cr totals from ledger entries within a date range.
+     * If both $from and $to are empty, returns cached balances (fast path).
+     *
+     * @return array  ['account_code' => ['period_dr' => float, 'period_cr' => float], ...]
+     */
+    private function _compute_balances(string $from, string $to): array
+    {
+        // Fast path: no date filter → use cached closing balances
+        if ($from === '' && $to === '') {
+            $cached = $this->firebase->get($this->_bal());
+            return is_array($cached) ? $cached : [];
+        }
+
+        // Compute from raw ledger entries
+        $allLedger = $this->firebase->get($this->_ledger());
+        if (!is_array($allLedger)) return [];
+
+        $balances = [];
+        foreach ($allLedger as $entry) {
+            if (!is_array($entry) || ($entry['status'] ?? '') === 'deleted') continue;
+
+            $entryDate = $entry['date'] ?? '';
+            if ($from !== '' && $entryDate < $from) continue;
+            if ($to !== '' && $entryDate > $to) continue;
+
+            foreach ($entry['lines'] ?? [] as $line) {
+                $ac = $line['account_code'] ?? '';
+                if ($ac === '') continue;
+                if (!isset($balances[$ac])) $balances[$ac] = ['period_dr' => 0, 'period_cr' => 0];
+                $balances[$ac]['period_dr'] += (float) ($line['dr'] ?? 0);
+                $balances[$ac]['period_cr'] += (float) ($line['cr'] ?? 0);
+            }
+        }
+
+        return $balances;
+    }
+
+    /** POST: Trial Balance */
     public function trial_balance()
     {
         $this->_require_role(self::FINANCE_ROLES);
 
-        $asOf = trim((string) $this->input->post('as_of_date'));
+        $from = $this->_normalise_date((string) $this->input->post('date_from'));
+        $to   = $this->_normalise_date((string) $this->input->post('date_to'));
+        // Legacy: as_of_date acts as upper bound if no date_to provided
+        if ($to === '') {
+            $to = $this->_normalise_date((string) $this->input->post('as_of_date'));
+        }
 
         $coa = $this->firebase->get($this->_coa());
         if (!is_array($coa)) return $this->json_success(['rows' => [], 'totals' => ['dr' => 0, 'cr' => 0]]);
 
-        // When as_of_date is provided, compute balances from ledger entries up to that date
-        if ($asOf) {
-            $allLedger = $this->firebase->get($this->_ledger());
-            $balances = [];
-            if (is_array($allLedger)) {
-                foreach ($allLedger as $entry) {
-                    if (!is_array($entry) || ($entry['status'] ?? '') === 'deleted') continue;
-                    if (($entry['date'] ?? '') > $asOf) continue;
-                    foreach ($entry['lines'] ?? [] as $line) {
-                        $ac = $line['account_code'] ?? '';
-                        if (!$ac) continue;
-                        if (!isset($balances[$ac])) $balances[$ac] = ['period_dr' => 0, 'period_cr' => 0];
-                        $balances[$ac]['period_dr'] += (float) ($line['dr'] ?? 0);
-                        $balances[$ac]['period_cr'] += (float) ($line['cr'] ?? 0);
-                    }
-                }
-            }
-        } else {
-            $balances = $this->firebase->get($this->_bal());
-            if (!is_array($balances)) $balances = [];
-        }
+        $balances = $this->_compute_balances($from, $to);
 
         $rows = [];
         $totalDr = 0;
@@ -1452,7 +1655,6 @@ class Accounting extends MY_Controller
             if (($acct['status'] ?? '') !== 'active') continue;
             if (!empty($acct['is_group'])) continue;
 
-            // Opening balance is always included (both cached and as_of_date modes)
             $openBal  = (float) ($acct['opening_balance'] ?? 0);
             $periodDr = (float) ($balances[$code]['period_dr'] ?? 0);
             $periodCr = (float) ($balances[$code]['period_cr'] ?? 0);
@@ -1487,8 +1689,10 @@ class Accounting extends MY_Controller
         usort($rows, fn($a, $b) => strnatcmp($a['code'], $b['code']));
 
         $this->json_success([
-            'rows'   => $rows,
-            'totals' => ['dr' => round($totalDr, 2), 'cr' => round($totalCr, 2)],
+            'rows'      => $rows,
+            'totals'    => ['dr' => round($totalDr, 2), 'cr' => round($totalCr, 2)],
+            'date_from' => $from,
+            'date_to'   => $to,
         ]);
     }
 
@@ -1497,11 +1701,13 @@ class Accounting extends MY_Controller
     {
         $this->_require_role(self::FINANCE_ROLES);
 
+        $from = $this->_normalise_date((string) $this->input->post('date_from'));
+        $to   = $this->_normalise_date((string) $this->input->post('date_to'));
+
         $coa = $this->firebase->get($this->_coa());
         if (!is_array($coa)) return $this->json_success(['income' => [], 'expenses' => [], 'net' => 0]);
 
-        $balances = $this->firebase->get($this->_bal());
-        if (!is_array($balances)) $balances = [];
+        $balances = $this->_compute_balances($from, $to);
 
         $income = [];
         $expenses = [];
@@ -1535,6 +1741,8 @@ class Accounting extends MY_Controller
             'total_income'  => round($totalIncome, 2),
             'total_expense' => round($totalExpense, 2),
             'net_profit'    => round($totalIncome - $totalExpense, 2),
+            'date_from'     => $from,
+            'date_to'       => $to,
         ]);
     }
 
@@ -1543,18 +1751,20 @@ class Accounting extends MY_Controller
     {
         $this->_require_role(self::FINANCE_ROLES);
 
+        $to = $this->_normalise_date((string) $this->input->post('date_to'));
+        // Balance Sheet is always "as of" a date — use date_to as upper bound, no lower bound
+        // If date_from is provided, use it for period movements; otherwise all-time
+        $from = $this->_normalise_date((string) $this->input->post('date_from'));
+
         $coa = $this->firebase->get($this->_coa());
         if (!is_array($coa)) return $this->json_success(['assets' => [], 'liabilities' => [], 'equity' => []]);
 
-        $balances = $this->firebase->get($this->_bal());
-        if (!is_array($balances)) $balances = [];
+        $balances = $this->_compute_balances($from, $to);
 
         $assets = [];
         $liabilities = [];
         $equity = [];
         $totals = ['assets' => 0, 'liabilities' => 0, 'equity' => 0];
-
-        // Also compute net P&L for retained earnings
         $netPL = 0;
 
         foreach ($coa as $code => $acct) {
@@ -1599,7 +1809,6 @@ class Accounting extends MY_Controller
             }
         }
 
-        // Add net P&L as retained surplus
         if (abs($netPL) > 0.01) {
             $equity[] = ['code' => '-', 'name' => 'Current Year Surplus/Deficit', 'amount' => round($netPL, 2)];
             $totals['equity'] += $netPL;
@@ -1618,84 +1827,434 @@ class Accounting extends MY_Controller
                 'liabilities_equity'   => $totalLiabilitiesEquity,
             ],
             'total_liabilities_equity' => $totalLiabilitiesEquity,
+            'date_from'                => $from,
+            'date_to'                  => $to,
         ]);
     }
 
-    /** POST: Cash Flow Report (N+1 fixed, contra double-counting fixed) */
+    /**
+     * POST: Cash Flow Statement — Indirect Method
+     *
+     * Tracks actual cash MOVEMENTS through cash/bank accounts, classified by:
+     *   Operating  — fees collected, salaries paid, day-to-day receipts/payments
+     *   Investing  — fixed asset purchases/sales
+     *   Financing  — loan receipts/repayments, equity contributions
+     *
+     * Contra entries (cash↔bank transfers) are excluded — they don't represent
+     * economic activity, just movement between the school's own accounts.
+     *
+     * Opening balance is computed from:
+     *   CoA opening_balance + all pre-period ledger movements on cash/bank accounts.
+     */
     public function cash_flow()
     {
         $this->_require_role(self::FINANCE_ROLES);
 
-        // Get all cash/bank accounts
-        $coa = $this->firebase->get($this->_coa());
-        if (!is_array($coa)) return $this->json_success(['flows' => []]);
+        $from = $this->_normalise_date((string) $this->input->post('date_from'));
+        $to   = $this->_normalise_date((string) $this->input->post('date_to'));
 
+        $coa = $this->firebase->get($this->_coa());
+        if (!is_array($coa)) {
+            return $this->json_success([
+                'opening' => 0, 'closing' => 0, 'net_change' => 0,
+                'operating' => [], 'investing' => [], 'financing' => [],
+            ]);
+        }
+
+        // Identify all cash/bank accounts
         $cashCodes = [];
         foreach ($coa as $code => $acct) {
-            if (!is_array($acct)) continue;
+            if (!is_array($acct) || ($acct['status'] ?? '') !== 'active') continue;
+            if (!empty($acct['is_group'])) continue;
             $sub = strtolower($acct['sub_category'] ?? '');
             if (in_array($code, ['1010', '1020']) || !empty($acct['is_bank']) || $sub === 'cash') {
-                $cashCodes[$code] = $acct['name'] ?? $code;
+                $cashCodes[$code] = true;
             }
         }
 
-        // Fetch FULL ledger once (fix N+1)
+        // Static opening balance from CoA
+        $openingFromCoA = 0;
+        foreach ($cashCodes as $code => $_) {
+            $openingFromCoA += (float) ($coa[$code]['opening_balance'] ?? 0);
+        }
+
+        // Fetch FULL ledger
         $allLedger = $this->firebase->get($this->_ledger());
         if (!is_array($allLedger)) $allLedger = [];
 
-        $totals = ['operating' => 0, 'investing' => 0, 'financing' => 0];
-
-        // Track processed entry IDs to fix contra double-counting
+        // Collect all entries that touch cash/bank accounts (deduplicated)
         $processedIds = [];
-
+        $cashEntryIds = [];
         foreach (array_keys($cashCodes) as $cashCode) {
             $safeCode = $this->safe_path_segment($cashCode, 'account_code');
             $ids = $this->firebase->shallow_get($this->_idx() . "/by_account/{$safeCode}");
             if (!is_array($ids)) continue;
-
             foreach ($ids as $id) {
-                if (isset($processedIds[$id])) continue;
-                $processedIds[$id] = true;
-
-                $entry = $allLedger[$id] ?? null;
-                if (!is_array($entry)) continue;
-                if (($entry['status'] ?? '') === 'deleted') continue;
-
-                foreach ($entry['lines'] ?? [] as $line) {
-                    $lineCode = $line['account_code'] ?? '';
-                    if (!isset($cashCodes[$lineCode])) continue;
-
-                    $inflow = (float) ($line['dr'] ?? 0);
-                    $outflow = (float) ($line['cr'] ?? 0);
-                    $net = $inflow - $outflow;
-                    $flowType = 'operating'; // default
-
-                    // Classify based on the OTHER account in the entry
-                    foreach ($entry['lines'] ?? [] as $otherLine) {
-                        if (isset($cashCodes[$otherLine['account_code'] ?? ''])) continue;
-                        $otherCode = $otherLine['account_code'] ?? '';
-                        $otherAcct = $coa[$otherCode] ?? [];
-                        $otherCat = $otherAcct['category'] ?? '';
-                        $otherSub = strtolower($otherAcct['sub_category'] ?? '');
-
-                        if (strpos($otherSub, 'fixed') !== false) {
-                            $flowType = 'investing';
-                        } elseif (strpos($otherSub, 'loan') !== false || $otherCat === 'Equity') {
-                            $flowType = 'financing';
-                        }
-                        break;
-                    }
-
-                    $totals[$flowType] += $net;
+                if (!isset($processedIds[$id])) {
+                    $processedIds[$id] = true;
+                    $cashEntryIds[] = $id;
                 }
             }
         }
 
+        // Process entries: separate pre-period (opening) vs in-period (movements)
+        //
+        // Deduplication is by ENTRY ID only (via $processedIds above).
+        // Each Ledger entry has a unique ID — voucher_no is NOT a dedup key
+        // because different modules legitimately create separate entries with
+        // their own voucher sequences.
+        $preMovement  = 0;
+        $operating    = [];
+        $investing    = [];
+        $financing    = [];
+        $opTotal = 0; $invTotal = 0; $finTotal = 0;
+        $processedCount = 0;
+        $skippedCount   = 0;
+
+        foreach ($cashEntryIds as $id) {
+            $entry = $allLedger[$id] ?? null;
+            if (!is_array($entry) || ($entry['status'] ?? '') === 'deleted') {
+                $skippedCount++;
+                continue;
+            }
+
+            $entryDate = $entry['date'] ?? '';
+            if ($to !== '' && $entryDate > $to) continue;
+
+            // Sum this entry's net impact on cash/bank accounts
+            $cashDr = 0;
+            $cashCr = 0;
+            $otherAccounts = [];
+            $isContra = true;
+
+            foreach ($entry['lines'] ?? [] as $line) {
+                $lineCode = $line['account_code'] ?? '';
+                if (isset($cashCodes[$lineCode])) {
+                    $cashDr += (float) ($line['dr'] ?? 0);
+                    $cashCr += (float) ($line['cr'] ?? 0);
+                } else {
+                    $isContra = false;
+                    $otherAccounts[$lineCode] = $coa[$lineCode] ?? [];
+                }
+            }
+
+            $netCash = $cashDr - $cashCr;
+
+            // Skip contra entries (cash↔bank transfers) and zero-impact
+            if ($isContra || abs($netCash) < 0.01) continue;
+
+            $processedCount++;
+
+            // Pre-period: accumulate into opening balance
+            if ($from !== '' && $entryDate < $from) {
+                $preMovement += $netCash;
+                continue;
+            }
+
+            // Classify by the other side's account category
+            $flowType = 'operating';
+            foreach ($otherAccounts as $otherCode => $otherAcct) {
+                $otherCat = $otherAcct['category'] ?? '';
+                $otherSub = strtolower($otherAcct['sub_category'] ?? '');
+
+                if (strpos($otherSub, 'fixed') !== false || ($otherCat === 'Asset' && strpos($otherSub, 'current') === false)) {
+                    $flowType = 'investing';
+                    break;
+                } elseif (strpos($otherSub, 'loan') !== false || strpos($otherSub, 'long-term') !== false || $otherCat === 'Equity') {
+                    $flowType = 'financing';
+                    break;
+                }
+            }
+
+            // Description
+            $desc = $entry['narration'] ?? '';
+            if ($desc === '') {
+                $names = [];
+                foreach ($otherAccounts as $oc => $oa) {
+                    $names[] = ($oa['name'] ?? $oc);
+                }
+                $desc = implode(', ', array_slice($names, 0, 2));
+            }
+
+            $source = $entry['source'] ?? '';
+            $isSystem = in_array($source, ['income', 'expense', 'HR_Payroll', 'fees'], true);
+
+            $item = [
+                'date'       => $entryDate,
+                'entry_id'   => $id,
+                'narration'  => $desc,
+                'voucher_no' => $entry['voucher_no'] ?? '',
+                'source'     => $source ?: 'manual',
+                'is_system'  => $isSystem,
+                'inflow'     => $netCash > 0 ? round($netCash, 2) : 0,
+                'outflow'    => $netCash < 0 ? round(abs($netCash), 2) : 0,
+                'net'        => round($netCash, 2),
+                '_accts'      => array_keys($otherAccounts), // for duplicate detection
+                '_created_at' => $entry['created_at'] ?? '',  // for timestamp-based proximity
+            ];
+
+            switch ($flowType) {
+                case 'investing':
+                    $investing[] = $item;
+                    $invTotal += $netCash;
+                    break;
+                case 'financing':
+                    $financing[] = $item;
+                    $finTotal += $netCash;
+                    break;
+                default:
+                    $operating[] = $item;
+                    $opTotal += $netCash;
+                    break;
+            }
+        }
+
+        // ── Possible-duplicate detection (flag only, never skip) ──
+        //
+        // Criteria — ALL must match to flag a pair:
+        //   1. Same absolute amount
+        //   2. Same direction (both inflows OR both outflows)
+        //   3. Timestamp within ±36h (or date within ±1 day if no timestamp)
+        //   4. At least one overlapping contra account code
+        //   5. Normalised narration identical or >75% similar
+        //
+        // Performance: bucket by amount, cap pair comparisons at 50 per bucket.
+
+        $allItems = [];
+        foreach (['operating', 'investing', 'financing'] as $_cat) {
+            foreach ($$_cat as &$_item) {
+                $allItems[] = &$_item;
+            }
+            unset($_item);
+        }
+
+        $suspectPairs    = [];
+        $pairsChecked    = 0;
+        $maxPairsPerBucket = 50; // safety cap
+
+        // Normalise narration: lowercase, strip punctuation, collapse whitespace
+        $normNar = function (string $s): string {
+            $s = strtolower(trim($s));
+            $s = preg_replace('/[^a-z0-9\s]/', '', $s);  // strip punctuation
+            return preg_replace('/\s+/', ' ', $s);         // collapse spaces
+        };
+
+        // Resolve timestamp: prefer created_at (ISO), fall back to date (YYYY-MM-DD noon)
+        $resolveTs = function (array $item): int {
+            if (!empty($item['_created_at'])) {
+                $ts = strtotime($item['_created_at']);
+                if ($ts !== false) return $ts;
+            }
+            $ts = strtotime($item['date'] . ' 12:00:00');
+            return $ts !== false ? $ts : 0;
+        };
+
+        // Bucket by absolute amount
+        $amtBuckets = [];
+        foreach ($allItems as $idx => &$item) {
+            $amtKey = number_format(abs($item['net']), 2, '.', '');
+            $amtBuckets[$amtKey][] = $idx;
+        }
+        unset($item);
+
+        foreach ($amtBuckets as $amtKey => $indices) {
+            if (count($indices) < 2) continue;
+
+            $cnt = count($indices);
+            $bucketPairs = 0;
+
+            for ($i = 0; $i < $cnt && $bucketPairs < $maxPairsPerBucket; $i++) {
+                for ($j = $i + 1; $j < $cnt && $bucketPairs < $maxPairsPerBucket; $j++) {
+                    $bucketPairs++;
+                    $pairsChecked++;
+                    $a = &$allItems[$indices[$i]];
+                    $b = &$allItems[$indices[$j]];
+
+                    // ── Check 1 (cheapest): same direction ──
+                    // Both inflows (net > 0) or both outflows (net < 0)
+                    if (($a['net'] > 0) !== ($b['net'] > 0)) continue;
+
+                    // ── Check 2: time proximity — ±36h via timestamp, ±1 day via date ──
+                    $tsA = $resolveTs($a);
+                    $tsB = $resolveTs($b);
+                    if ($tsA === 0 || $tsB === 0) continue;
+                    $maxGap = (!empty($a['_created_at']) && !empty($b['_created_at']))
+                        ? 129600   // 36 hours (timestamp precision available)
+                        : 86400;   // 24 hours (date-only fallback)
+                    if (abs($tsA - $tsB) > $maxGap) continue;
+
+                    // ── Check 3: at least one shared contra account ──
+                    $acctsA = $a['_accts'] ?? [];
+                    $acctsB = $b['_accts'] ?? [];
+                    if (!empty($acctsA) && !empty($acctsB)) {
+                        $shared = array_intersect($acctsA, $acctsB);
+                        if (empty($shared)) continue;
+                    } else {
+                        $shared = [];
+                    }
+
+                    // ── Check 4 (most expensive): normalised narration similarity ──
+                    $nA = $normNar($a['narration']);
+                    $nB = $normNar($b['narration']);
+                    $similar = ($nA === $nB);
+                    if (!$similar && strlen($nA) > 4 && strlen($nB) > 4) {
+                        similar_text($nA, $nB, $pct);
+                        $similar = ($pct > 75);
+                    }
+                    if (!$similar) continue;
+
+                    // All checks passed — flag both (never remove)
+                    $a['possible_duplicate'] = true;
+                    $b['possible_duplicate'] = true;
+                    $suspectPairs[] = [
+                        'entry_a'      => $a['entry_id'],
+                        'entry_b'      => $b['entry_id'],
+                        'date_a'       => $a['date'],
+                        'date_b'       => $b['date'],
+                        'amount'       => (float) $amtKey,
+                        'direction'    => $a['net'] > 0 ? 'inflow' : 'outflow',
+                        'shared_accts' => array_values($shared),
+                    ];
+                }
+            }
+        }
+
+        // Strip internal fields from response
+        foreach ($allItems as &$item) {
+            unset($item['_accts'], $item['_created_at']);
+        }
+        unset($item);
+
+        if (!empty($suspectPairs)) {
+            log_message('info',
+                "cash_flow: " . count($suspectPairs) . " possible duplicate pair(s)"
+                . " school=[{$this->school_name}]: "
+                . json_encode($suspectPairs)
+            );
+        }
+
+        // Debug logging
+        log_message('debug',
+            "cash_flow: school=[{$this->school_name}]"
+            . " index_entries=" . count($cashEntryIds)
+            . " processed={$processedCount}"
+            . " skipped_deleted={$skippedCount}"
+            . " dup_pairs_checked={$pairsChecked}"
+            . " suspects=" . count($suspectPairs)
+            . " operating=" . count($operating)
+            . " investing=" . count($investing)
+            . " financing=" . count($financing)
+        );
+
+        $openingBalance = round($openingFromCoA + $preMovement, 2);
+        $netChange      = round($opTotal + $invTotal + $finTotal, 2);
+        $closingBalance = round($openingBalance + $netChange, 2);
+
+        $response = [
+            'opening_balance'  => $openingBalance,
+            'closing_balance'  => $closingBalance,
+            'net_change'       => $netChange,
+            'operating'        => $operating,
+            'operating_total'  => round($opTotal, 2),
+            'investing'        => $investing,
+            'investing_total'  => round($invTotal, 2),
+            'financing'        => $financing,
+            'financing_total'  => round($finTotal, 2),
+            'date_from'        => $from,
+            'date_to'          => $to,
+            'entry_count'      => $processedCount,
+        ];
+
+        if (!empty($suspectPairs)) {
+            $response['suspect_duplicates'] = count($suspectPairs);
+        }
+
+        $this->json_success($response);
+    }
+
+    /**
+     * POST: Day Book — chronological view of ALL ledger entries.
+     * No account filter. Shows every transaction with line-item detail.
+     */
+    public function day_book()
+    {
+        $this->_require_role(self::FINANCE_ROLES);
+
+        $from = $this->_normalise_date((string) $this->input->post('date_from'));
+        $to   = $this->_normalise_date((string) $this->input->post('date_to'));
+
+        // Fetch full ledger
+        $allLedger = $this->firebase->get($this->_ledger());
+        if (!is_array($allLedger)) $allLedger = [];
+
+        // Fetch CoA for account name resolution
+        $coa = $this->firebase->get($this->_coa());
+        if (!is_array($coa)) $coa = [];
+
+        $entries  = [];
+        $totalDr  = 0;
+        $totalCr  = 0;
+
+        foreach ($allLedger as $id => $entry) {
+            if (!is_array($entry) || ($entry['status'] ?? '') === 'deleted') continue;
+
+            $entryDate = $entry['date'] ?? '';
+            if ($from !== '' && $entryDate < $from) continue;
+            if ($to !== '' && $entryDate > $to) continue;
+
+            $dr = round((float) ($entry['total_dr'] ?? 0), 2);
+            $cr = round((float) ($entry['total_cr'] ?? 0), 2);
+
+            // Build line items with resolved account names
+            $lines = [];
+            foreach ($entry['lines'] ?? [] as $line) {
+                $ac   = $line['account_code'] ?? '';
+                $name = $line['account_name'] ?? '';
+                if ($name === '' && $ac !== '') {
+                    $name = $coa[$ac]['name'] ?? $ac;
+                }
+                $lines[] = [
+                    'account_code' => $ac,
+                    'account_name' => $name,
+                    'dr'           => round((float) ($line['dr'] ?? 0), 2),
+                    'cr'           => round((float) ($line['cr'] ?? 0), 2),
+                ];
+            }
+
+            $source = $entry['source'] ?? '';
+            $entries[] = [
+                'entry_id'     => $id,
+                'date'         => $entryDate,
+                'voucher_no'   => $entry['voucher_no'] ?? '',
+                'voucher_type' => $entry['voucher_type'] ?? 'Journal',
+                'narration'    => $entry['narration'] ?? '',
+                'source'       => $source ?: 'manual',
+                'is_system'    => in_array($source, ['income', 'expense', 'HR_Payroll', 'fees'], true),
+                'is_finalized' => !empty($entry['is_finalized']),
+                'total_dr'     => $dr,
+                'total_cr'     => $cr,
+                'lines'        => $lines,
+                'created_at'   => $entry['created_at'] ?? '',
+            ];
+
+            $totalDr += $dr;
+            $totalCr += $cr;
+        }
+
+        // Sort by date ASC, then by created_at ASC within same date
+        usort($entries, function ($a, $b) {
+            $d = strcmp($a['date'], $b['date']);
+            if ($d !== 0) return $d;
+            return strcmp($a['created_at'], $b['created_at']);
+        });
+
         $this->json_success([
-            'operating'  => round($totals['operating'], 2),
-            'investing'  => round($totals['investing'], 2),
-            'financing'  => round($totals['financing'], 2),
-            'net_change' => round($totals['operating'] + $totals['investing'] + $totals['financing'], 2),
+            'entries'   => $entries,
+            'total_dr'  => round($totalDr, 2),
+            'total_cr'  => round($totalCr, 2),
+            'count'     => count($entries),
+            'date_from' => $from,
+            'date_to'   => $to,
         ]);
     }
 
@@ -1705,8 +2264,8 @@ class Accounting extends MY_Controller
         $this->_require_role(self::FINANCE_ROLES);
 
         $code     = trim((string) $this->input->post('account_code'));
-        $dateFrom = trim((string) $this->input->post('date_from'));
-        $dateTo   = trim((string) $this->input->post('date_to'));
+        $dateFrom = $this->_normalise_date((string) $this->input->post('date_from'));
+        $dateTo   = $this->_normalise_date((string) $this->input->post('date_to'));
 
         if (!$code) return $this->json_error('Account code required.');
 
@@ -1977,10 +2536,11 @@ class Accounting extends MY_Controller
         // Assets (1000-1999)
         $add('1000', 'Current Assets',        'Asset', 'Current Assets',  null, true);
         $add('1010', 'Cash in Hand',           'Asset', 'Current Assets',  '1000');
-        $add('1020', 'Bank Accounts',          'Asset', 'Current Assets',  '1000', true);
+        $add('1020', 'Bank Account',            'Asset', 'Current Assets',  '1000', false, true);
         $add('1030', 'Accounts Receivable',    'Asset', 'Current Assets',  '1000');
         $add('1040', 'Advance to Staff',       'Asset', 'Current Assets',  '1000');
         $add('1050', 'Deposits & Prepayments', 'Asset', 'Current Assets',  '1000');
+        $add('1060', 'Fees Receivable',        'Asset', 'Current Assets',  '1000');
         $add('1100', 'Fixed Assets',           'Asset', 'Fixed Assets',    null, true);
         $add('1110', 'Furniture & Fixtures',   'Asset', 'Fixed Assets',    '1100');
         $add('1120', 'Computer & Equipment',   'Asset', 'Fixed Assets',    '1100');
@@ -1990,10 +2550,15 @@ class Accounting extends MY_Controller
         // Liabilities (2000-2999)
         $add('2000', 'Current Liabilities',       'Liability', 'Current Liabilities', null, true);
         $add('2010', 'Accounts Payable',           'Liability', 'Current Liabilities', '2000');
-        $add('2020', 'Salary Payable',             'Liability', 'Current Liabilities', '2000');
-        $add('2030', 'Tax Payable (TDS/GST)',      'Liability', 'Current Liabilities', '2000');
-        $add('2040', 'Security Deposits Received', 'Liability', 'Current Liabilities', '2000');
-        $add('2050', 'Advance Fees Received',      'Liability', 'Current Liabilities', '2000');
+        $add('2020', 'Salary Payable',             'Liability', 'Current Liabilities',    '2000');
+        $add('2030', 'PF Payable',                 'Liability', 'Statutory Liabilities', '2000');
+        $add('2031', 'ESI Payable',                'Liability', 'Statutory Liabilities', '2000');
+        $add('2032', 'TDS Payable',                'Liability', 'Statutory Liabilities', '2000');
+        $add('2033', 'Professional Tax Payable',   'Liability', 'Statutory Liabilities', '2000');
+        $add('2034', 'Other Deductions Payable',   'Liability', 'Statutory Liabilities', '2000');
+        $add('2040', 'Security Deposits Received', 'Liability', 'Current Liabilities',   '2000');
+        $add('2050', 'Advance Fees Received',      'Liability', 'Current Liabilities',   '2000');
+        $add('2060', 'GST Payable',                'Liability', 'Statutory Liabilities', '2000');
         $add('2100', 'Long-term Liabilities',      'Liability', 'Long-term Liabilities', null, true);
         $add('2110', 'Loans Payable',              'Liability', 'Long-term Liabilities', '2100');
 
@@ -2041,5 +2606,563 @@ class Accounting extends MY_Controller
         $add('5330', 'Generator/Fuel',           'Expense', 'Utilities',       '5300');
 
         return $a;
+    }
+
+    // =========================================================================
+    //  EXPORT: Excel & PDF for all reports
+    // =========================================================================
+
+    /**
+     * GET — Export a report as Excel (.xlsx).
+     * Params: type, date_from, date_to (query string)
+     */
+    public function export_excel()
+    {
+        $this->_require_role(self::FINANCE_ROLES);
+
+        $type = trim($this->input->get('type') ?? '');
+        $from = $this->_normalise_date((string) $this->input->get('date_from'));
+        $to   = $this->_normalise_date((string) $this->input->get('date_to'));
+        $validTypes = ['day_book', 'trial_balance', 'profit_loss', 'balance_sheet', 'cash_flow'];
+        if (!in_array($type, $validTypes, true)) {
+            show_error('Invalid report type.', 400);
+            return;
+        }
+
+        $data = $this->_get_report_data($type, $from, $to);
+        $schoolName = preg_replace('/[^A-Za-z0-9_ ]/', '', $this->school_display_name ?? $this->school_name);
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $titles = [
+            'day_book' => 'Day Book', 'trial_balance' => 'Trial Balance',
+            'profit_loss' => 'Profit & Loss', 'balance_sheet' => 'Balance Sheet',
+            'cash_flow' => 'Cash Flow',
+        ];
+        $title = $titles[$type] ?? 'Report';
+        $sheet->setTitle(substr($title, 0, 31));
+
+        // Header row: School name + report title + date range
+        $sheet->setCellValue('A1', $schoolName);
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+        $dateLabel = $title;
+        if ($from || $to) $dateLabel .= '  |  ' . ($from ?: 'Start') . ' to ' . ($to ?: 'Present');
+        $sheet->setCellValue('A2', $dateLabel);
+        $sheet->getStyle('A2')->getFont()->setBold(true)->setSize(11);
+
+        $row = 4; // data starts at row 4
+
+        switch ($type) {
+            case 'day_book':
+                $row = $this->_xl_day_book($sheet, $data, $row);
+                break;
+            case 'trial_balance':
+                $row = $this->_xl_trial_balance($sheet, $data, $row);
+                break;
+            case 'profit_loss':
+                $row = $this->_xl_profit_loss($sheet, $data, $row);
+                break;
+            case 'balance_sheet':
+                $row = $this->_xl_balance_sheet($sheet, $data, $row);
+                break;
+            case 'cash_flow':
+                $row = $this->_xl_cash_flow($sheet, $data, $row);
+                break;
+        }
+
+        // Auto-width columns
+        foreach (range('A', $sheet->getHighestColumn()) as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+        // Freeze header row (row 4 = first data header)
+        $sheet->freezePane('A5');
+
+        $filename = $schoolName . '_' . $type . '_' . date('Ymd') . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: max-age=0');
+
+        $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+        $writer->save('php://output');
+        $spreadsheet->disconnectWorksheets();
+        exit;
+    }
+
+    /**
+     * GET — Export a report as PDF.
+     */
+    public function export_pdf()
+    {
+        $this->_require_role(self::FINANCE_ROLES);
+
+        $type = trim($this->input->get('type') ?? '');
+        $from = $this->_normalise_date((string) $this->input->get('date_from'));
+        $to   = $this->_normalise_date((string) $this->input->get('date_to'));
+        $validTypes = ['day_book', 'trial_balance', 'profit_loss', 'balance_sheet', 'cash_flow'];
+        if (!in_array($type, $validTypes, true)) {
+            show_error('Invalid report type.', 400);
+            return;
+        }
+
+        $data = $this->_get_report_data($type, $from, $to);
+        $schoolName = $this->school_display_name ?? $this->school_name;
+
+        $titles = [
+            'day_book' => 'Day Book', 'trial_balance' => 'Trial Balance',
+            'profit_loss' => 'Profit & Loss Statement', 'balance_sheet' => 'Balance Sheet',
+            'cash_flow' => 'Cash Flow Statement',
+        ];
+        $title = $titles[$type] ?? 'Report';
+        $dateLabel = ($from || $to) ? (($from ?: 'Start') . ' to ' . ($to ?: date('Y-m-d'))) : 'All Transactions';
+
+        $html = $this->_pdf_render($title, $schoolName, $dateLabel, $type, $data);
+
+        $this->load->library('pdf_generator');
+        $filename = preg_replace('/[^A-Za-z0-9_]/', '', $schoolName) . '_' . $type . '_' . date('Ymd') . '.pdf';
+
+        $options = new \Dompdf\Options();
+        $options->set('defaultFont', 'sans-serif');
+        $options->set('isHtml5ParserEnabled', true);
+        $options->set('defaultPaperSize', ($type === 'day_book') ? 'A4' : 'A4');
+        $options->set('defaultPaperOrientation', ($type === 'day_book' || $type === 'cash_flow') ? 'landscape' : 'portrait');
+        $tempDir = APPPATH . 'cache/dompdf';
+        if (!is_dir($tempDir)) mkdir($tempDir, 0755, true);
+        $options->setTempDir($tempDir);
+        $options->setFontDir($tempDir);
+        $options->setFontCache($tempDir);
+
+        $dompdf = new \Dompdf\Dompdf($options);
+        $dompdf->loadHtml($html);
+        $dompdf->render();
+        $dompdf->stream($filename, ['Attachment' => true]);
+        exit;
+    }
+
+    // ── Report data fetcher (reuses existing logic without output) ──
+
+    private function _get_report_data(string $type, string $from, string $to): array
+    {
+        switch ($type) {
+            case 'day_book':
+                return $this->_data_day_book($from, $to);
+            case 'trial_balance':
+                return $this->_data_trial_balance($from, $to);
+            case 'profit_loss':
+                return $this->_data_profit_loss($from, $to);
+            case 'balance_sheet':
+                return $this->_data_balance_sheet($from, $to);
+            case 'cash_flow':
+                return $this->_data_cash_flow($from, $to);
+            default:
+                return [];
+        }
+    }
+
+    private function _data_day_book(string $from, string $to): array
+    {
+        $allLedger = $this->firebase->get($this->_ledger());
+        if (!is_array($allLedger)) return ['entries' => [], 'total_dr' => 0, 'total_cr' => 0];
+        $coa = $this->firebase->get($this->_coa());
+        if (!is_array($coa)) $coa = [];
+
+        $entries = [];
+        $tDr = 0; $tCr = 0;
+        foreach ($allLedger as $id => $e) {
+            if (!is_array($e) || ($e['status'] ?? '') === 'deleted') continue;
+            $d = $e['date'] ?? '';
+            if ($from !== '' && $d < $from) continue;
+            if ($to !== '' && $d > $to) continue;
+            $dr = round((float) ($e['total_dr'] ?? 0), 2);
+            $cr = round((float) ($e['total_cr'] ?? 0), 2);
+            $lines = [];
+            foreach ($e['lines'] ?? [] as $ln) {
+                $ac = $ln['account_code'] ?? '';
+                $lines[] = [
+                    'code' => $ac,
+                    'name' => $ln['account_name'] ?? ($coa[$ac]['name'] ?? $ac),
+                    'dr' => round((float) ($ln['dr'] ?? 0), 2),
+                    'cr' => round((float) ($ln['cr'] ?? 0), 2),
+                ];
+            }
+            $entries[] = [
+                'date' => $d, 'voucher_no' => $e['voucher_no'] ?? '', 'type' => $e['voucher_type'] ?? 'Journal',
+                'source' => $e['source'] ?? 'manual', 'narration' => $e['narration'] ?? '',
+                'dr' => $dr, 'cr' => $cr, 'lines' => $lines, 'created_at' => $e['created_at'] ?? '',
+            ];
+            $tDr += $dr; $tCr += $cr;
+        }
+        usort($entries, function ($a, $b) {
+            $d = strcmp($a['date'], $b['date']);
+            return $d !== 0 ? $d : strcmp($a['created_at'], $b['created_at']);
+        });
+        return ['entries' => $entries, 'total_dr' => round($tDr, 2), 'total_cr' => round($tCr, 2)];
+    }
+
+    private function _data_trial_balance(string $from, string $to): array
+    {
+        $coa = $this->firebase->get($this->_coa());
+        if (!is_array($coa)) return ['rows' => [], 'total_dr' => 0, 'total_cr' => 0];
+        $balances = $this->_compute_balances($from, $to);
+        $rows = []; $tDr = 0; $tCr = 0;
+        foreach ($coa as $code => $acct) {
+            if (!is_array($acct) || ($acct['status'] ?? '') !== 'active' || !empty($acct['is_group'])) continue;
+            $ob = (float) ($acct['opening_balance'] ?? 0);
+            $pDr = (float) ($balances[$code]['period_dr'] ?? 0);
+            $pCr = (float) ($balances[$code]['period_cr'] ?? 0);
+            $ns = $acct['normal_side'] ?? 'Dr';
+            $cb = ($ns === 'Dr') ? ($ob + $pDr - $pCr) : ($ob + $pCr - $pDr);
+            if (abs($cb) < 0.01) continue;
+            $dr = ($ns === 'Dr') ? max($cb, 0) : max(-$cb, 0);
+            $cr = ($ns === 'Cr') ? max($cb, 0) : max(-$cb, 0);
+            $tDr += $dr; $tCr += $cr;
+            $rows[] = ['code' => $code, 'name' => $acct['name'] ?? '', 'category' => $acct['category'] ?? '', 'dr' => round($dr, 2), 'cr' => round($cr, 2)];
+        }
+        usort($rows, fn($a, $b) => strnatcmp($a['code'], $b['code']));
+        return ['rows' => $rows, 'total_dr' => round($tDr, 2), 'total_cr' => round($tCr, 2)];
+    }
+
+    private function _data_profit_loss(string $from, string $to): array
+    {
+        $coa = $this->firebase->get($this->_coa());
+        if (!is_array($coa)) return ['income' => [], 'expenses' => [], 'total_income' => 0, 'total_expense' => 0, 'net' => 0];
+        $balances = $this->_compute_balances($from, $to);
+        $income = []; $expenses = []; $tI = 0; $tE = 0;
+        foreach ($coa as $code => $acct) {
+            if (!is_array($acct) || ($acct['status'] ?? '') !== 'active' || !empty($acct['is_group'])) continue;
+            $pDr = (float) ($balances[$code]['period_dr'] ?? 0);
+            $pCr = (float) ($balances[$code]['period_cr'] ?? 0);
+            $cat = $acct['category'] ?? '';
+            if ($cat === 'Income') { $a = $pCr - $pDr; if (abs($a) < 0.01) continue; $tI += $a; $income[] = ['code' => $code, 'name' => $acct['name'] ?? '', 'amount' => round($a, 2)]; }
+            elseif ($cat === 'Expense') { $a = $pDr - $pCr; if (abs($a) < 0.01) continue; $tE += $a; $expenses[] = ['code' => $code, 'name' => $acct['name'] ?? '', 'amount' => round($a, 2)]; }
+        }
+        return ['income' => $income, 'expenses' => $expenses, 'total_income' => round($tI, 2), 'total_expense' => round($tE, 2), 'net' => round($tI - $tE, 2)];
+    }
+
+    private function _data_balance_sheet(string $from, string $to): array
+    {
+        $coa = $this->firebase->get($this->_coa());
+        if (!is_array($coa)) return ['assets' => [], 'liabilities' => [], 'equity' => [], 'totals' => ['assets' => 0, 'liabilities' => 0, 'equity' => 0]];
+        $balances = $this->_compute_balances($from, $to);
+        $assets = []; $liabilities = []; $equity = []; $totals = ['assets' => 0, 'liabilities' => 0, 'equity' => 0]; $netPL = 0;
+        foreach ($coa as $code => $acct) {
+            if (!is_array($acct) || ($acct['status'] ?? '') !== 'active' || !empty($acct['is_group'])) continue;
+            $ob = (float) ($acct['opening_balance'] ?? 0); $pDr = (float) ($balances[$code]['period_dr'] ?? 0); $pCr = (float) ($balances[$code]['period_cr'] ?? 0);
+            $cat = $acct['category'] ?? '';
+            switch ($cat) {
+                case 'Asset':     $b = $ob + $pDr - $pCr; if (abs($b) < 0.01) break; $totals['assets'] += $b; $assets[] = ['code' => $code, 'name' => $acct['name'] ?? '', 'amount' => round($b, 2)]; break;
+                case 'Liability': $b = $ob + $pCr - $pDr; if (abs($b) < 0.01) break; $totals['liabilities'] += $b; $liabilities[] = ['code' => $code, 'name' => $acct['name'] ?? '', 'amount' => round($b, 2)]; break;
+                case 'Equity':    $b = $ob + $pCr - $pDr; if (abs($b) < 0.01) break; $totals['equity'] += $b; $equity[] = ['code' => $code, 'name' => $acct['name'] ?? '', 'amount' => round($b, 2)]; break;
+                case 'Income': $netPL += ($pCr - $pDr); break;
+                case 'Expense': $netPL -= ($pDr - $pCr); break;
+            }
+        }
+        if (abs($netPL) > 0.01) { $equity[] = ['code' => '-', 'name' => 'Current Year Surplus/Deficit', 'amount' => round($netPL, 2)]; $totals['equity'] += $netPL; }
+        return ['assets' => $assets, 'liabilities' => $liabilities, 'equity' => $equity, 'totals' => ['assets' => round($totals['assets'], 2), 'liabilities' => round($totals['liabilities'], 2), 'equity' => round($totals['equity'], 2)]];
+    }
+
+    private function _data_cash_flow(string $from, string $to): array
+    {
+        // Simplified: use _compute_balances for cash/bank accounts only
+        $coa = $this->firebase->get($this->_coa());
+        if (!is_array($coa)) return ['operating' => 0, 'investing' => 0, 'financing' => 0, 'items' => []];
+        $cashCodes = [];
+        foreach ($coa as $code => $acct) {
+            if (!is_array($acct) || ($acct['status'] ?? '') !== 'active' || !empty($acct['is_group'])) continue;
+            if (in_array($code, ['1010', '1020']) || !empty($acct['is_bank'])) $cashCodes[$code] = true;
+        }
+        $openBal = 0;
+        foreach ($cashCodes as $c => $_) $openBal += (float) ($coa[$c]['opening_balance'] ?? 0);
+
+        $allLedger = $this->firebase->get($this->_ledger());
+        if (!is_array($allLedger)) $allLedger = [];
+        $processed = []; $items = []; $pre = 0;
+        $totals = ['operating' => 0, 'investing' => 0, 'financing' => 0];
+        foreach (array_keys($cashCodes) as $cc) {
+            $ids = $this->firebase->shallow_get($this->_idx() . "/by_account/" . $this->safe_path_segment($cc, 'c'));
+            if (!is_array($ids)) continue;
+            foreach ($ids as $id) {
+                if (isset($processed[$id])) continue; $processed[$id] = true;
+                $e = $allLedger[$id] ?? null;
+                if (!is_array($e) || ($e['status'] ?? '') === 'deleted') continue;
+                $d = $e['date'] ?? '';
+                if ($to !== '' && $d > $to) continue;
+                $cDr = 0; $cCr = 0; $other = []; $contra = true;
+                foreach ($e['lines'] ?? [] as $ln) {
+                    $lc = $ln['account_code'] ?? '';
+                    if (isset($cashCodes[$lc])) { $cDr += (float)($ln['dr']??0); $cCr += (float)($ln['cr']??0); }
+                    else { $contra = false; $other[$lc] = $coa[$lc] ?? []; }
+                }
+                $net = $cDr - $cCr;
+                if ($contra || abs($net) < 0.01) continue;
+                if ($from !== '' && $d < $from) { $pre += $net; continue; }
+                $ft = 'operating';
+                foreach ($other as $oc => $oa) {
+                    $os = strtolower($oa['sub_category'] ?? '');
+                    if (strpos($os, 'fixed') !== false) { $ft = 'investing'; break; }
+                    if (strpos($os, 'loan') !== false || ($oa['category'] ?? '') === 'Equity') { $ft = 'financing'; break; }
+                }
+                $totals[$ft] += $net;
+                $items[] = ['date' => $d, 'voucher_no' => $e['voucher_no'] ?? '', 'narration' => $e['narration'] ?? '', 'type' => $ft, 'inflow' => max($net, 0), 'outflow' => max(-$net, 0), 'net' => round($net, 2)];
+            }
+        }
+        usort($items, fn($a, $b) => strcmp($a['date'], $b['date']));
+        $ob = round($openBal + $pre, 2); $nc = round($totals['operating'] + $totals['investing'] + $totals['financing'], 2);
+        return ['items' => $items, 'operating' => round($totals['operating'], 2), 'investing' => round($totals['investing'], 2), 'financing' => round($totals['financing'], 2), 'opening' => $ob, 'closing' => round($ob + $nc, 2), 'net_change' => $nc];
+    }
+
+    // ── Excel sheet builders ──
+
+    private function _xl_header(object $sheet, int $row, array $cols): int
+    {
+        $c = 'A';
+        foreach ($cols as $label) {
+            $sheet->setCellValue($c . $row, $label);
+            $sheet->getStyle($c . $row)->getFont()->setBold(true);
+            $sheet->getStyle($c . $row)->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('E6F4F1');
+            $c++;
+        }
+        return $row + 1;
+    }
+
+    private function _xl_day_book($sheet, array $data, int $row): int
+    {
+        $row = $this->_xl_header($sheet, $row, ['Date', 'Voucher No', 'Type', 'Source', 'Narration', 'Debit (₹)', 'Credit (₹)']);
+        foreach ($data['entries'] as $e) {
+            $sheet->setCellValue("A{$row}", $e['date']);
+            $sheet->setCellValue("B{$row}", $e['voucher_no']);
+            $sheet->setCellValue("C{$row}", $e['type']);
+            $sheet->setCellValue("D{$row}", $e['source']);
+            $sheet->setCellValue("E{$row}", $e['narration']);
+            $sheet->setCellValue("F{$row}", $e['dr']);
+            $sheet->setCellValue("G{$row}", $e['cr']);
+            $sheet->getStyle("F{$row}:G{$row}")->getNumberFormat()->setFormatCode('#,##0.00');
+            // Line items as sub-rows
+            foreach ($e['lines'] as $ln) {
+                $row++;
+                $sheet->setCellValue("B{$row}", '  ' . $ln['code']);
+                $sheet->setCellValue("E{$row}", '  ' . $ln['name']);
+                $sheet->setCellValue("F{$row}", $ln['dr'] > 0 ? $ln['dr'] : '');
+                $sheet->setCellValue("G{$row}", $ln['cr'] > 0 ? $ln['cr'] : '');
+                $sheet->getStyle("A{$row}:G{$row}")->getFont()->setItalic(true)->setSize(9)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FF666666'));
+                $sheet->getStyle("F{$row}:G{$row}")->getNumberFormat()->setFormatCode('#,##0.00');
+            }
+            $row++;
+        }
+        // Totals
+        $sheet->setCellValue("E{$row}", 'TOTALS');
+        $sheet->setCellValue("F{$row}", $data['total_dr']);
+        $sheet->setCellValue("G{$row}", $data['total_cr']);
+        $sheet->getStyle("E{$row}:G{$row}")->getFont()->setBold(true);
+        $sheet->getStyle("F{$row}:G{$row}")->getNumberFormat()->setFormatCode('#,##0.00');
+        return $row + 1;
+    }
+
+    private function _xl_trial_balance($sheet, array $data, int $row): int
+    {
+        $row = $this->_xl_header($sheet, $row, ['Code', 'Account Name', 'Category', 'Debit (₹)', 'Credit (₹)']);
+        foreach ($data['rows'] as $r) {
+            $sheet->setCellValue("A{$row}", $r['code']);
+            $sheet->setCellValue("B{$row}", $r['name']);
+            $sheet->setCellValue("C{$row}", $r['category']);
+            $sheet->setCellValue("D{$row}", $r['dr']);
+            $sheet->setCellValue("E{$row}", $r['cr']);
+            $sheet->getStyle("D{$row}:E{$row}")->getNumberFormat()->setFormatCode('#,##0.00');
+            $row++;
+        }
+        $sheet->setCellValue("C{$row}", 'TOTALS');
+        $sheet->setCellValue("D{$row}", $data['total_dr']);
+        $sheet->setCellValue("E{$row}", $data['total_cr']);
+        $sheet->getStyle("C{$row}:E{$row}")->getFont()->setBold(true);
+        $sheet->getStyle("D{$row}:E{$row}")->getNumberFormat()->setFormatCode('#,##0.00');
+        return $row + 1;
+    }
+
+    private function _xl_profit_loss($sheet, array $data, int $row): int
+    {
+        // Income section
+        $sheet->setCellValue("A{$row}", 'INCOME'); $sheet->getStyle("A{$row}")->getFont()->setBold(true)->setSize(12); $row++;
+        $row = $this->_xl_header($sheet, $row, ['Code', 'Account', 'Amount (₹)']);
+        foreach ($data['income'] as $r) {
+            $sheet->setCellValue("A{$row}", $r['code']); $sheet->setCellValue("B{$row}", $r['name']); $sheet->setCellValue("C{$row}", $r['amount']);
+            $sheet->getStyle("C{$row}")->getNumberFormat()->setFormatCode('#,##0.00'); $row++;
+        }
+        $sheet->setCellValue("B{$row}", 'Total Income'); $sheet->setCellValue("C{$row}", $data['total_income']);
+        $sheet->getStyle("B{$row}:C{$row}")->getFont()->setBold(true); $sheet->getStyle("C{$row}")->getNumberFormat()->setFormatCode('#,##0.00'); $row += 2;
+
+        // Expense section
+        $sheet->setCellValue("A{$row}", 'EXPENSES'); $sheet->getStyle("A{$row}")->getFont()->setBold(true)->setSize(12); $row++;
+        $row = $this->_xl_header($sheet, $row, ['Code', 'Account', 'Amount (₹)']);
+        foreach ($data['expenses'] as $r) {
+            $sheet->setCellValue("A{$row}", $r['code']); $sheet->setCellValue("B{$row}", $r['name']); $sheet->setCellValue("C{$row}", $r['amount']);
+            $sheet->getStyle("C{$row}")->getNumberFormat()->setFormatCode('#,##0.00'); $row++;
+        }
+        $sheet->setCellValue("B{$row}", 'Total Expenses'); $sheet->setCellValue("C{$row}", $data['total_expense']);
+        $sheet->getStyle("B{$row}:C{$row}")->getFont()->setBold(true); $sheet->getStyle("C{$row}")->getNumberFormat()->setFormatCode('#,##0.00'); $row += 2;
+
+        // Net
+        $label = $data['net'] >= 0 ? 'Net Profit' : 'Net Loss';
+        $sheet->setCellValue("B{$row}", $label); $sheet->setCellValue("C{$row}", abs($data['net']));
+        $sheet->getStyle("B{$row}:C{$row}")->getFont()->setBold(true)->setSize(13);
+        $sheet->getStyle("C{$row}")->getNumberFormat()->setFormatCode('#,##0.00');
+        return $row + 1;
+    }
+
+    private function _xl_balance_sheet($sheet, array $data, int $row): int
+    {
+        foreach (['assets' => 'ASSETS', 'liabilities' => 'LIABILITIES', 'equity' => 'EQUITY'] as $key => $label) {
+            $sheet->setCellValue("A{$row}", $label); $sheet->getStyle("A{$row}")->getFont()->setBold(true)->setSize(12); $row++;
+            $row = $this->_xl_header($sheet, $row, ['Code', 'Account', 'Amount (₹)']);
+            foreach ($data[$key] as $r) {
+                $sheet->setCellValue("A{$row}", $r['code']); $sheet->setCellValue("B{$row}", $r['name']); $sheet->setCellValue("C{$row}", $r['amount']);
+                $sheet->getStyle("C{$row}")->getNumberFormat()->setFormatCode('#,##0.00'); $row++;
+            }
+            $sheet->setCellValue("B{$row}", 'Total ' . ucfirst($key)); $sheet->setCellValue("C{$row}", $data['totals'][$key] ?? 0);
+            $sheet->getStyle("B{$row}:C{$row}")->getFont()->setBold(true);
+            $sheet->getStyle("C{$row}")->getNumberFormat()->setFormatCode('#,##0.00'); $row += 2;
+        }
+        return $row;
+    }
+
+    private function _xl_cash_flow($sheet, array $data, int $row): int
+    {
+        $sheet->setCellValue("A{$row}", 'Opening Balance'); $sheet->setCellValue("B{$row}", $data['opening'] ?? 0);
+        $sheet->getStyle("A{$row}:B{$row}")->getFont()->setBold(true);
+        $sheet->getStyle("B{$row}")->getNumberFormat()->setFormatCode('#,##0.00'); $row += 2;
+
+        foreach (['operating' => 'OPERATING ACTIVITIES', 'investing' => 'INVESTING ACTIVITIES', 'financing' => 'FINANCING ACTIVITIES'] as $ft => $label) {
+            $sheet->setCellValue("A{$row}", $label); $sheet->getStyle("A{$row}")->getFont()->setBold(true)->setSize(11); $row++;
+            $row = $this->_xl_header($sheet, $row, ['Date', 'Voucher', 'Narration', 'Inflow (₹)', 'Outflow (₹)', 'Net (₹)']);
+            $sub = 0;
+            foreach ($data['items'] as $item) {
+                if ($item['type'] !== $ft) continue;
+                $sheet->setCellValue("A{$row}", $item['date']); $sheet->setCellValue("B{$row}", $item['voucher_no']); $sheet->setCellValue("C{$row}", $item['narration']);
+                $sheet->setCellValue("D{$row}", $item['inflow'] > 0 ? $item['inflow'] : '');
+                $sheet->setCellValue("E{$row}", $item['outflow'] > 0 ? $item['outflow'] : '');
+                $sheet->setCellValue("F{$row}", $item['net']);
+                $sheet->getStyle("D{$row}:F{$row}")->getNumberFormat()->setFormatCode('#,##0.00');
+                $sub += $item['net']; $row++;
+            }
+            $sheet->setCellValue("C{$row}", 'Subtotal'); $sheet->setCellValue("F{$row}", round($sub, 2));
+            $sheet->getStyle("C{$row}:F{$row}")->getFont()->setBold(true);
+            $sheet->getStyle("F{$row}")->getNumberFormat()->setFormatCode('#,##0.00'); $row += 2;
+        }
+
+        $sheet->setCellValue("A{$row}", 'Net Cash Change'); $sheet->setCellValue("B{$row}", $data['net_change'] ?? 0);
+        $sheet->getStyle("A{$row}:B{$row}")->getFont()->setBold(true);
+        $sheet->getStyle("B{$row}")->getNumberFormat()->setFormatCode('#,##0.00'); $row++;
+        $sheet->setCellValue("A{$row}", 'Closing Balance'); $sheet->setCellValue("B{$row}", $data['closing'] ?? 0);
+        $sheet->getStyle("A{$row}:B{$row}")->getFont()->setBold(true)->setSize(13);
+        $sheet->getStyle("B{$row}")->getNumberFormat()->setFormatCode('#,##0.00');
+        return $row + 1;
+    }
+
+    // ── PDF HTML builder ──
+
+    private function _pdf_render(string $title, string $school, string $dateLabel, string $type, array $data): string
+    {
+        $css = '
+        body{font-family:sans-serif;font-size:11px;color:#1a2e2a;margin:0;padding:20px 30px;}
+        h1{font-size:18px;margin:0 0 2px;color:#0f766e;}
+        .sub{font-size:12px;color:#4a6a60;margin:0 0 4px;}
+        .date{font-size:10px;color:#7a9a8e;margin:0 0 16px;}
+        table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+        th{background:#e6f4f1;color:#0f766e;font-size:10px;text-transform:uppercase;letter-spacing:.5px;
+           padding:6px 8px;text-align:left;border-bottom:2px solid #b8cec6;}
+        td{padding:5px 8px;border-bottom:1px solid #d1ddd8;font-size:10px;}
+        .r{text-align:right;font-family:monospace;}
+        .b{font-weight:bold;}
+        .green{color:#16a34a;} .red{color:#dc2626;} .teal{color:#0f766e;}
+        .total-row td{font-weight:bold;border-top:2px solid #0f766e;background:#f0f7f5;}
+        .section{font-size:13px;font-weight:bold;color:#0f766e;margin:14px 0 6px;padding-bottom:4px;border-bottom:1px solid #b8cec6;}
+        .footer{margin-top:20px;font-size:9px;color:#7a9a8e;text-align:center;border-top:1px solid #d1ddd8;padding-top:8px;}
+        .sub-row td{font-size:9px;color:#666;font-style:italic;padding:2px 8px 2px 24px;}
+        ';
+
+        $h = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>' . $css . '</style></head><body>';
+        $h .= '<h1>' . htmlspecialchars($school) . '</h1>';
+        $h .= '<p class="sub">' . htmlspecialchars($title) . '</p>';
+        $h .= '<p class="date">' . htmlspecialchars($dateLabel) . '</p>';
+
+        switch ($type) {
+            case 'day_book': $h .= $this->_pdf_day_book($data); break;
+            case 'trial_balance': $h .= $this->_pdf_trial_balance($data); break;
+            case 'profit_loss': $h .= $this->_pdf_profit_loss($data); break;
+            case 'balance_sheet': $h .= $this->_pdf_balance_sheet($data); break;
+            case 'cash_flow': $h .= $this->_pdf_cash_flow($data); break;
+        }
+
+        $h .= '<div class="footer">Generated on ' . date('d M Y, h:i A') . '</div>';
+        $h .= '</body></html>';
+        return $h;
+    }
+
+    private function _fmt(float $v): string { return number_format($v, 2, '.', ','); }
+
+    private function _pdf_day_book(array $d): string
+    {
+        $h = '<table><thead><tr><th>Date</th><th>Voucher</th><th>Type</th><th>Narration</th><th class="r">Debit</th><th class="r">Credit</th></tr></thead><tbody>';
+        foreach ($d['entries'] as $e) {
+            $h .= '<tr><td>' . $e['date'] . '</td><td>' . $e['voucher_no'] . '</td><td>' . $e['type'] . '</td><td>' . htmlspecialchars($e['narration']) . '</td><td class="r">' . $this->_fmt($e['dr']) . '</td><td class="r">' . $this->_fmt($e['cr']) . '</td></tr>';
+            foreach ($e['lines'] as $ln) {
+                $h .= '<tr class="sub-row"><td></td><td>' . $ln['code'] . '</td><td colspan="2">' . htmlspecialchars($ln['name']) . '</td><td class="r">' . ($ln['dr'] > 0 ? $this->_fmt($ln['dr']) : '') . '</td><td class="r">' . ($ln['cr'] > 0 ? $this->_fmt($ln['cr']) : '') . '</td></tr>';
+            }
+        }
+        $h .= '</tbody><tfoot><tr class="total-row"><td colspan="4" class="r">Totals</td><td class="r">' . $this->_fmt($d['total_dr']) . '</td><td class="r">' . $this->_fmt($d['total_cr']) . '</td></tr></tfoot></table>';
+        return $h;
+    }
+
+    private function _pdf_trial_balance(array $d): string
+    {
+        $h = '<table><thead><tr><th>Code</th><th>Account</th><th>Category</th><th class="r">Debit</th><th class="r">Credit</th></tr></thead><tbody>';
+        foreach ($d['rows'] as $r) {
+            $h .= '<tr><td>' . $r['code'] . '</td><td>' . htmlspecialchars($r['name']) . '</td><td>' . $r['category'] . '</td><td class="r">' . ($r['dr'] > 0 ? $this->_fmt($r['dr']) : '') . '</td><td class="r">' . ($r['cr'] > 0 ? $this->_fmt($r['cr']) : '') . '</td></tr>';
+        }
+        $h .= '</tbody><tfoot><tr class="total-row"><td colspan="3" class="r">Totals</td><td class="r">' . $this->_fmt($d['total_dr']) . '</td><td class="r">' . $this->_fmt($d['total_cr']) . '</td></tr></tfoot></table>';
+        $diff = abs($d['total_dr'] - $d['total_cr']);
+        $h .= $diff < 0.01 ? '<p class="teal b">Balanced</p>' : '<p class="red b">Difference: ' . $this->_fmt($diff) . '</p>';
+        return $h;
+    }
+
+    private function _pdf_profit_loss(array $d): string
+    {
+        $h = '<div class="section">Income</div><table><thead><tr><th>Account</th><th class="r">Amount</th></tr></thead><tbody>';
+        foreach ($d['income'] as $r) $h .= '<tr><td>' . htmlspecialchars($r['name']) . '</td><td class="r green">' . $this->_fmt($r['amount']) . '</td></tr>';
+        $h .= '<tr class="total-row"><td class="r b">Total Income</td><td class="r green b">' . $this->_fmt($d['total_income']) . '</td></tr></tbody></table>';
+        $h .= '<div class="section">Expenses</div><table><thead><tr><th>Account</th><th class="r">Amount</th></tr></thead><tbody>';
+        foreach ($d['expenses'] as $r) $h .= '<tr><td>' . htmlspecialchars($r['name']) . '</td><td class="r red">' . $this->_fmt($r['amount']) . '</td></tr>';
+        $h .= '<tr class="total-row"><td class="r b">Total Expenses</td><td class="r red b">' . $this->_fmt($d['total_expense']) . '</td></tr></tbody></table>';
+        $nc = $d['net'] >= 0 ? 'green' : 'red'; $nl = $d['net'] >= 0 ? 'Net Profit' : 'Net Loss';
+        $h .= '<p class="' . $nc . ' b" style="font-size:14px;text-align:center;margin-top:12px">' . $nl . ': ' . $this->_fmt(abs($d['net'])) . '</p>';
+        return $h;
+    }
+
+    private function _pdf_balance_sheet(array $d): string
+    {
+        $h = '';
+        foreach (['assets' => 'Assets', 'liabilities' => 'Liabilities', 'equity' => 'Equity'] as $k => $label) {
+            $h .= '<div class="section">' . $label . '</div><table><thead><tr><th>Account</th><th class="r">Amount</th></tr></thead><tbody>';
+            foreach ($d[$k] as $r) $h .= '<tr><td>' . htmlspecialchars($r['name']) . '</td><td class="r">' . $this->_fmt($r['amount']) . '</td></tr>';
+            $h .= '<tr class="total-row"><td class="r b">Total ' . $label . '</td><td class="r b">' . $this->_fmt($d['totals'][$k] ?? 0) . '</td></tr></tbody></table>';
+        }
+        return $h;
+    }
+
+    private function _pdf_cash_flow(array $d): string
+    {
+        $h = '<p class="b">Opening Balance: ' . $this->_fmt($d['opening'] ?? 0) . '</p>';
+        foreach (['operating' => 'Operating Activities', 'investing' => 'Investing Activities', 'financing' => 'Financing Activities'] as $ft => $label) {
+            $h .= '<div class="section">' . $label . '</div><table><thead><tr><th>Date</th><th>Voucher</th><th>Description</th><th class="r">Inflow</th><th class="r">Outflow</th><th class="r">Net</th></tr></thead><tbody>';
+            $sub = 0;
+            foreach ($d['items'] as $item) {
+                if ($item['type'] !== $ft) continue;
+                $h .= '<tr><td>' . $item['date'] . '</td><td>' . $item['voucher_no'] . '</td><td>' . htmlspecialchars($item['narration']) . '</td><td class="r green">' . ($item['inflow'] > 0 ? $this->_fmt($item['inflow']) : '') . '</td><td class="r red">' . ($item['outflow'] > 0 ? $this->_fmt($item['outflow']) : '') . '</td><td class="r b">' . $this->_fmt($item['net']) . '</td></tr>';
+                $sub += $item['net'];
+            }
+            $h .= '<tr class="total-row"><td colspan="5" class="r">Subtotal</td><td class="r b">' . $this->_fmt(round($sub, 2)) . '</td></tr></tbody></table>';
+        }
+        $h .= '<p class="b">Net Cash Change: ' . $this->_fmt($d['net_change'] ?? 0) . '</p>';
+        $h .= '<p class="teal b" style="font-size:14px">Closing Balance: ' . $this->_fmt($d['closing'] ?? 0) . '</p>';
+        return $h;
     }
 }

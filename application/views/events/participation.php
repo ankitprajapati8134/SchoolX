@@ -35,8 +35,9 @@ $at = $active_tab ?? 'participation';
 .ev-badge-amber{background:rgba(245,158,11,.12);color:#f59e0b}
 .ev-badge-rose{background:rgba(239,68,68,.12);color:#ef4444}
 .ev-badge-purple{background:rgba(139,92,246,.12);color:#8b5cf6}
-.ev-empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--font-b)}
-.ev-empty i{font-size:36px;display:block;margin-bottom:12px;opacity:.5}
+.ev-empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--font-b);overflow:hidden}
+.ev-empty i{font-size:22px;display:inline-block;margin-bottom:8px;opacity:.5;vertical-align:middle}
+.ev-empty .ev-load-text{display:block;font-size:12px;margin-top:4px;color:var(--t3)}
 /* Modal/toast/form styles inherited from header.php global definitions */
 .ev-modal{width:500px}
 .ev-search-results{border:1px solid var(--border);border-radius:8px;max-height:180px;overflow-y:auto;display:none;margin-top:6px;background:var(--bg2)}
@@ -76,7 +77,7 @@ $at = $active_tab ?? 'participation';
         </div>
     </div>
     <table class="ev-table"><thead><tr><th>Name</th><th>Type</th><th>Class / Section</th><th>Status</th><th>Registered</th><th>Actions</th></tr></thead>
-    <tbody id="pTbody"><tr><td colspan="6" class="ev-empty"><i class="fa fa-spinner fa-spin"></i></td></tr></tbody></table>
+    <tbody id="pTbody"><tr><td colspan="6" class="ev-empty"><i class="fa fa-spinner fa-spin"></i><span class="ev-load-text">Loading...</span></td></tr></tbody></table>
 </div>
 
 </div></section></div>
@@ -92,8 +93,10 @@ $at = $active_tab ?? 'participation';
     <input type="hidden" id="pId">
     <input type="hidden" id="pType">
     <div class="ev-form-group"><label>Selected</label><input type="text" id="pName" readonly placeholder="Search and select above"></div>
-    <div class="ev-form-group"><label>Class</label><input type="text" id="pClass" readonly></div>
-    <div class="ev-form-group"><label>Section</label><input type="text" id="pSection" readonly></div>
+    <div id="pClassFields">
+        <div class="ev-form-group"><label>Class</label><input type="text" id="pClass" readonly></div>
+        <div class="ev-form-group"><label>Section</label><input type="text" id="pSection" readonly></div>
+    </div>
     <button class="ev-btn ev-btn-primary" onclick="PART.save()" style="width:100%;margin-top:8px">Register Participant</button>
 </div></div>
 
@@ -200,6 +203,7 @@ PART.openModal = function() {
     document.getElementById('pClass').value = '';
     document.getElementById('pSection').value = '';
     document.getElementById('pSearchResults').style.display = 'none';
+    document.getElementById('pClassFields').style.display = '';
     document.getElementById('pModal').classList.add('show');
 };
 PART.closeModal = function() { document.getElementById('pModal').classList.remove('show'); };
@@ -244,6 +248,8 @@ PART.selectPerson = function(id, type, name, cls, sec) {
     document.getElementById('pSection').value = sec;
     document.getElementById('pSearchResults').style.display = 'none';
     document.getElementById('pSearch').value = '';
+    // Hide class/section for teachers
+    document.getElementById('pClassFields').style.display = (type === 'teacher') ? 'none' : '';
 };
 
 PART.save = function() {

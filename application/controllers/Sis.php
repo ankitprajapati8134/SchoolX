@@ -156,10 +156,11 @@ class Sis extends MY_Controller
     public function admission()
     {
         $this->_require_role(self::MANAGE_ROLES, 'sis_admission');
+        $school_id   = $this->parent_db_key;
         $school_name = $this->school_name;
         $session     = $this->session_year;
 
-        // Build class/section map for dropdowns (same pattern as students())
+        // Build class/section map for dropdowns
         $classMap = [];
         $sessionClassKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session}");
         if (is_array($sessionClassKeys)) {
@@ -181,11 +182,22 @@ class Sis extends MY_Controller
             }
         }
 
-        $data['class_map']    = $classMap;
-        $data['session_year'] = $session;
+        // Auto-generate student ID
+        $userId = $this->_nextStudentId($school_id);
+        if (!$userId) $userId = 'STU0001';
+
+        // Fee structure for exemptions
+        $feesStructurePath = "Schools/{$school_name}/{$session}/Accounts/Fees/Fees Structure";
+        $exemptedFees = $this->firebase->get($feesStructurePath);
+
+        $data['class_map']     = $classMap;
+        $data['session_year']  = $session;
+        $data['school_name']   = $school_name;
+        $data['user_Id']       = $userId;
+        $data['exemptedFees']  = $exemptedFees;
 
         $this->load->view('include/header');
-        $this->load->view('sis/admission', $data);
+        $this->load->view('studentAdmission', $data);
         $this->load->view('include/footer');
     }
 
@@ -409,6 +421,65 @@ class Sis extends MY_Controller
 
         log_audit('SIS', 'admit_student', $userId, "Admitted student '{$name}' to Class {$classOrd} Section {$section}");
 
+        // ── Subject assignment (merged from studentAdmission) ──────────
+        $classNumber = 0;
+        if (preg_match('/\d+/', $classOrd, $classMatch)) {
+            $classNumber = (int)$classMatch[0];
+        }
+        if ($classNumber > 0) {
+            $rawList = $this->firebase->get("Schools/{$school_name}/Subject_list/{$classNumber}");
+            $coreSubjects = [];
+            $allSubjects  = [];
+            if (is_array($rawList)) {
+                foreach ($rawList as $code => $item) {
+                    if (!is_array($item)) continue;
+                    $subName = trim($item['subject_name'] ?? $item['name'] ?? '');
+                    if ($subName === '') continue;
+                    $type = strtolower(trim($item['category'] ?? ''));
+                    if ($type !== 'additional') $allSubjects[(string)$code] = $subName;
+                    if ($type === 'core') $coreSubjects[(string)$code] = ['name' => $subName, 'type' => 'core'];
+                }
+            }
+            if (!empty($allSubjects)) {
+                $this->firebase->set("Schools/{$school_name}/{$session}/{$classKey}/All Subjects", $allSubjects);
+            }
+            if (!empty($coreSubjects)) {
+                $this->firebase->set("Users/Parents/{$school_id}/{$userId}/Subjects", $coreSubjects);
+            }
+        }
+
+        // Additional subjects selected by user
+        $additionalSubjects = $this->input->post('additional_subjects');
+        if (!empty($additionalSubjects) && is_array($additionalSubjects)) {
+            $addSubData = [];
+            foreach ($additionalSubjects as $sub) {
+                $sub = trim($sub);
+                if ($sub !== '') $addSubData[$sub] = '';
+            }
+            if (!empty($addSubData)) {
+                $this->firebase->set(
+                    "Schools/{$school_name}/{$session}/{$classKey}/{$sectionKey}/Students/{$userId}/Additional Subjects",
+                    $addSubData
+                );
+            }
+        }
+
+        // Exempted fees selected by user
+        $exemptedFees = $this->input->post('exempted_fees_multiple');
+        if (!empty($exemptedFees) && is_array($exemptedFees)) {
+            $exemptedData = [];
+            foreach ($exemptedFees as $feeName) {
+                $feeName = trim($feeName);
+                if ($feeName !== '') $exemptedData[$feeName] = '';
+            }
+            if (!empty($exemptedData)) {
+                $this->firebase->set(
+                    "Schools/{$school_name}/{$session}/{$classKey}/{$sectionKey}/Students/{$userId}/Exempted Fees",
+                    $exemptedData
+                );
+            }
+        }
+
         return $this->json_success(['message' => 'Student admitted successfully.', 'user_id' => $userId]);
     }
 
@@ -421,31 +492,8 @@ class Sis extends MY_Controller
         $this->_require_role(self::VIEW_ROLES, 'sis_profile');
         if (empty($userId) || !$this->safe_path_segment($userId)) show_404();
 
-        $school_id   = $this->parent_db_key;
-        $school_name = $this->school_name;
-        $session     = $this->session_year;
-
-        $student = $this->firebase->get("Users/Parents/{$school_id}/{$userId}");
-        if (empty($student)) show_404();
-
-        $history = $this->firebase->get(
-            "Users/Parents/{$school_id}/{$userId}/History"
-        ) ?? [];
-        if (!is_array($history)) $history = [];
-
-        // Sort history newest first
-        uasort($history, fn($a, $b) =>
-            strcmp($b['changed_at'] ?? '', $a['changed_at'] ?? '')
-        );
-
-        $data['student']      = $student;
-        $data['history']      = $history;
-        $data['school_name']  = $school_name;
-        $data['session_year'] = $session;
-
-        $this->load->view('include/header');
-        $this->load->view('sis/profile', $data);
-        $this->load->view('include/footer');
+        // Delegate to the comprehensive student_profile view
+        $this->student_profile($userId);
     }
 
     public function update_profile()
@@ -880,6 +928,23 @@ class Sis extends MY_Controller
         $student = $this->firebase->get("Users/Parents/{$school_id}/{$userId}");
         if (empty($student)) return $this->json_error('Student not found.');
 
+        // Check outstanding fees — block TC if dues remain (unless force_override is set)
+        $forceOverride = $this->input->post('force_override') === 'true';
+        if (!$forceOverride) {
+            $dues = $this->_check_outstanding_dues($userId, (array)$student);
+            if ($dues['has_dues']) {
+                http_response_code(400);
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'status'  => 'error',
+                    'message' => $dues['summary'] . '. Clear all dues before issuing a Transfer Certificate.',
+                    'dues'    => $dues,
+                    'can_override' => true,
+                ]);
+                return;
+            }
+        }
+
         // Check not already TC issued
         $existing = $student['TC'] ?? [];
         if (is_array($existing)) {
@@ -1057,9 +1122,9 @@ class Sis extends MY_Controller
             $session    = $this->session_year;
             if (!empty($classOrd) && !empty($sectionLtr)) {
                 $rosterBase = "Schools/{$school_name}/{$session}/Class {$classOrd}/Section {$sectionLtr}/Students";
-                $rosterEntry = ['Name' => $student['Name'] ?? $userId];
-                // Primary roster path
-                $this->firebase->set("{$rosterBase}/List/{$userId}", $rosterEntry);
+                $rosterName = $student['Name'] ?? $userId;
+                // Primary roster path — flat string value (consistent with all other roster writes)
+                $this->firebase->set("{$rosterBase}/List/{$userId}", $rosterName);
             }
         }
 
@@ -1101,6 +1166,23 @@ class Sis extends MY_Controller
 
         if (($student['Status'] ?? '') === 'Inactive') {
             return $this->json_error('Student is already inactive.');
+        }
+
+        // Check outstanding fees — block withdrawal if dues remain (unless force_override is set)
+        $forceOverride = $this->input->post('force_override') === 'true';
+        if (!$forceOverride) {
+            $dues = $this->_check_outstanding_dues($userId, $student);
+            if ($dues['has_dues']) {
+                http_response_code(400);
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'status'  => 'error',
+                    'message' => $dues['summary'] . '. Clear all dues before withdrawing.',
+                    'dues'    => $dues,
+                    'can_override' => true,
+                ]);
+                return;
+            }
         }
 
         // Mark as Inactive
@@ -1423,6 +1505,7 @@ class Sis extends MY_Controller
         $query       = strtolower(trim($this->input->post('query')));
         $classFilter = trim($this->input->post('class') ?? '');
         $secFilter   = trim($this->input->post('section') ?? '');
+        $filterGender  = trim($this->input->post('gender')  ?? '');
         $page        = max(1, (int)($this->input->post('page') ?? 1));
         $perPage     = 30;
 
@@ -1444,6 +1527,7 @@ class Sis extends MY_Controller
             if (!isset($enrolledIds[$uid])) continue;
             if ($classFilter && ($entry['class'] ?? '') !== $classFilter) continue;
             if ($secFilter   && ($entry['section'] ?? '') !== $secFilter) continue;
+            if ($filterGender !== '' && strcasecmp($entry['gender'] ?? '', $filterGender) !== 0) continue;
             if ($query) {
                 $haystack = strtolower(($entry['name'] ?? '') . ' ' . $uid);
                 if (strpos($haystack, $query) === false) continue;
@@ -1478,14 +1562,17 @@ class Sis extends MY_Controller
             }
 
             $results[] = [
-                'user_id'     => $uid,
-                'name'        => $entry['name'] ?? '',
-                'father_name' => is_array($profile) ? ($profile['Father Name'] ?? '') : '',
-                'class'       => $entry['class'] ?? '',
-                'section'     => $entry['section'] ?? '',
-                'phone'       => is_array($profile) ? ($profile['Phone Number'] ?? '') : '',
-                'status'      => $entry['status'] ?? 'Active',
-                'photo'       => $photo,
+                'user_id'        => $uid,
+                'name'           => $entry['name'] ?? '',
+                'father_name'    => is_array($profile) ? ($profile['Father Name'] ?? '') : '',
+                'class'          => $entry['class'] ?? '',
+                'section'        => $entry['section'] ?? '',
+                'phone'          => is_array($profile) ? ($profile['Phone Number'] ?? '') : '',
+                'gender'         => is_array($profile) ? ($profile['Gender'] ?? '') : '',
+                'admission_date' => is_array($profile) ? ($profile['Admission Date'] ?? '') : '',
+                'dob'            => is_array($profile) ? ($profile['DOB'] ?? '') : '',
+                'status'         => $entry['status'] ?? 'Active',
+                'photo'          => $photo,
             ];
         }
 
@@ -1771,6 +1858,95 @@ class Sis extends MY_Controller
     }
 
     /**
+     * Check if a student has outstanding (unpaid) fees.
+     * Returns ['has_dues' => bool, 'total_due' => float, 'unpaid_months' => [...], 'summary' => string]
+     *
+     * Fee payment status: Students/{userId}/Month Fee/{month} → 0=unpaid, 1=paid
+     * Fee amounts: Accounts/Fees/Classes Fees/Class {X}/Section {Y}/{month}/{feeType} → amount
+     */
+    private function _check_outstanding_dues(string $userId, array $student): array
+    {
+        $school_name = $this->school_name;
+        $session     = $this->session_year;
+        $classOrd    = trim($student['Class']   ?? '');
+        $sectionLtr  = trim($student['Section'] ?? '');
+
+        $result = ['has_dues' => false, 'total_due' => 0, 'unpaid_months' => [], 'summary' => ''];
+
+        if ($classOrd === '' || $sectionLtr === '') return $result;
+
+        // Read the student's month-wise payment status
+        $sectionPath = "Section " . strtoupper($sectionLtr);
+        $studentFees = $this->firebase->get(
+            "Schools/{$school_name}/{$session}/Class {$classOrd}/{$sectionPath}/Students/{$userId}/Month Fee"
+        );
+        if (!is_array($studentFees)) $studentFees = [];
+
+        // Read the class fee structure to calculate amounts
+        $classFees = $this->firebase->get(
+            "Schools/{$school_name}/{$session}/Accounts/Fees/Classes Fees/Class {$classOrd}/{$sectionPath}"
+        );
+        if (!is_array($classFees)) $classFees = [];
+
+        $months = [
+            'April','May','June','July','August','September',
+            'October','November','December','January','February','March',
+        ];
+
+        $totalDue     = 0;
+        $unpaidMonths = [];
+
+        foreach ($months as $month) {
+            $isPaid = (int)($studentFees[$month] ?? 0);
+            if ($isPaid) continue; // already paid
+
+            // Calculate this month's fee total from the class fee structure
+            $monthFees = $classFees[$month] ?? [];
+            if (!is_array($monthFees)) continue;
+
+            $monthTotal = 0;
+            foreach ($monthFees as $feeType => $amount) {
+                $monthTotal += (float)$amount;
+            }
+
+            if ($monthTotal > 0) {
+                $totalDue += $monthTotal;
+                $unpaidMonths[] = $month;
+            }
+        }
+
+        // Check yearly fees too
+        $yearlyPaid = (int)($studentFees['Yearly Fees'] ?? 0);
+        if (!$yearlyPaid) {
+            $yearlyFees = $classFees['Yearly Fees'] ?? [];
+            if (is_array($yearlyFees)) {
+                $yearlyTotal = 0;
+                foreach ($yearlyFees as $feeType => $amount) {
+                    $yearlyTotal += (float)$amount;
+                }
+                if ($yearlyTotal > 0) {
+                    $totalDue += $yearlyTotal;
+                    $unpaidMonths[] = 'Yearly Fees';
+                }
+            }
+        }
+
+        if ($totalDue > 0) {
+            $result['has_dues']      = true;
+            $result['total_due']     = round($totalDue, 2);
+            $result['unpaid_months'] = $unpaidMonths;
+
+            $monthCount = count($unpaidMonths);
+            $monthList  = implode(', ', array_slice($unpaidMonths, 0, 4));
+            if ($monthCount > 4) $monthList .= ' +' . ($monthCount - 4) . ' more';
+            $result['summary'] = "Outstanding dues: \u{20B9}" . number_format($totalDue, 2)
+                               . " ({$monthCount} unpaid: {$monthList})";
+        }
+
+        return $result;
+    }
+
+    /**
      * Build map of enrolled student IDs for the current session.
      * Returns [ userId => true ]
      *
@@ -1914,69 +2090,7 @@ class Sis extends MY_Controller
 
     public function all_student()
     {
-        $this->_require_role(self::VIEW_ROLES);
-        $school_id    = $this->parent_db_key;
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
-
-        $data['students'] = $this->CM->select_data('Users/Parents/' . $school_id);
-        if (!is_array($data['students'])) $data['students'] = [];
-
-        $nonStudentKeys = ['Count', 'TC Students', ''];
-        foreach ($nonStudentKeys as $key) {
-            if (isset($data['students'][$key])) unset($data['students'][$key]);
-        }
-        $data['students'] = array_filter($data['students'], function ($student) {
-            return is_array($student) && isset($student['User Id']) && !empty($student['User Id']);
-        });
-
-        $classNames    = [];
-        $classSections = [];
-        $sessionNode   = [];
-
-        if (!empty($school_name)) {
-            $sessionNode = $this->CM->select_data('Schools/' . $school_name . '/' . $session_year);
-            if (is_array($sessionNode)) {
-                foreach ($sessionNode as $nodeKey => $nodeValue) {
-                    if (strpos($nodeKey, 'Class ') !== 0 || !is_array($nodeValue)) continue;
-                    preg_match('/\b\d+(st|nd|rd|th)\b/i', $nodeKey, $matches);
-                    if (empty($matches)) continue;
-                    $ordinalPart  = $matches[0];
-                    $classNames[] = $ordinalPart;
-                    $sections = [];
-                    foreach ($nodeValue as $subKey => $subVal) {
-                        if (strpos($subKey, 'Section ') === 0) {
-                            $sections[] = str_replace('Section ', '', $subKey);
-                        }
-                    }
-                    $classSections[$ordinalPart] = $sections;
-                }
-            }
-        }
-
-        $enrolledIds = [];
-        if (is_array($sessionNode)) {
-            foreach ($sessionNode as $classKey => $classVal) {
-                if (strpos($classKey, 'Class ') !== 0 || !is_array($classVal)) continue;
-                foreach ($classVal as $sectionKey => $sectionVal) {
-                    if (strpos($sectionKey, 'Section ') !== 0 || !is_array($sectionVal)) continue;
-                    $list = $sectionVal['Students']['List'] ?? null;
-                    if (is_array($list)) {
-                        foreach (array_keys($list) as $sid) $enrolledIds[$sid] = true;
-                    }
-                }
-            }
-        }
-        $data['students'] = array_filter($data['students'], function ($student) use ($enrolledIds) {
-            return isset($enrolledIds[$student['User Id']]);
-        });
-
-        $data['classNames']    = $classNames;
-        $data['classSections'] = $classSections;
-
-        $this->load->view('include/header');
-        $this->load->view('all_student', $data);
-        $this->load->view('include/footer');
+        redirect('sis/students');
     }
 
     /* ══════════════════════════════════════════════════════════════════════
@@ -2186,195 +2300,7 @@ class Sis extends MY_Controller
 
     public function studentAdmission()
     {
-        $this->_require_role(self::MANAGE_ROLES);
-        $school_id    = $this->parent_db_key;
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
-
-        $data['school_name'] = $school_name;
-        $schoolName = $school_name;
-
-        $studentIdCount = $this->CM->get_data("Users/Parents/{$school_id}/Count");
-        if ($studentIdCount === null) $studentIdCount = 1;
-        $userId = 'STU' . str_pad($studentIdCount, 4, '0', STR_PAD_LEFT);
-        $data['user_Id'] = $userId;
-
-        $basePath = "Schools/{$school_name}/{$session_year}";
-        $sessionData = $this->firebase->get($basePath);
-        $ClassesData = [];
-        if (is_array($sessionData)) {
-            foreach ($sessionData as $classKey => $classVal) {
-                if (strpos($classKey, 'Class ') === 0 && is_array($classVal)) {
-                    foreach ($classVal as $sectionKey => $v) {
-                        if (strpos($sectionKey, 'Section ') === 0) {
-                            $ClassesData[] = ['class_name' => $classKey, 'section' => str_replace('Section ', '', $sectionKey)];
-                        }
-                    }
-                }
-            }
-        }
-        $data['Classes'] = $ClassesData;
-
-        $feesStructurePath = "Schools/{$schoolName}/{$session_year}/Accounts/Fees/Fees Structure";
-        $data['exemptedFees'] = $this->firebase->get($feesStructurePath);
-
-        if ($this->input->method() === 'post') {
-            header('Content-Type: application/json');
-            $postData = $this->input->post();
-            $normalizedPostData = [];
-            foreach ($postData as $key => $value) $normalizedPostData[urldecode($key)] = $value;
-
-            $studentId   = $normalizedPostData['user_id'] ?? '';
-            $studentName = $normalizedPostData['Name'] ?? '';
-            $phoneNumber = $normalizedPostData['phone_number'] ?? '';
-            $classNameRaw = $normalizedPostData['class'] ?? '';
-            $className    = trim(str_replace('Class ', '', $classNameRaw));
-            $section     = $normalizedPostData['section'] ?? '';
-
-            if (!$studentId || !$studentName || !$className || !$section) {
-                echo json_encode(['status' => 'error', 'message' => 'Student ID, Name, Class and Section are required']);
-                return;
-            }
-
-            $classNameRaw = $this->safe_path_segment($classNameRaw, 'class');
-            $section      = $this->safe_path_segment($section, 'section');
-            $studentId    = $this->safe_path_segment($studentId, 'user_id');
-            $combinedClassPath = "{$classNameRaw}/Section {$section}";
-
-            // Document uploads
-            $documents = ['birthCertificate' => 'Birth Certificate', 'aadharCard' => 'Aadhar Card', 'transferCertificate' => 'Transfer Certificate'];
-            $documentUrls = [];
-            $thumbnailUrls = [];
-            foreach ($documents as $inputKey => $label) {
-                if (!empty($_FILES[$inputKey]['tmp_name'])) {
-                    $uploadResult = $this->_uploadStudentFile($_FILES[$inputKey], $schoolName, $combinedClassPath, $studentId, $label, 'document');
-                    if (!$uploadResult) {
-                        echo json_encode(['status' => 'error', 'message' => "Failed to upload {$label}"]);
-                        return;
-                    }
-                    $documentUrls[$label]  = $uploadResult['document']  ?? '';
-                    $thumbnailUrls[$label] = $uploadResult['thumbnail'] ?? '';
-                }
-            }
-
-            // Photo (required)
-            if (empty($_FILES['student_photo']['tmp_name'])) {
-                echo json_encode(['status' => 'error', 'message' => 'Student photo required']);
-                return;
-            }
-            $photo = $_FILES['student_photo'];
-            $ext = strtolower(pathinfo($photo['name'], PATHINFO_EXTENSION));
-            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
-                echo json_encode(['status' => 'error', 'message' => 'Only JPG, JPEG, PNG or WEBP allowed']);
-                return;
-            }
-            $photoUpload = $this->_uploadStudentFile($photo, $schoolName, $combinedClassPath, $studentId, 'profile', 'profile');
-            if (!$photoUpload) {
-                echo json_encode(['status' => 'error', 'message' => 'Photo upload failed']);
-                return;
-            }
-
-            $formattedDOB = '';
-            if (!empty($normalizedPostData['dob'])) $formattedDOB = date('d-m-Y', strtotime($normalizedPostData['dob']));
-            $formattedAdmission = '';
-            if (!empty($normalizedPostData['admission_date'])) $formattedAdmission = date('d-m-Y', strtotime($normalizedPostData['admission_date']));
-            $preMarks = trim($normalizedPostData['pre_marks'] ?? '');
-            if ($preMarks !== '' && substr($preMarks, -1) !== '%') $preMarks .= '%';
-
-            $studentData = [
-                "Name" => $studentName, "User Id" => $studentId, "DOB" => $formattedDOB,
-                "Admission Date" => $formattedAdmission, "Class" => $className, "Section" => $section,
-                "Phone Number" => $phoneNumber, "Email" => $normalizedPostData['email'] ?? '',
-                "Password" => $this->_generatePassword($studentName, $formattedDOB),
-                "Category" => $normalizedPostData['category'] ?? '', "Gender" => $normalizedPostData['gender'] ?? '',
-                "Blood Group" => $normalizedPostData['blood_group'] ?? '',
-                "Religion" => $normalizedPostData['religion'] ?? '', "Nationality" => $normalizedPostData['nationality'] ?? '',
-                "Father Name" => $normalizedPostData['father_name'] ?? '', "Father Occupation" => $normalizedPostData['father_occupation'] ?? '',
-                "Mother Name" => $normalizedPostData['mother_name'] ?? '', "Mother Occupation" => $normalizedPostData['mother_occupation'] ?? '',
-                "Guard Contact" => $normalizedPostData['guard_contact'] ?? '', "Guard Relation" => $normalizedPostData['guard_relation'] ?? '',
-                "Pre Class" => $normalizedPostData['pre_class'] ?? '', "Pre School" => $normalizedPostData['pre_school'] ?? '',
-                "Pre Marks" => $preMarks,
-                "Address" => [
-                    "Street" => $normalizedPostData['street'] ?? '', "City" => $normalizedPostData['city'] ?? '',
-                    "State" => $normalizedPostData['state'] ?? '', "PostalCode" => $normalizedPostData['postal_code'] ?? '',
-                ],
-                "Profile Pic" => $photoUpload['document'],
-                "Doc" => [
-                    'Birth Certificate'    => ['url' => $documentUrls['Birth Certificate'] ?? '', 'thumbnail' => $thumbnailUrls['Birth Certificate'] ?? ''],
-                    'Aadhar Card'          => ['url' => $documentUrls['Aadhar Card'] ?? '', 'thumbnail' => $thumbnailUrls['Aadhar Card'] ?? ''],
-                    'Transfer Certificate' => ['url' => $documentUrls['Transfer Certificate'] ?? '', 'thumbnail' => $thumbnailUrls['Transfer Certificate'] ?? ''],
-                    'Photo'                => ['url' => $photoUpload['document'] ?? '', 'thumbnail' => $photoUpload['thumbnail'] ?? ''],
-                ],
-                "Status" => "Active",
-            ];
-
-            $this->firebase->set("Users/Parents/{$school_id}/{$studentId}", $studentData);
-            $this->CM->addKey_pair_data("Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/", [$studentId => ['Name' => $studentName]]);
-            $this->CM->addKey_pair_data("Schools/{$school_name}/{$session_year}/{$combinedClassPath}/Students/List/", [$studentId => $studentName]);
-
-            // Subject assignment
-            preg_match('/\d+/', $className, $classMatch);
-            $classNumber = isset($classMatch[0]) ? (int)$classMatch[0] : 0;
-            if ($classNumber > 0) {
-                $rawList = $this->firebase->get("Schools/{$schoolName}/Subject_list/{$classNumber}");
-                $coreSubjects = [];
-                $allSubjects  = [];
-                if (is_array($rawList)) {
-                    foreach ($rawList as $code => $item) {
-                        if (!is_array($item)) continue;
-                        $subName = trim($item['subject_name'] ?? $item['name'] ?? '');
-                        if ($subName === '') continue;
-                        $type = strtolower(trim($item['category'] ?? ''));
-                        if ($type !== 'additional') $allSubjects[(string)$code] = $subName;
-                        if ($type === 'core') $coreSubjects[(string)$code] = ['name' => $subName, 'type' => 'core'];
-                    }
-                }
-                if (!empty($allSubjects)) {
-                    $this->firebase->set("Schools/{$schoolName}/{$session_year}/{$classNameRaw}/All Subjects", $allSubjects);
-                }
-                if (!empty($coreSubjects)) {
-                    $this->firebase->set("Users/Parents/{$school_id}/{$studentId}/Subjects", $coreSubjects);
-                }
-            }
-
-            // Additional subjects
-            if (!empty($normalizedPostData['additional_subjects'])) {
-                $additionalSubjects = [];
-                foreach ($normalizedPostData['additional_subjects'] as $sub) $additionalSubjects[$sub] = "";
-                $this->firebase->set("Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/Additional Subjects", $additionalSubjects);
-            }
-
-            // Month Fee init
-            $monthFee = array_fill_keys(['January','February','March','April','May','June','July','August','September','October','November','December','Yearly Fees'], 0);
-            $this->firebase->set("Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/Month Fee", $monthFee);
-
-            // Exempted fees
-            if (isset($normalizedPostData['exempted_fees_multiple']) && is_array($normalizedPostData['exempted_fees_multiple'])) {
-                $exemptedFeesData = [];
-                foreach ($normalizedPostData['exempted_fees_multiple'] as $feeName) {
-                    $feeName = trim($feeName);
-                    if ($feeName !== '') $exemptedFeesData[$feeName] = "";
-                }
-                $this->firebase->set("Schools/{$schoolName}/{$session_year}/{$combinedClassPath}/Students/{$studentId}/Exempted Fees", $exemptedFeesData);
-            }
-
-            // Phone index + count
-            $this->CM->addKey_pair_data("Schools/{$schoolName}/Phone_Index/", [$phoneNumber => $studentId]);
-            $this->CM->addKey_pair_data('Exits/', [$phoneNumber => $school_id]);
-            $this->CM->addKey_pair_data('User_ids_pno/', [$phoneNumber => $studentId]);
-            $this->CM->addKey_pair_data("Users/Parents/{$school_id}/", ['Count' => $studentIdCount + 1]);
-
-            // Update Students_Index (matches save_admission pattern)
-            $gender = $normalizedPostData['gender'] ?? '';
-            $this->_update_student_index($school_name, $studentId, $studentName, $className, $section, 'Active', $gender);
-
-            echo json_encode(['status' => 'success', 'message' => 'Student admission successful']);
-            return;
-        }
-
-        $this->load->view('include/header');
-        $this->load->view('studentAdmission', $data);
-        $this->load->view('include/footer');
+        redirect('sis/admission');
     }
 
     /* ══════════════════════════════════════════════════════════════════════

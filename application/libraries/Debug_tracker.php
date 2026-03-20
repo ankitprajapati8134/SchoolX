@@ -78,11 +78,6 @@ class Debug_tracker
         if (count($parts) === 4 && $parts[0] === 'Users' && $parts[1] === 'Admin') {
             return [['name','email','Role','password'], 'Users/Admin/{code}/{id}'];
         }
-        // System/Schools/{name}
-        if (count($parts) === 3 && $parts[0] === 'System' && $parts[1] === 'Schools') {
-            return [['name','created_at'], 'System/Schools/{name}'];
-        }
-
         return null;
     }
 

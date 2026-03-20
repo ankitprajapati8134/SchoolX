@@ -28,7 +28,7 @@ class Superadmin_backups extends MY_Superadmin_Controller
         parent::__construct();
         $dir = FCPATH . self::BACKUP_DIR;
         if (!is_dir($dir)) {
-            mkdir($dir, 0750, true);
+            mkdir($dir, 0700, true); // M-10 FIX: owner-only permissions
             file_put_contents($dir . '.htaccess', "Order deny,allow\nDeny from all\n");
         }
     }
@@ -42,11 +42,9 @@ class Superadmin_backups extends MY_Superadmin_Controller
         $schools = []; $schedule = [];
         try {
             $raw  = $this->firebase->get('System/Schools') ?? [];
-            $meta = $this->firebase->get('System/Schools') ?? [];
             foreach ($raw as $name => $s) {
                 if (!is_array($s)) continue;
-                // Prefer canonical profile from System/Schools
-                $schools[$name] = $s['profile']['name'] ?? ($meta[$name]['profile']['name'] ?? $name);
+                $schools[$name] = $s['profile']['name'] ?? $name;
             }
             ksort($schools);
             $schedule = $this->firebase->get('System/BackupSchedule') ?? [];
@@ -170,11 +168,33 @@ class Superadmin_backups extends MY_Superadmin_Controller
 
             $firebase_key = $export['firebase_key'];
 
+            // [FIX] Validate firebase_key to prevent path injection
+            if (!preg_match('/^[A-Za-z0-9 \'_\-]+$/u', $firebase_key)) {
+                $this->json_error('Backup contains an invalid firebase_key — possible path injection.'); return;
+            }
+
             // Auto-create safety backup before restoring
             $safety_meta = $this->_create_safety_backup($firebase_key, $school_uid, $backup_id);
 
-            // Restore Firebase data
+            // Restore Firebase data — academic tree
             $this->firebase->set("Schools/{$firebase_key}", $export['Schools']);
+
+            // Restore Users/Admin and Users/Parents if present in backup (format 1.3+)
+            $restored_users = false;
+            if (!empty($export['UsersAdmin']) && is_array($export['UsersAdmin'])) {
+                $ak = $export['admin_key'] ?? '';
+                if ($ak !== '' && preg_match('/^[A-Za-z0-9 \'_\-]+$/u', $ak)) {
+                    $this->firebase->set("Users/Admin/{$ak}", $export['UsersAdmin']);
+                    $restored_users = true;
+                }
+            }
+            if (!empty($export['UsersParents']) && is_array($export['UsersParents'])) {
+                $pk = $export['parent_key'] ?? '';
+                if ($pk !== '' && preg_match('/^[A-Za-z0-9 \'_\-]+$/u', $pk)) {
+                    $this->firebase->set("Users/Parents/{$pk}", $export['UsersParents']);
+                    $restored_users = true;
+                }
+            }
 
             // Update restore stamp on backup record
             $this->firebase->update("System/Backups/{$safe_uid}/{$backup_id}", [
@@ -186,10 +206,12 @@ class Superadmin_backups extends MY_Superadmin_Controller
                 'backup_id'    => $backup_id,
                 'safety_id'    => $safety_meta['backup_id'] ?? '',
                 'firebase_key' => $firebase_key,
+                'users_restored' => $restored_users,
             ]);
 
+            $user_msg = $restored_users ? ' Admin & student profiles also restored.' : '';
             $this->json_success([
-                'message'   => "School data restored from '{$backup_id}'. Safety backup '{$safety_meta['backup_id']}' was created automatically.",
+                'message'   => "School data restored from '{$backup_id}'. Safety backup '{$safety_meta['backup_id']}' was created automatically.{$user_msg}",
                 'safety_id' => $safety_meta['backup_id'] ?? '',
             ]);
         } catch (Exception $e) {
@@ -219,9 +241,19 @@ class Superadmin_backups extends MY_Superadmin_Controller
         }
 
         $file = $_FILES['backup_file'];
+
+        // M-03 FIX: Validate is_uploaded_file + MIME check before reading
+        if (!is_uploaded_file($file['tmp_name'])) {
+            $this->json_error('Invalid upload.'); return;
+        }
         $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if ($ext !== 'json') {
             $this->json_error('Only .json backup files are supported for upload restore.'); return;
+        }
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $realMime = $finfo->file($file['tmp_name']);
+        if (!in_array($realMime, ['application/json', 'text/plain'], true)) {
+            $this->json_error('File content does not appear to be valid JSON.'); return;
         }
 
         $json   = file_get_contents($file['tmp_name']);
@@ -234,20 +266,44 @@ class Superadmin_backups extends MY_Superadmin_Controller
         $firebase_key = $export['firebase_key'];
         $school_name  = $export['school_name'] ?? $firebase_key;
 
+        // [FIX] Validate firebase_key to prevent path injection
+        if (!preg_match('/^[A-Za-z0-9 \'_\-]+$/u', $firebase_key)) {
+            $this->json_error('Backup contains an invalid firebase_key — possible path injection.'); return;
+        }
+
         try {
             // Safety backup
             $safety_meta = $this->_create_safety_backup($firebase_key, $school_name, 'upload_restore');
 
-            // Restore
+            // Restore academic data
             $this->firebase->set("Schools/{$firebase_key}", $export['Schools']);
 
+            // Restore Users/Admin and Users/Parents if present (format 1.3+)
+            $restored_users = false;
+            if (!empty($export['UsersAdmin']) && is_array($export['UsersAdmin'])) {
+                $ak = $export['admin_key'] ?? '';
+                if ($ak !== '' && preg_match('/^[A-Za-z0-9 \'_\-]+$/u', $ak)) {
+                    $this->firebase->set("Users/Admin/{$ak}", $export['UsersAdmin']);
+                    $restored_users = true;
+                }
+            }
+            if (!empty($export['UsersParents']) && is_array($export['UsersParents'])) {
+                $pk = $export['parent_key'] ?? '';
+                if ($pk !== '' && preg_match('/^[A-Za-z0-9 \'_\-]+$/u', $pk)) {
+                    $this->firebase->set("Users/Parents/{$pk}", $export['UsersParents']);
+                    $restored_users = true;
+                }
+            }
+
             $this->sa_log('backup_upload_restored', $firebase_key, [
-                'source_file' => $file['name'],
-                'safety_id'   => $safety_meta['backup_id'] ?? '',
+                'source_file'    => $file['name'],
+                'safety_id'      => $safety_meta['backup_id'] ?? '',
+                'users_restored' => $restored_users,
             ]);
 
+            $user_msg = $restored_users ? ' Admin & student profiles also restored.' : '';
             $this->json_success([
-                'message'   => "Data for '{$school_name}' restored from uploaded file. Safety backup '{$safety_meta['backup_id']}' created.",
+                'message'   => "Data for '{$school_name}' restored from uploaded file. Safety backup '{$safety_meta['backup_id']}' created.{$user_msg}",
                 'safety_id' => $safety_meta['backup_id'] ?? '',
             ]);
         } catch (Exception $e) {
@@ -517,14 +573,38 @@ class Superadmin_backups extends MY_Superadmin_Controller
         // Pull academic data (may be empty for newly onboarded schools)
         $backup_data = $this->firebase->get("Schools/{$firebase_key}") ?? [];
 
+        // ── Resolve keys for Users/Admin and Users/Parents ──────────────
+        $profile     = is_array($school_node['profile'] ?? null) ? $school_node['profile'] : [];
+        $school_code = $profile['school_code'] ?? ($school_node['School Id'] ?? '');
+        $isSCH       = strpos($firebase_key, 'SCH_') === 0;
+        // Users/Admin always keyed by school_code
+        // Users/Parents keyed by school_id for SCH_ schools, school_code for legacy
+        $admin_key   = $school_code;
+        $parent_key  = $isSCH ? $firebase_key : ($school_code ?: $firebase_key);
+
+        // Pull user data (admin credentials + student profiles)
+        $admin_data  = [];
+        $parent_data = [];
+        if (!empty($admin_key)) {
+            try { $admin_data = $this->firebase->get("Users/Admin/{$admin_key}") ?? []; } catch (Exception $e) {}
+        }
+        if (!empty($parent_key)) {
+            try { $parent_data = $this->firebase->get("Users/Parents/{$parent_key}") ?? []; } catch (Exception $e) {}
+        }
+
         $export = [
-            'backup_format' => '1.2',
+            'backup_format' => '1.3',
             'backup_type'   => $backup_type,
             'school_name'   => $school_uid,
             'firebase_key'  => $firebase_key,
+            'school_code'   => $school_code,
+            'admin_key'     => $admin_key,
+            'parent_key'    => $parent_key,
             'backed_up_at'  => date('Y-m-d H:i:s'),
             'backed_up_by'  => $created_by,
             'Schools'       => $backup_data,
+            'UsersAdmin'    => $admin_data,
+            'UsersParents'  => $parent_data,
         ];
 
         if ($backup_type === 'full') {
@@ -535,7 +615,7 @@ class Superadmin_backups extends MY_Superadmin_Controller
         $backup_id  = 'BKP_' . date('Ymd_His') . '_' . substr(md5(uniqid('', true)), 0, 6);
         $safe_uid   = $this->_safe_dir($school_uid);
         $school_dir = FCPATH . self::BACKUP_DIR . $safe_uid . '/';
-        if (!is_dir($school_dir)) mkdir($school_dir, 0750, true);
+        if (!is_dir($school_dir)) mkdir($school_dir, 0700, true); // M-10 FIX: owner-only permissions
 
         // For full backups, try ZIP (includes actual uploaded files)
         $use_zip = ($backup_type === 'full') && extension_loaded('zip');
@@ -546,7 +626,16 @@ class Superadmin_backups extends MY_Superadmin_Controller
             $zip = new ZipArchive();
             if ($zip->open($filepath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
                 $zip->addFromString('firebase_data.json',
-                    json_encode(['Schools' => $backup_data, 'firebase_key' => $firebase_key, 'backed_up_at' => date('Y-m-d H:i:s')], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+                    json_encode([
+                        'Schools'      => $backup_data,
+                        'UsersAdmin'   => $admin_data,
+                        'UsersParents' => $parent_data,
+                        'firebase_key' => $firebase_key,
+                        'school_code'  => $school_code,
+                        'admin_key'    => $admin_key,
+                        'parent_key'   => $parent_key,
+                        'backed_up_at' => date('Y-m-d H:i:s'),
+                    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
                 );
                 $zip->addFromString('system_config.json',  json_encode($export['SystemConfig'],  JSON_PRETTY_PRINT));
                 $zip->addFromString('file_manifest.json',  json_encode($export['FileManifest'],  JSON_PRETTY_PRINT));
@@ -567,6 +656,7 @@ class Superadmin_backups extends MY_Superadmin_Controller
             if (file_put_contents($filepath, $json) === false) {
                 throw new Exception('Failed to write backup file. Check directory permissions.');
             }
+            chmod($filepath, 0600); // M-10 FIX: owner read/write only
         }
 
         $meta = [
@@ -599,22 +689,47 @@ class Superadmin_backups extends MY_Superadmin_Controller
         $safety_data = $this->firebase->get("Schools/{$firebase_key}");
         if (empty($safety_data)) return ['backup_id' => ''];
 
+        // ── Resolve keys for Users/Admin and Users/Parents ──────────────
+        $school_node = $this->firebase->get("System/Schools/{$firebase_key}");
+        if (!is_array($school_node)) $school_node = [];
+        $profile     = is_array($school_node['profile'] ?? null) ? $school_node['profile'] : [];
+        $school_code = $profile['school_code'] ?? ($school_node['School Id'] ?? '');
+        $isSCH       = strpos($firebase_key, 'SCH_') === 0;
+        $admin_key   = $school_code;
+        $parent_key  = $isSCH ? $firebase_key : ($school_code ?: $firebase_key);
+
+        $admin_data  = [];
+        $parent_data = [];
+        if (!empty($admin_key)) {
+            try { $admin_data = $this->firebase->get("Users/Admin/{$admin_key}") ?? []; } catch (Exception $e) {}
+        }
+        if (!empty($parent_key)) {
+            try { $parent_data = $this->firebase->get("Users/Parents/{$parent_key}") ?? []; } catch (Exception $e) {}
+        }
+
         $safe_uid    = $this->_safe_dir($firebase_key);
         $safety_id   = 'SAFETY_' . date('Ymd_His');
         $safety_dir  = FCPATH . self::BACKUP_DIR . $safe_uid . '/';
-        if (!is_dir($safety_dir)) mkdir($safety_dir, 0750, true);
+        if (!is_dir($safety_dir)) mkdir($safety_dir, 0700, true); // M-10 FIX: owner-only permissions
 
         $safety_export = [
-            'backup_format' => '1.2',
+            'backup_format' => '1.3',
             'backup_type'   => 'firebase',
             'school_name'   => $school_name,
             'firebase_key'  => $firebase_key,
+            'school_code'   => $school_code,
+            'admin_key'     => $admin_key,
+            'parent_key'    => $parent_key,
             'backed_up_at'  => date('Y-m-d H:i:s'),
             'backed_up_by'  => 'auto-safety',
             'Schools'       => $safety_data,
+            'UsersAdmin'    => $admin_data,
+            'UsersParents'  => $parent_data,
         ];
         $safety_json   = json_encode($safety_export, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        file_put_contents($safety_dir . $safety_id . '.json', $safety_json);
+        $safetyPath = $safety_dir . $safety_id . '.json';
+        file_put_contents($safetyPath, $safety_json);
+        chmod($safetyPath, 0600); // M-10 FIX: owner read/write only
 
         $meta = [
             'backup_id'   => $safety_id,

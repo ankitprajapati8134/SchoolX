@@ -130,11 +130,11 @@
      ══════════════════════════════════════════════════════════════════ -->
 <style>
 /* ── Layout ───────────────────────────────────────────────────────── */
-.eml-wrap{padding:20px 16px 48px;max-width:1140px;margin:0 auto}
-.eml-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px}
-.eml-page-title{font-family:var(--font-b);font-size:1.3rem;font-weight:700;color:var(--t1)}
-.eml-page-title i{color:var(--gold);margin-right:6px;font-size:1.1rem}
-.eml-breadcrumb{list-style:none;display:flex;gap:6px;padding:0;margin:4px 0 0;font-size:12px;color:var(--t3)}
+.eml-wrap{padding:24px 28px 48px;margin:0}
+.eml-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.eml-page-title{font-family:var(--font-b);font-size:1.55rem;font-weight:700;color:var(--t1)}
+.eml-page-title i{color:var(--gold);margin-right:8px;font-size:1.3rem}
+.eml-breadcrumb{list-style:none;display:flex;gap:6px;padding:0;margin:4px 0 0;font-size:13px;color:var(--t3)}
 .eml-breadcrumb li+li::before{content:"/";margin-right:6px;color:var(--t3)}
 .eml-breadcrumb a{color:var(--gold);text-decoration:none}
 .eml-breadcrumb a:hover{text-decoration:underline}
@@ -142,30 +142,30 @@
 
 /* ── Buttons ──────────────────────────────────────────────────────── */
 .eml-btn-primary{
-  background:var(--gold);color:#fff;border:none;padding:8px 18px;border-radius:8px;
-  font-size:13px;font-weight:600;cursor:pointer;transition:all var(--ease);
-  display:inline-flex;align-items:center;gap:6px;
+  background:var(--gold);color:#fff;border:none;padding:10px 22px;border-radius:10px;
+  font-size:14px;font-weight:600;cursor:pointer;transition:all var(--ease);
+  display:inline-flex;align-items:center;gap:7px;
 }
 .eml-btn-primary:hover{background:var(--gold2);box-shadow:0 4px 14px var(--gold-glow)}
 .eml-btn-outline{
-  background:transparent;color:var(--gold);border:1.5px solid var(--gold);padding:7px 16px;
-  border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;
-  transition:all var(--ease);display:inline-flex;align-items:center;gap:6px;
+  background:transparent;color:var(--gold);border:1.5px solid var(--gold);padding:9px 20px;
+  border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;
+  transition:all var(--ease);display:inline-flex;align-items:center;gap:7px;
 }
 .eml-btn-outline:hover{background:var(--gold-dim)}
 
 /* ── Filter Card ──────────────────────────────────────────────────── */
 .eml-filter-card{
-  background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
-  padding:16px 18px;margin-bottom:20px;box-shadow:var(--sh);
+  background:var(--bg2);border:1px solid var(--border);border-radius:14px;
+  padding:20px 24px;margin-bottom:24px;
 }
 .eml-filter-row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
 .eml-form-group{display:flex;flex-direction:column;gap:4px;min-width:140px;flex:1}
 .eml-form-group--btn{flex:0 0 auto;min-width:auto;justify-content:flex-end}
-.eml-label{font-family:var(--font-m);font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.4px}
+.eml-label{font-family:var(--font-m);font-size:12.5px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.4px}
 .eml-select{
-  background:var(--bg);color:var(--t1);border:1px solid var(--border);border-radius:var(--r-sm);
-  padding:8px 10px;font-size:13px;font-family:var(--font-m);
+  background:var(--bg);color:var(--t1);border:1px solid var(--border);border-radius:10px;
+  padding:10px 12px;font-size:14px;
   appearance:none;-webkit-appearance:none;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:right 10px center;
@@ -174,40 +174,40 @@
 .eml-select:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-ring)}
 
 /* ── Loading / Empty ──────────────────────────────────────────────── */
-.eml-loading,.eml-empty{text-align:center;padding:40px 20px;color:var(--t3)}
-.eml-loading i,.eml-empty i{color:var(--gold);margin-bottom:8px;display:block}
-.eml-loading p,.eml-empty p{margin:8px 0 0;font-size:13px}
+.eml-loading,.eml-empty{text-align:center;padding:48px 24px;color:var(--t3)}
+.eml-loading i,.eml-empty i{color:var(--gold);margin-bottom:10px;display:block;font-size:2rem}
+.eml-loading p,.eml-empty p{margin:8px 0 0;font-size:14px}
 
 /* ── Summary Banner ───────────────────────────────────────────────── */
 .eml-summary{
   background:linear-gradient(135deg, var(--gold), var(--gold2));color:#fff;
-  border-radius:var(--r);padding:12px 18px;margin-bottom:18px;
-  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
-  font-family:var(--font-m);font-size:12px;
+  border-radius:14px;padding:16px 22px;margin-bottom:22px;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
+  font-size:13px;
 }
-.eml-summary-item{display:flex;align-items:center;gap:5px}
-.eml-summary-item i{font-size:13px;opacity:.85}
-.eml-summary-val{font-family:var(--font-b);font-size:14px}
+.eml-summary-item{display:flex;align-items:center;gap:6px}
+.eml-summary-item i{font-size:14px;opacity:.85}
+.eml-summary-val{font-family:var(--font-b);font-size:16px}
 
 /* ── Section Titles ───────────────────────────────────────────────── */
 .eml-section{margin-bottom:22px}
 .eml-section-title{
-  font-family:var(--font-b);font-size:14px;font-weight:700;color:var(--t1);
-  margin-bottom:10px;display:flex;align-items:center;gap:8px;
+  font-family:var(--font-b);font-size:16px;font-weight:700;color:var(--t1);
+  margin-bottom:14px;display:flex;align-items:center;gap:10px;
 }
 .eml-section-title i{color:var(--gold)}
 
 /* ── Tables ───────────────────────────────────────────────────────── */
-.eml-table-outer{overflow-x:auto;border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh)}
-.eml-table{width:100%;border-collapse:collapse;font-size:13px}
+.eml-table-outer{overflow-x:auto;border-radius:14px;border:1px solid var(--border)}
+.eml-table{width:100%;border-collapse:collapse;font-size:14px}
 .eml-table th{
-  background:var(--bg3);color:var(--t2);font-family:var(--font-m);font-size:10.5px;font-weight:700;
-  text-transform:uppercase;letter-spacing:.6px;padding:8px 10px;text-align:left;
+  background:var(--bg3);color:var(--t2);font-size:12px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.5px;padding:12px 16px;text-align:left;
   border-bottom:2px solid var(--border);white-space:nowrap;
 }
 .eml-th-rank{width:60px;text-align:center}
 .eml-th-num{text-align:right;width:90px}
-.eml-table td{padding:8px 10px;color:var(--t1);border-bottom:1px solid var(--border)}
+.eml-table td{padding:12px 16px;color:var(--t1);border-bottom:1px solid var(--border)}
 .eml-table tbody tr:nth-child(odd){background:rgba(15,118,110,.03)}
 .eml-table tbody tr:hover{background:var(--gold-dim)}
 .eml-table tbody tr:last-child td{border-bottom:none}
@@ -232,22 +232,22 @@
 /* ── Subject Accordion ────────────────────────────────────────────── */
 .eml-subj-block{margin-bottom:8px;border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden}
 .eml-subj-header{
-  background:var(--bg3);padding:9px 14px;cursor:pointer;
+  background:var(--bg3);padding:12px 18px;cursor:pointer;
   display:flex;align-items:center;justify-content:space-between;
-  font-size:13px;font-weight:600;color:var(--t1);
+  font-size:14px;font-weight:600;color:var(--t1);
   transition:background .2s;user-select:none;
 }
 .eml-subj-header:hover{background:var(--gold-dim)}
-.eml-subj-header i.eml-chevron{transition:transform .25s;color:var(--t3);font-size:11px}
+.eml-subj-header i.eml-chevron{transition:transform .25s;color:var(--t3);font-size:13px}
 .eml-subj-header.eml-open i.eml-chevron{transform:rotate(180deg)}
 .eml-subj-body{display:none;padding:0}
 .eml-subj-body.eml-open{display:block}
-.eml-subj-table{width:100%;border-collapse:collapse;font-size:13px}
+.eml-subj-table{width:100%;border-collapse:collapse;font-size:14px}
 .eml-subj-table th{
-  background:var(--bg2);color:var(--t3);font-size:10px;font-weight:700;text-transform:uppercase;
-  letter-spacing:.5px;padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);
+  background:var(--bg2);color:var(--t3);font-size:12px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.5px;padding:10px 16px;text-align:left;border-bottom:1px solid var(--border);
 }
-.eml-subj-table td{padding:7px 10px;color:var(--t1);border-bottom:1px solid var(--border)}
+.eml-subj-table td{padding:10px 16px;color:var(--t1);border-bottom:1px solid var(--border)}
 .eml-subj-table tbody tr:nth-child(odd){background:rgba(15,118,110,.03)}
 .eml-subj-name{display:flex;align-items:center;gap:6px}
 .eml-subj-name i{color:var(--gold);font-size:12px}

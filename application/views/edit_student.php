@@ -1,806 +1,748 @@
 <?php defined('BASEPATH') or exit('No direct script access allowed'); ?>
 
 <?php
-/* ── getDocUrls helper ── */
+/* ── Extract doc nodes ── */
 if (!function_exists('getDocUrls')) {
-    function getDocUrls($docNode)
-    {
-        if (is_array($docNode)) {
-            return [
-                'url'       => $docNode['url']       ?? '',
-                'thumbnail' => $docNode['thumbnail'] ?? ''
-            ];
-        }
-        return [
-            'url'       => (string)($docNode ?? ''),
-            'thumbnail' => ''
-        ];
+    function getDocUrls($docNode) {
+        if (is_array($docNode)) return ['url' => $docNode['url'] ?? '', 'thumbnail' => $docNode['thumbnail'] ?? ''];
+        return ['url' => (string)($docNode ?? ''), 'thumbnail' => ''];
     }
 }
-
-/* ── Extract doc nodes ── */
-$birthCert = getDocUrls($student_data['Doc']['Birth Certificate']    ?? '');
-$aadhar    = getDocUrls($student_data['Doc']['Aadhar Card']          ?? '');
-$transfer  = getDocUrls($student_data['Doc']['Transfer Certificate'] ?? '');
+$birthCert  = getDocUrls($student_data['Doc']['Birth Certificate']    ?? '');
+$aadhar     = getDocUrls($student_data['Doc']['Aadhar Card']          ?? '');
+$transfer   = getDocUrls($student_data['Doc']['Transfer Certificate'] ?? '');
 $profilePic = $student_data['Profile Pic'] ?? '';
+$addr       = $student_data['Address'] ?? [];
+if (!is_array($addr)) $addr = [];
+
+$selectedFees = is_array($selected_exempted_fees ?? null) ? array_keys($selected_exempted_fees) : [];
 ?>
 
-
-
 <div class="content-wrapper">
-    <!-- ================= PAGE HEADER ================= -->
-    <section class="content-header">
-        <h1 class="page-title">
-            <i class="fa fa-users text-primary"></i>
-            Edit Student
+<div class="sa-wrap">
+
+    <!-- ── Top bar ── -->
+    <div class="sa-topbar">
+        <h1 class="sa-page-title">
+            <i class="fa fa-pencil-square-o"></i> Edit Student
         </h1>
-        <ol class="breadcrumb custom-breadcrumb">
-            <li>
-                <a href="<?= base_url('dashboard'); ?>">
-                    <i class="fa fa-dashboard"></i> Dashboard
-                </a>
-            </li>
-            <li>
-                <a href="<?= base_url('student/all_student'); ?>">
-                    All Students
-                </a>
-            </li>
-            <li class="active">Edit Student</li>
+        <ol class="sa-breadcrumb">
+            <li><a href="<?= base_url('dashboard') ?>"><i class="fa fa-home"></i> Dashboard</a></li>
+            <li><a href="<?= base_url('sis/students') ?>">Student Records</a></li>
+            <li>Edit Student</li>
         </ol>
-    </section>
+    </div>
 
-    <div class="box box-primary erp-card">
-        <div class="box-body">
+    <!-- ── Layout ── -->
+    <div class="sa-layout">
 
-            <form action="<?= base_url('student/edit_student/' . urlencode($student_data['User Id'])); ?>" method="post"
-                enctype="multipart/form-data" id="edit_student_form">
+        <!-- Sidebar nav -->
+        <aside class="sa-sidebar">
+            <div class="sa-sidebar-title">Form Sections</div>
+            <a class="sa-nav-item active" href="#sec-basic"><i class="fa fa-user"></i> <span>Basic Info</span></a>
+            <a class="sa-nav-item" href="#sec-parents"><i class="fa fa-users"></i> <span>Parents</span></a>
+            <a class="sa-nav-item" href="#sec-address"><i class="fa fa-map-marker"></i> <span>Address</span></a>
+            <a class="sa-nav-item" href="#sec-previous"><i class="fa fa-university"></i> <span>Prev. School</span></a>
+            <a class="sa-nav-item" href="#sec-other"><i class="fa fa-info-circle"></i> <span>Other Details</span></a>
+            <a class="sa-nav-item" href="#sec-docs"><i class="fa fa-file-text-o"></i> <span>Documents</span></a>
+            <a class="sa-nav-item" href="#sec-fees"><i class="fa fa-money"></i> <span>Fees & Photo</span></a>
+        </aside>
+
+        <!-- Main form -->
+        <div class="sa-main">
+            <form action="<?= base_url('student/edit_student/' . urlencode($student_data['User Id'])) ?>"
+                  method="post"
+                  id="edit_student_form"
+                  enctype="multipart/form-data">
                 <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>"
                        value="<?= $this->security->get_csrf_hash() ?>">
 
-                <!-- ================= BASIC INFORMATION ================= -->
-                <div class="section-card">
-                    <div class="section-title">
-                        <i class="fa fa-user"></i> Student Basic Information
+                <!-- == BASIC INFORMATION == -->
+                <div class="sa-section" id="sec-basic">
+                    <div class="sa-section-head">
+                        <i class="fa fa-user"></i>
+                        <h3>Basic Information</h3>
                     </div>
+                    <div class="sa-section-body">
+                        <div class="sa-grid">
 
-                    <div class="row">
-
-                        <div class="form-group col-md-3">
-                            <label>Student ID</label>
-                            <input type="text" name="user_id" value="<?= htmlspecialchars($student_data['User Id'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" readonly>
-                        </div>
-
-                        <div class="form-group col-md-3">
-                            <label>Student Name</label>
-                            <input type="text" name="Name" value="<?= htmlspecialchars($student_data['Name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" class="form-control"
-                                required>
-                        </div>
-
-                        <div class="form-group col-md-3">
-                            <label>Class</label>
-                            <input type="text" name="class" value="<?= htmlspecialchars($student_data['Class'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" class="form-control"
-                                readonly>
-                        </div>
-
-                        <div class="form-group col-md-3">
-                            <label>Section</label>
-                            <input type="text" name="section" value="<?= htmlspecialchars($student_data['Section'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" readonly>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="form-group col-md-3">
-                            <label>Date of Birth</label>
-                            <input type="text" name="dob" value="<?= htmlspecialchars($student_data['DOB'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
-                                class="form-control datepicker" placeholder="dd-mm-yyyy" required>
-                        </div>
-
-
-                        <div class="form-group col-md-3">
-                            <label>Gender</label>
-                            <select name="gender" class="form-control">
-                                <option value="Male" <?= ($student_data['Gender'] ?? '') == 'Male' ? 'selected' : '' ?>>Male
-                                </option>
-                                <option value="Female" <?= ($student_data['Gender'] ?? '') == 'Female' ? 'selected' : '' ?>>
-                                    Female</option>
-                                <option value="Other" <?= ($student_data['Gender'] ?? '') == 'Other' ? 'selected' : '' ?>>
-                                    Other</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group col-md-3">
-                            <label>Admission Date</label>
-                            <input type="text" name="admission_date"
-                                value="<?= htmlspecialchars($student_data['Admission Date'] ?? '', ENT_QUOTES, 'UTF-8') ?>" class="form-control datepicker"
-                                placeholder="dd-mm-yyyy" required>
-                        </div>
-
-
-                        <div class="form-group col-md-3">
-                            <label>Email</label>
-                            <input type="email" name="email" value="<?= htmlspecialchars($student_data['Email'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" class="form-control"
-                                required>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="form-group col-md-3">
-                            <label>Phone Number</label>
-                            <input type="text" name="phone_number" value="<?= htmlspecialchars($student_data['Phone Number'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" required>
-                        </div>
-
-                        <div class="form-group col-md-3">
-                            <label>Blood Group</label>
-                            <select name="blood_group" class="form-control">
-                                <?php $groups = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-", "Unknown"];
-                                foreach ($groups as $g): ?>
-                                    <option value="<?= $g ?>" <?= ($student_data['Blood Group'] ?? '') == $g ? 'selected' : '' ?>>
-                                        <?= $g ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-
-                        <div class="form-group col-md-3">
-                            <label>Category</label>
-                            <select name="category" class="form-control">
-                                <option value="General" <?= ($student_data['Category'] ?? '') == 'General' ? 'selected' : '' ?>>
-                                    General</option>
-                                <option value="OBC" <?= ($student_data['Category'] ?? '') == 'OBC' ? 'selected' : '' ?>>OBC
-                                </option>
-                                <option value="SC" <?= ($student_data['Category'] ?? '') == 'SC' ? 'selected' : '' ?>>SC
-                                </option>
-                                <option value="ST" <?= ($student_data['Category'] ?? '') == 'ST' ? 'selected' : '' ?>>ST
-                                </option>
-                            </select>
-                        </div>
-
-                        <div class="form-group col-md-3">
-                            <label>Additional Subjects</label>
-                            <div class="subject-box">
-
-                                <?php
-                                $selectedSubjects = [];
-
-                                if (!empty($additional_subjects) && is_array($additional_subjects)) {
-                                    foreach ($additional_subjects as $key => $value) {
-
-                                        if (is_string($key) && trim($key) !== '') {
-                                            $selectedSubjects[] = strtolower(trim($key));
-                                        }
-
-                                        if (is_string($value) && trim($value) !== '') {
-                                            $selectedSubjects[] = strtolower(trim($value));
-                                        }
-                                    }
-                                }
-
-                                $selectedSubjects = array_unique($selectedSubjects);
-                                ?>
-
-                                <?php if (!empty($allSubjects) && is_array($allSubjects)): ?>
-
-                                    <?php foreach ($allSubjects as $subject):
-
-                                        $subjectTrimmed = trim($subject);
-                                        $subjectLower   = strtolower($subjectTrimmed);
-
-                                    ?>
-
-                                        <div class="form-check">
-                                            <input type="checkbox"
-                                                class="form-check-input"
-                                                name="additional_subjects[]"
-                                                value="<?= htmlspecialchars($subjectTrimmed); ?>"
-                                                <?= in_array($subjectLower, $selectedSubjects, true) ? 'checked' : ''; ?>>
-
-                                            <label class="form-check-label">
-                                                <?= htmlspecialchars($subjectTrimmed); ?>
-                                            </label>
-                                        </div>
-
-                                    <?php endforeach; ?>
-
-                                <?php else: ?>
-                                    <small class="text-muted">No additional subjects available.</small>
-                                <?php endif; ?>
-
+                            <div class="sa-field">
+                                <label>Student ID</label>
+                                <input type="text" name="user_id"
+                                       value="<?= htmlspecialchars($student_data['User Id'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" readonly>
                             </div>
 
+                            <div class="sa-field">
+                                <label>Student Name <span class="req">*</span></label>
+                                <input type="text" name="Name"
+                                       value="<?= htmlspecialchars($student_data['Name'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" required>
+                            </div>
 
+                            <div class="sa-field">
+                                <label>Class</label>
+                                <input type="text" name="class"
+                                       value="<?= htmlspecialchars($student_data['Class'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" readonly>
+                            </div>
+
+                            <div class="sa-field">
+                                <label>Section</label>
+                                <input type="text" name="section"
+                                       value="<?= htmlspecialchars($student_data['Section'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" readonly>
+                            </div>
+
+                            <div class="sa-field">
+                                <label>Date of Birth <span class="req">*</span></label>
+                                <input type="text" name="dob"
+                                       value="<?= htmlspecialchars($student_data['DOB'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input datepicker" placeholder="dd-mm-yyyy" required>
+                            </div>
+
+                            <div class="sa-field">
+                                <label>Gender</label>
+                                <?php $gen = $student_data['Gender'] ?? ''; ?>
+                                <select name="gender" class="sa-select">
+                                    <option value="">Select Gender</option>
+                                    <option value="Male"   <?= $gen === 'Male'   ? 'selected' : '' ?>>Male</option>
+                                    <option value="Female" <?= $gen === 'Female' ? 'selected' : '' ?>>Female</option>
+                                    <option value="Other"  <?= $gen === 'Other'  ? 'selected' : '' ?>>Other</option>
+                                </select>
+                            </div>
+
+                            <div class="sa-field">
+                                <label>Admission Date <span class="req">*</span></label>
+                                <input type="text" name="admission_date"
+                                       value="<?= htmlspecialchars($student_data['Admission Date'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input datepicker" placeholder="dd-mm-yyyy" required>
+                            </div>
+
+                            <div class="sa-field">
+                                <label>Email <span class="req">*</span></label>
+                                <input type="email" name="email"
+                                       value="<?= htmlspecialchars($student_data['Email'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" required>
+                            </div>
+
+                            <div class="sa-field">
+                                <label>Phone Number <span class="req">*</span></label>
+                                <input type="text" name="phone_number"
+                                       value="<?= htmlspecialchars($student_data['Phone Number'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" required>
+                            </div>
+
+                            <div class="sa-field">
+                                <label>Blood Group <span class="req">*</span></label>
+                                <?php $bg = $student_data['Blood Group'] ?? ''; ?>
+                                <select name="blood_group" class="sa-select" required>
+                                    <option value="">Select</option>
+                                    <?php foreach (['A+','A-','B+','B-','O+','O-','AB+','AB-','Unknown'] as $g): ?>
+                                    <option value="<?= $g ?>" <?= $bg === $g ? 'selected' : '' ?>><?= $g ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="sa-field">
+                                <label>Category <span class="req">*</span></label>
+                                <?php $cat = $student_data['Category'] ?? ''; ?>
+                                <select name="category" class="sa-select" required>
+                                    <option value="">Select</option>
+                                    <?php foreach (['General','OBC','SC','ST'] as $c): ?>
+                                    <option value="<?= $c ?>" <?= $cat === $c ? 'selected' : '' ?>><?= $c ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
 
                         </div>
                     </div>
                 </div>
 
-
-
-                <div class="section-card">
-                    <div class="section-title">
-                        <i class="fa fa-users"></i> Parents Details
+                <!-- == PARENTS DETAILS == -->
+                <div class="sa-section" id="sec-parents">
+                    <div class="sa-section-head">
+                        <i class="fa fa-users"></i>
+                        <h3>Parents Details</h3>
                     </div>
-                    <div class="row">
+                    <div class="sa-section-body">
+                        <div class="sa-grid">
 
-                        <div class="form-group col-md-3">
-                            <label>Father Name</label>
-                            <input type="text" name="father_name" value="<?= htmlspecialchars($student_data['Father Name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" required>
-                        </div>
+                            <div class="sa-field">
+                                <label>Father's Name <span class="req">*</span></label>
+                                <input type="text" name="father_name"
+                                       value="<?= htmlspecialchars($student_data['Father Name'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" required>
+                            </div>
 
-                        <div class="form-group col-md-3">
-                            <label>Father Occupation</label>
-                            <input type="text" name="father_occupation"
-                                value="<?= htmlspecialchars($student_data['Father Occupation'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" class="form-control" required>
-                        </div>
+                            <div class="sa-field">
+                                <label>Father's Occupation <span class="req">*</span></label>
+                                <input type="text" name="father_occupation"
+                                       value="<?= htmlspecialchars($student_data['Father Occupation'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" required>
+                            </div>
 
-                        <div class="form-group col-md-3">
-                            <label>Mother Name</label>
-                            <input type="text" name="mother_name" value="<?= htmlspecialchars($student_data['Mother Name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" required>
-                        </div>
+                            <div class="sa-field">
+                                <label>Father's Contact <span class="req">*</span></label>
+                                <input type="text" name="guard_contact"
+                                       value="<?= htmlspecialchars($student_data['Guard Contact'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" required>
+                            </div>
 
-                        <div class="form-group col-md-3">
-                            <label>Mother Occupation</label>
-                            <input type="text" name="mother_occupation"
-                                value="<?= htmlspecialchars($student_data['Mother Occupation'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" class="form-control" required>
-                        </div>
+                            <div class="sa-field">
+                                <label>Guardian Relation <span class="req">*</span></label>
+                                <input type="text" name="guard_relation"
+                                       value="<?= htmlspecialchars($student_data['Guard Relation'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" required>
+                            </div>
 
-                        <div class="form-group col-md-3">
-                            <label>Guardian Contact</label>
-                            <input type="text" name="guard_contact" value="<?= htmlspecialchars($student_data['Guard Contact'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" required>
-                        </div>
+                            <div class="sa-field">
+                                <label>Mother's Name <span class="req">*</span></label>
+                                <input type="text" name="mother_name"
+                                       value="<?= htmlspecialchars($student_data['Mother Name'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" required>
+                            </div>
 
-                        <div class="form-group col-md-3">
-                            <label>Guardian Relation</label>
-                            <input type="text" name="guard_relation" value="<?= htmlspecialchars($student_data['Guard Relation'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" required>
-                        </div>
-                    </div>
-                </div>
+                            <div class="sa-field">
+                                <label>Mother's Occupation <span class="req">*</span></label>
+                                <input type="text" name="mother_occupation"
+                                       value="<?= htmlspecialchars($student_data['Mother Occupation'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" required>
+                            </div>
 
-
-
-                <div class="section-card">
-                    <div class="section-title">
-                        <i class="fa fa-map-marker"></i> Address Details
-                    </div>
-
-                    <div class="row">
-                        <div class="form-group col-md-3">
-                            <label>Street</label>
-                            <input type="text" name="street" value="<?= htmlspecialchars($student_data['Address']['Street'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" required>
-                        </div>
-
-                        <div class="form-group col-md-3">
-                            <label>City</label>
-                            <input type="text" name="city" value="<?= htmlspecialchars($student_data['Address']['City'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" required>
-                        </div>
-
-                        <div class="form-group col-md-3">
-                            <label>State</label>
-                            <input type="text" name="state" value="<?= htmlspecialchars($student_data['Address']['State'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" required>
-                        </div>
-
-                        <div class="form-group col-md-3">
-                            <label>Postal Code</label>
-                            <input type="text" name="postal_code" value="<?= htmlspecialchars($student_data['Address']['PostalCode'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" required>
                         </div>
                     </div>
                 </div>
 
+                <!-- == ADDRESS == -->
+                <div class="sa-section" id="sec-address">
+                    <div class="sa-section-head">
+                        <i class="fa fa-map-marker"></i>
+                        <h3>Address Details</h3>
+                    </div>
+                    <div class="sa-section-body">
+                        <div class="sa-grid">
 
-                <div class="section-card">
-                    <div class="section-title"><i class="fa fa-university"></i> Previous School Details</div>
+                            <div class="sa-field sa-col-2">
+                                <label>Street <span class="req">*</span></label>
+                                <input type="text" name="street"
+                                       value="<?= htmlspecialchars($addr['Street'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" required>
+                            </div>
 
-                    <div class="row">
+                            <div class="sa-field">
+                                <label>State <span class="req">*</span></label>
+                                <?php $curState = $addr['State'] ?? ''; ?>
+                                <select name="state" id="state" class="sa-select" required>
+                                    <option value="">Select State</option>
+                                    <?php foreach (['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Andaman and Nicobar Islands','Chandigarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Jammu and Kashmir','Ladakh','Lakshadweep','Puducherry'] as $st): ?>
+                                    <option value="<?= $st ?>" <?= $curState === $st ? 'selected' : '' ?>><?= $st ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
 
-                        <div class="form-group col-md-4">
-                            <label>Previous Class</label>
-                            <input type="text" name="pre_class" value="<?= htmlspecialchars($student_data['Pre Class'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" required>
-                        </div>
+                            <div class="sa-field">
+                                <label>District <span class="req">*</span></label>
+                                <select name="city" id="city" class="sa-select" required>
+                                    <option value="<?= htmlspecialchars($addr['City'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                            selected><?= htmlspecialchars($addr['City'] ?? 'Select District', ENT_QUOTES, 'UTF-8') ?></option>
+                                </select>
+                            </div>
 
-                        <div class="form-group col-md-4">
-                            <label>Previous School</label>
-                            <input type="text" name="pre_school" value="<?= htmlspecialchars($student_data['Pre School'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" required>
-                        </div>
+                            <div class="sa-field">
+                                <label>Postal Code <span class="req">*</span></label>
+                                <input type="text" name="postal_code"
+                                       value="<?= htmlspecialchars($addr['PostalCode'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" placeholder="6-digit PIN" required>
+                            </div>
 
-                        <div class="form-group col-md-4">
-                            <label>Previous Marks (%)</label>
-                            <input type="text" name="pre_marks" value="<?= htmlspecialchars($student_data['Pre Marks'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                class="form-control" required>
                         </div>
                     </div>
                 </div>
 
-
-                <div class="section-card">
-                    <div class="section-title">
-                        <i class="fa fa-money"></i> Exempted Fees
+                <!-- == PREVIOUS SCHOOL == -->
+                <div class="sa-section" id="sec-previous">
+                    <div class="sa-section-head">
+                        <i class="fa fa-university"></i>
+                        <h3>Previous School Details</h3>
                     </div>
+                    <div class="sa-section-body">
+                        <div class="sa-grid sa-grid-3">
 
-                    <div class="row">
-                        <div class="form-group col-md-12">
+                            <div class="sa-field">
+                                <label>Previous Class <span class="req">*</span></label>
+                                <input type="text" name="pre_class"
+                                       value="<?= htmlspecialchars($student_data['Pre Class'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" required>
+                            </div>
 
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="select_all_exempted_fees">
-                                <label class="form-check-label">
+                            <div class="sa-field">
+                                <label>Previous School Name <span class="req">*</span></label>
+                                <input type="text" name="pre_school"
+                                       value="<?= htmlspecialchars($student_data['Pre School'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" required>
+                            </div>
+
+                            <div class="sa-field">
+                                <label>Marks % <span class="req">*</span></label>
+                                <input type="text" name="pre_marks"
+                                       value="<?= htmlspecialchars($student_data['Pre Marks'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" placeholder="e.g. 85%" required>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- == OTHER DETAILS == -->
+                <div class="sa-section" id="sec-other">
+                    <div class="sa-section-head">
+                        <i class="fa fa-info-circle"></i>
+                        <h3>Other Details</h3>
+                    </div>
+                    <div class="sa-section-body">
+                        <div class="sa-grid sa-grid-3">
+
+                            <div class="sa-field">
+                                <label>Religion <span class="req">*</span></label>
+                                <?php
+                                $rel = $student_data['Religion'] ?? '';
+                                $stdReligions = ['Hindu','Muslim','Sikh','Jain','Buddh','Christian','Other'];
+                                $isOther = ($rel !== '' && !in_array($rel, $stdReligions, true));
+                                ?>
+                                <select name="religion" id="religion" class="sa-select"
+                                        onchange="toggleOtherReligion(this)" required>
+                                    <option value="">Select Religion</option>
+                                    <?php foreach ($stdReligions as $r): ?>
+                                    <option value="<?= $r ?>" <?= ($rel === $r || ($isOther && $r === 'Other')) ? 'selected' : '' ?>><?= $r ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <input type="text" name="other_religion" id="other_religion"
+                                       class="sa-input" placeholder="Please specify"
+                                       value="<?= $isOther ? htmlspecialchars($rel, ENT_QUOTES, 'UTF-8') : '' ?>"
+                                       style="display:<?= $isOther ? 'block' : 'none' ?>;margin-top:8px;">
+                            </div>
+
+                            <div class="sa-field">
+                                <label>Nationality <span class="req">*</span></label>
+                                <input type="text" name="nationality"
+                                       value="<?= htmlspecialchars($student_data['Nationality'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                       class="sa-input" placeholder="e.g. Indian" required>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- == DOCUMENTS == -->
+                <div class="sa-section" id="sec-docs">
+                    <div class="sa-section-head">
+                        <i class="fa fa-file-text-o"></i>
+                        <h3>Documents</h3>
+                    </div>
+                    <div class="sa-section-body">
+                        <div class="sa-grid sa-grid-3">
+
+                            <?php
+                            $docs = [
+                                ['key' => 'birthCertificate',    'label' => 'Birth Certificate',    'icon' => 'fa-file-pdf-o', 'data' => $birthCert],
+                                ['key' => 'aadharCard',          'label' => 'Aadhar Card',          'icon' => 'fa-id-card',    'data' => $aadhar],
+                                ['key' => 'transferCertificate', 'label' => 'Transfer Certificate', 'icon' => 'fa-certificate','data' => $transfer],
+                            ];
+                            foreach ($docs as $doc):
+                            ?>
+                            <div class="sa-field">
+                                <label><?= $doc['label'] ?></label>
+                                <?php if ($doc['data']['url']): ?>
+                                <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+                                    <a href="<?= htmlspecialchars($doc['data']['url']) ?>" target="_blank"
+                                       style="font-size:12px;color:var(--sa-blue);font-weight:600;">
+                                        <i class="fa fa-eye"></i> View Existing
+                                    </a>
+                                    <span style="font-size:11px;color:var(--sa-muted);">Upload below to replace</span>
+                                </div>
+                                <?php endif; ?>
+                                <div class="sa-file-wrap" id="wrap_<?= $doc['key'] ?>">
+                                    <input type="file" name="<?= $doc['key'] ?>" id="<?= $doc['key'] ?>"
+                                           accept=".pdf,.jpg,.jpeg,.png"
+                                           onchange="saFileChosen(this,'wrap_<?= $doc['key'] ?>')">
+                                    <div class="sa-file-label">
+                                        <div class="sa-file-icon"><i class="fa <?= $doc['icon'] ?>"></i></div>
+                                        <div class="sa-file-text">
+                                            <strong>Upload File</strong>
+                                            PDF, JPG, PNG - max 2MB
+                                        </div>
+                                    </div>
+                                    <div class="sa-file-name" id="fn_<?= $doc['key'] ?>"></div>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- == FEES EXEMPTION + PHOTO == -->
+                <div class="sa-section" id="sec-fees">
+                    <div class="sa-section-head">
+                        <i class="fa fa-money"></i>
+                        <h3>Fee Exemptions &amp; Passport Photo</h3>
+                    </div>
+                    <div class="sa-section-body">
+                        <div class="sa-grid sa-grid-2">
+
+                            <!-- Fee exemptions -->
+                            <div class="sa-field">
+                                <label>Fees to Exempt for This Student</label>
+
+                                <label class="sa-check-all">
+                                    <input type="checkbox" id="select_all_exempted_fees">
                                     Select All Fees
                                 </label>
-                            </div>
 
-                            <div class="subject-box">
-                                <?php
-                                // array_keys() gives ["Bus Fees", "Tuition Fee", ...]
-                                // These are the fee NAMES stored in Firebase as keys
-                                $selectedFees = is_array($selected_exempted_fees)
-                                    ? array_keys($selected_exempted_fees)
-                                    : [];
-                                ?>
-
-                                <?php if (!empty($exemptedFees) && is_array($exemptedFees)): ?>
-                                    <?php foreach ($exemptedFees as $feeType => $fees): ?>
-                                        <?php if (!is_array($fees)) continue; ?>
-                                        <?php foreach ($fees as $feeKey => $feeValue):
-                                            $feeKey = trim($feeKey);
-                                        ?>
-                                            <div class="form-check">
-                                                <input class="form-check-input exempted-fee-checkbox"
-                                                    type="checkbox"
-                                                    name="exempted_fees_multiple[]"
-                                                    value="<?= htmlspecialchars($feeKey) ?>"
-                                                    <?= in_array($feeKey, $selectedFees, true) ? 'checked' : '' ?>>
-                                                <label class="form-check-label">
-                                                    <?= htmlspecialchars($feeKey) ?>
-                                                    <small class="text-muted">
-                                                        (<?= htmlspecialchars($feeType) ?>)
-                                                    </small>
-                                                </label>
-                                            </div>
+                                <div class="sa-check-group" style="max-height:180px;">
+                                    <?php if (isset($exemptedFees) && is_array($exemptedFees)): ?>
+                                        <?php foreach ($exemptedFees as $feeType => $fees): ?>
+                                            <?php if (is_array($fees)): ?>
+                                                <?php foreach ($fees as $feeKey => $feeValue): ?>
+                                                    <label class="sa-check-item">
+                                                        <input type="checkbox"
+                                                               name="exempted_fees_multiple[]"
+                                                               value="<?= htmlspecialchars($feeKey) ?>"
+                                                               <?= in_array(trim($feeKey), $selectedFees, true) ? 'checked' : '' ?>>
+                                                        <?= htmlspecialchars($feeKey) ?>
+                                                        <span style="font-size:11px;color:var(--sa-muted);margin-left:4px;">(<?= htmlspecialchars($feeType) ?>)</span>
+                                                    </label>
+                                                <?php endforeach; ?>
+                                            <?php endif; ?>
                                         <?php endforeach; ?>
-                                    <?php endforeach; ?>
-                                <?php else: ?>
-                                    <small class="text-muted">No fee options available.</small>
-                                <?php endif; ?>
+                                    <?php else: ?>
+                                        <p class="sa-check-muted">No fee options available.</p>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <!-- Passport photo -->
+                            <div class="sa-field">
+                                <label>Passport Size Photo</label>
+                                <div class="sa-photo-wrap">
+                                    <div class="sa-photo-preview-box">
+                                        <img id="passportPhotoPreview"
+                                             src="<?= htmlspecialchars($profilePic ?: base_url('tools/dist/img/kids.jpg')) ?>"
+                                             alt="Preview">
+                                        <span class="sa-photo-hint">170 x 200 px<br>JPG/PNG/WEBP</span>
+                                    </div>
+                                    <div class="sa-photo-file" style="flex:1;">
+                                        <div class="sa-file-wrap" id="wrap_student_photo">
+                                            <input type="file" name="student_photo" id="student_photo"
+                                                   accept="image/*"
+                                                   onchange="previewPassportPhoto(event);saFileChosen(this,'wrap_student_photo')">
+                                            <div class="sa-file-label">
+                                                <div class="sa-file-icon"><i class="fa fa-camera"></i></div>
+                                                <div class="sa-file-text">
+                                                    <strong>Upload Photo</strong>
+                                                    JPG, PNG, WEBP - max 2MB
+                                                </div>
+                                            </div>
+                                            <div class="sa-file-name" id="fn_student_photo"></div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                         </div>
                     </div>
                 </div>
 
-
-
-                <!-- ================= DOCUMENTS & PHOTO ================= -->
-                <div class="section-card">
-                    <div class="section-title"><i class="fa fa-file-text-o"></i> Documents &amp; Photo</div>
-
-                    <div class="row">
-
-                        <!-- ── BIRTH CERTIFICATE ── -->
-                        <div class="form-group col-md-4">
-                            <label>Birth Certificate</label>
-
-                            <?php if ($birthCert['url']): ?>
-                                <div class="existing-doc mb-2 d-flex align-items-center" style="gap:10px;">
-                                    <?php if ($birthCert['thumbnail']): ?>
-                                        <img src="<?= htmlspecialchars($birthCert['thumbnail']) ?>"
-                                            alt="Preview"
-                                            style="width:50px;height:65px;object-fit:cover;border-radius:4px;border:1px solid #ddd;">
-                                    <?php else: ?>
-                                        <!-- No thumbnail: show generic file icon -->
-                                        <div style="width:50px;height:65px;background:#f1f5f9;border-radius:4px;
-                                                    display:flex;align-items:center;justify-content:center;
-                                                    border:1px solid #ddd;color:#64748b;font-size:20px;">
-                                            <i class="fa fa-file-text-o"></i>
-                                        </div>
-                                    <?php endif; ?>
-                                    <div>
-                                        <a href="<?= htmlspecialchars($birthCert['url']) ?>"
-                                            target="_blank"
-                                            class="btn btn-xs btn-info">
-                                            <i class="fa fa-eye"></i> View Existing
-                                        </a>
-                                        <p class="text-muted small mb-0 mt-1">Upload below to replace</p>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
-
-                            <input type="file"
-                                name="birthCertificate"
-                                id="birthCertificate"
-                                class="form-control"
-                                accept=".pdf,.jpg,.jpeg,.png,.webp">
-                            <small class="text-muted">PDF, JPG, PNG — max 2 MB</small>
-                        </div>
-
-                        <!-- ── AADHAR CARD ── -->
-                        <div class="form-group col-md-4">
-                            <label>Aadhar Card</label>
-
-                            <?php if ($aadhar['url']): ?>
-                                <div class="existing-doc mb-2 d-flex align-items-center" style="gap:10px;">
-                                    <?php if ($aadhar['thumbnail']): ?>
-                                        <img src="<?= htmlspecialchars($aadhar['thumbnail']) ?>"
-                                            alt="Preview"
-                                            style="width:50px;height:65px;object-fit:cover;border-radius:4px;border:1px solid #ddd;">
-                                    <?php else: ?>
-                                        <div style="width:50px;height:65px;background:#f1f5f9;border-radius:4px;
-                                                    display:flex;align-items:center;justify-content:center;
-                                                    border:1px solid #ddd;color:#64748b;font-size:20px;">
-                                            <i class="fa fa-file-text-o"></i>
-                                        </div>
-                                    <?php endif; ?>
-                                    <div>
-                                        <a href="<?= htmlspecialchars($aadhar['url']) ?>"
-                                            target="_blank"
-                                            class="btn btn-xs btn-info">
-                                            <i class="fa fa-eye"></i> View Existing
-                                        </a>
-                                        <p class="text-muted small mb-0 mt-1">Upload below to replace</p>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
-
-                            <input type="file"
-                                name="aadharCard"
-                                id="aadharCard"
-                                class="form-control"
-                                accept=".pdf,.jpg,.jpeg,.png,.webp">
-                            <small class="text-muted">PDF, JPG, PNG — max 2 MB</small>
-                        </div>
-
-                        <!-- ── TRANSFER CERTIFICATE ── -->
-                        <div class="form-group col-md-4">
-                            <label>Transfer Certificate</label>
-
-                            <?php if ($transfer['url']): ?>
-                                <div class="existing-doc mb-2 d-flex align-items-center" style="gap:10px;">
-                                    <?php if ($transfer['thumbnail']): ?>
-                                        <img src="<?= htmlspecialchars($transfer['thumbnail']) ?>"
-                                            alt="Preview"
-                                            style="width:50px;height:65px;object-fit:cover;border-radius:4px;border:1px solid #ddd;">
-                                    <?php else: ?>
-                                        <div style="width:50px;height:65px;background:#f1f5f9;border-radius:4px;
-                                                    display:flex;align-items:center;justify-content:center;
-                                                    border:1px solid #ddd;color:#64748b;font-size:20px;">
-                                            <i class="fa fa-file-text-o"></i>
-                                        </div>
-                                    <?php endif; ?>
-                                    <div>
-                                        <a href="<?= htmlspecialchars($transfer['url']) ?>"
-                                            target="_blank"
-                                            class="btn btn-xs btn-info">
-                                            <i class="fa fa-eye"></i> View Existing
-                                        </a>
-                                        <p class="text-muted small mb-0 mt-1">Upload below to replace</p>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
-
-                            <input type="file"
-                                name="transferCertificate"
-                                id="transferCertificate"
-                                class="form-control"
-                                accept=".pdf,.jpg,.jpeg,.png,.webp">
-                            <small class="text-muted">PDF, JPG, PNG — max 2 MB</small>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="form-group col-md-6">
-                            <label>Student Photo</label>
-
-                            <div class="mb-2">
-                                <img id="passportPhotoPreview"
-                                    src="<?= htmlspecialchars($profilePic ?: base_url('tools/dist/img/kids.jpg')) ?>"
-                                    class="img-thumbnail"
-                                    style="width:170px;height:200px;object-fit:cover;display:block;">
-                            </div>
-
-                            <input type="file"
-                                name="student_photo"
-                                id="student_photo"
-                                class="form-control"
-                                accept="image/*"
-                                onchange="previewPassportPhoto(event)">
-                            <small class="text-muted">JPG, PNG, WEBP — max 2 MB. Upload to replace current photo.</small>
-                        </div>
-
-                    </div>
+                <!-- == ACTION BAR == -->
+                <div class="sa-action-bar">
+                    <button type="button" class="sa-btn sa-btn-ghost" onclick="window.history.back()">
+                        <i class="fa fa-times"></i> Cancel
+                    </button>
+                    <button type="submit" class="sa-btn sa-btn-primary" id="updateBtn">
+                        <i class="fa fa-save"></i> Update Student
+                    </button>
                 </div>
 
-
-
-
-                <div class="row mt-4">
-                    <div class="col-md-12 text-right">
-                        <button type="button" class="btn btn-danger" onclick="goBack()">
-                            <i class="fa fa-times"></i> Cancel
-                        </button>
-
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fa fa-save"></i> Update Student
-                        </button>
-                    </div>
-                </div>
             </form>
-        </div>
-    </div>
+        </div><!-- /.sa-main -->
+    </div><!-- /.sa-layout -->
 
-</div>
-
-
-
-
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</div><!-- /.sa-wrap -->
+</div><!-- /.content-wrapper -->
 
 
 <script>
-    if (typeof showAlert === 'undefined') {
-        function showAlert(type, message) {
-            const colors = {
-                success: '#28a745',
-                error: '#dc3545',
-                warning: '#ffc107',
-                info: '#17a2b8'
-            };
-            const box = document.createElement('div');
-            box.innerText = message;
-            Object.assign(box.style, {
-                position: 'fixed',
-                top: '20px',
-                right: '20px',
-                padding: '12px 18px',
-                background: colors[type] || '#333',
-                color: '#fff',
-                borderRadius: '6px',
-                boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
-                zIndex: '9999',
-                fontSize: '13px'
-            });
-            document.body.appendChild(box);
-            setTimeout(() => box.remove(), 3000);
-        }
+/* ── File chosen feedback ── */
+function saFileChosen(input, wrapId) {
+    var wrap = document.getElementById(wrapId);
+    var nameEl = wrap ? wrap.querySelector('.sa-file-name') : null;
+    if (!nameEl) return;
+    if (input.files && input.files.length > 0) {
+        nameEl.textContent = '\u2713 ' + input.files[0].name;
+        nameEl.style.display = 'block';
+        if (wrap) wrap.style.borderColor = 'var(--sa-green)';
+    } else {
+        nameEl.style.display = 'none';
+        if (wrap) wrap.style.borderColor = '';
     }
+}
 
-    function previewPassportPhoto(event) {
-        const file = event.target.files && event.target.files[0];
-        if (!file) return;
-        const preview = document.getElementById('passportPhotoPreview');
-        if (!preview) return;
-        const reader = new FileReader();
-        reader.onload = e => { preview.src = e.target.result; };
-        reader.readAsDataURL(file);
+/* ── Preview passport photo ── */
+function previewPassportPhoto(event) {
+    var file = event.target.files && event.target.files[0];
+    if (!file) return;
+    var preview = document.getElementById('passportPhotoPreview');
+    if (!preview) return;
+    var reader = new FileReader();
+    reader.onload = function(e) { preview.src = e.target.result; };
+    reader.readAsDataURL(file);
+}
+
+/* ── Toggle other religion field ── */
+function toggleOtherReligion(selectElement) {
+    var otherInput = document.getElementById('other_religion');
+    if (!otherInput) return;
+    if (selectElement.value === 'Other') {
+        otherInput.style.display = 'block';
+        otherInput.required = true;
+    } else {
+        otherInput.style.display = 'none';
+        otherInput.required = false;
+        otherInput.value = '';
     }
+}
 
-    function goBack() { window.history.back(); }
+/* ── Toast ── */
+function showAlert(type, message) {
+    var toast = document.createElement('div');
+    toast.className = 'sa-toast ' + type;
+    var icons = { success:'fa-check-circle', error:'fa-times-circle', warning:'fa-exclamation-triangle', info:'fa-info-circle' };
+    var icon = document.createElement('i');
+    icon.className = 'fa ' + (icons[type]||'fa-info-circle');
+    toast.appendChild(icon);
+    toast.appendChild(document.createTextNode(' ' + message));
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.remove(); }, 3400);
+}
 
-    document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', function() {
 
-        const form = document.getElementById('edit_student_form');
-        if (!form) return;
-
-        /* ── Guard flag — prevents double submission ──
-           Set to true the moment AJAX fires.
-           Reset to false only on error so user can retry.
-           On success we redirect anyway so no reset needed.
-        ── */
-        let isSubmitting = false;
-
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();  // always stop native HTML form POST
-            e.stopImmediatePropagation(); // stop any other submit listeners on this form
-
-            /* If already in flight, do nothing */
-            if (isSubmitting) return;
-            isSubmitting = true;
-
-            const btn = form.querySelector('button[type="submit"]');
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving...';
-            }
-
-            $.ajax({
-                url:         form.getAttribute('action'),
-                type:        'POST',
-                data:        new FormData(form),
-                processData: false,
-                contentType: false,
-                dataType:    'json',
-                success: function (response) {
-                    if (response.status === 'success') {
-                        if (response.photo_notice) {
-                            showAlert('info', response.photo_notice);
-                        }
-                        showAlert('success', 'Student updated successfully!');
-                        setTimeout(function () {
-                            window.location.href = '<?= base_url("student/all_student") ?>';
-                        }, 1500);
-                        /* no reset — we're redirecting */
-                    } else {
-                        showAlert('error', response.message || 'Failed to update student.');
-                        isSubmitting = false; // allow retry
-                        if (btn) {
-                            btn.disabled = false;
-                            btn.innerHTML = '<i class="fa fa-save"></i> Update Student';
-                        }
-                    }
-                },
-                error: function (xhr) {
-                    let msg = 'Server error — please try again.';
-                    try {
-                        const res = JSON.parse(xhr.responseText);
-                        if (res.message) msg = res.message;
-                    } catch (err) {}
-                    showAlert('error', msg);
-                    isSubmitting = false; // allow retry
-                    if (btn) {
-                        btn.disabled = false;
-                        btn.innerHTML = '<i class="fa fa-save"></i> Update Student';
-                    }
-                }
+    /* ── Select all fees ── */
+    var selectAllFees = document.getElementById('select_all_exempted_fees');
+    var feeCheckboxes = document.querySelectorAll('input[name="exempted_fees_multiple[]"]');
+    if (selectAllFees) {
+        selectAllFees.addEventListener('change', function() {
+            feeCheckboxes.forEach(function(cb) { cb.checked = selectAllFees.checked; });
+        });
+        feeCheckboxes.forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                selectAllFees.checked = Array.from(feeCheckboxes).every(function(c) { return c.checked; });
             });
         });
+    }
 
-        /* ── Datepicker ── */
-        if (typeof $.fn.datepicker !== 'undefined') {
-            $('.datepicker').datepicker({
-                format: 'dd-mm-yyyy',
-                autoclose: true,
-                todayHighlight: true
-            });
-        }
+    /* ── State -> District ── */
+    var stateDistricts = {
+        "Uttar Pradesh": ["Agra","Aligarh","Allahabad","Ambedkar Nagar","Amethi","Amroha","Auraiya","Azamgarh","Baghpat","Bahraich","Ballia","Balrampur","Banda","Barabanki","Bareilly","Basti","Bhadohi","Bijnor","Budaun","Bulandshahr","Chandauli","Chitrakoot","Deoria","Etah","Etawah","Faizabad","Farrukhabad","Fatehpur","Firozabad","Gautam Buddha Nagar","Ghaziabad","Ghazipur","Gonda","Gorakhpur","Hamirpur","Hapur","Hardoi","Hathras","Jalaun","Jaunpur","Jhansi","Kannauj","Kanpur Dehat","Kanpur Nagar","Kasganj","Kaushambi","Kushinagar","Lakhimpur Kheri","Lalitpur","Lucknow","Maharajganj","Mahoba","Mainpuri","Mathura","Mau","Meerut","Mirzapur","Moradabad","Muzaffarnagar","Pilibhit","Pratapgarh","Raebareli","Rampur","Saharanpur","Sambhal","Sant Kabir Nagar","Shahjahanpur","Shamli","Shravasti","Siddharthnagar","Sitapur","Sonbhadra","Sultanpur","Unnao","Varanasi"],
+        "Uttarakhand": ["Almora","Bageshwar","Chamoli","Champawat","Dehradun","Haridwar","Nainital","Pauri Garhwal","Pithoragarh","Rudraprayag","Tehri Garhwal","Udham Singh Nagar","Uttarkashi"],
+        "Delhi": ["Central Delhi","East Delhi","New Delhi","North Delhi","North East Delhi","North West Delhi","South Delhi","South East Delhi","South West Delhi","West Delhi"],
+        "Maharashtra": ["Mumbai","Pune","Nagpur","Nashik","Thane","Aurangabad","Solapur","Kolhapur","Amravati","Nanded","Sangli","Jalgaon","Latur"],
+        "Rajasthan": ["Ajmer","Alwar","Banswara","Baran","Barmer","Bharatpur","Bhilwara","Bikaner","Bundi","Chittorgarh","Churu","Dausa","Dholpur","Dungarpur","Hanumangarh","Jaipur","Jaisalmer","Jalore","Jhalawar","Jhunjhunu","Jodhpur","Karauli","Kota","Nagaur","Pali","Pratapgarh","Rajsamand","Sawai Madhopur","Sikar","Sirohi","Sri Ganganagar","Tonk","Udaipur"],
+        "Gujarat": ["Ahmedabad","Amreli","Anand","Aravalli","Banaskantha","Bharuch","Bhavnagar","Botad","Chhota Udaipur","Dahod","Dang","Devbhoomi Dwarka","Gandhinagar","Gir Somnath","Jamnagar","Junagadh","Kheda","Kutch","Mahisagar","Mehsana","Morbi","Narmada","Navsari","Panchmahal","Patan","Porbandar","Rajkot","Sabarkantha","Surat","Surendranagar","Tapi","Vadodara","Valsad"],
+        "Karnataka": ["Bagalkot","Ballari","Belagavi","Bengaluru Rural","Bengaluru Urban","Bidar","Chamarajanagara","Chikballapur","Chikkamagaluru","Chitradurga","Dakshina Kannada","Davanagere","Dharwad","Gadag","Hassan","Haveri","Kalaburagi","Kodagu","Kolar","Koppal","Mandya","Mysuru","Raichur","Ramanagara","Shivamogga","Tumakuru","Udupi","Uttara Kannada","Vijayanagara","Vijayapura","Yadgir"],
+        "Tamil Nadu": ["Ariyalur","Chengalpattu","Chennai","Coimbatore","Cuddalore","Dharmapuri","Dindigul","Erode","Kallakurichi","Kancheepuram","Kanyakumari","Karur","Krishnagiri","Madurai","Mayiladuthurai","Nagapattinam","Namakkal","Nilgiris","Perambalur","Pudukkottai","Ramanathapuram","Ranipet","Salem","Sivaganga","Tenkasi","Thanjavur","Theni","Thoothukudi","Tiruchirappalli","Tirunelveli","Tirupathur","Tiruppur","Tiruvallur","Tiruvannamalai","Tiruvarur","Vellore","Villupuram","Virudhunagar"],
+        "Kerala": ["Alappuzha","Ernakulam","Idukki","Kannur","Kasaragod","Kollam","Kottayam","Kozhikode","Malappuram","Palakkad","Pathanamthitta","Thiruvananthapuram","Thrissur","Wayanad"],
+        "West Bengal": ["Alipurduar","Bankura","Birbhum","Cooch Behar","Dakshin Dinajpur","Darjeeling","Hooghly","Howrah","Jalpaiguri","Jhargram","Kalimpong","Kolkata","Malda","Murshidabad","Nadia","North 24 Parganas","Paschim Bardhaman","Paschim Medinipur","Purba Bardhaman","Purba Medinipur","Purulia","South 24 Parganas","Uttar Dinajpur"],
+        "Bihar": ["Araria","Arwal","Aurangabad","Banka","Begusarai","Bhagalpur","Bhojpur","Buxar","Darbhanga","East Champaran","Gaya","Gopalganj","Jamui","Jehanabad","Kaimur","Katihar","Khagaria","Kishanganj","Lakhisarai","Madhepura","Madhubani","Munger","Muzaffarpur","Nalanda","Nawada","Patna","Purnia","Rohtas","Saharsa","Samastipur","Saran","Sheikhpura","Sheohar","Sitamarhi","Siwan","Supaul","Vaishali","West Champaran"],
+        "Punjab": ["Amritsar","Barnala","Bathinda","Faridkot","Fatehgarh Sahib","Fazilka","Ferozepur","Gurdaspur","Hoshiarpur","Jalandhar","Kapurthala","Ludhiana","Mansa","Moga","Mohali","Muktsar","Nawanshahr","Pathankot","Patiala","Roopnagar","Sangrur","Tarn Taran"],
+        "Haryana": ["Ambala","Bhiwani","Charkhi Dadri","Faridabad","Fatehabad","Gurugram","Hisar","Jhajjar","Jind","Kaithal","Karnal","Kurukshetra","Mahendragarh","Nuh","Palwal","Panchkula","Panipat","Rewari","Rohtak","Sirsa","Sonipat","Yamunanagar"]
+    };
 
-        /* ── Select all exempted fees ── */
-        const selectAll  = document.getElementById('select_all_exempted_fees');
-        const checkboxes = document.querySelectorAll('.exempted-fee-checkbox');
-
-        if (selectAll && checkboxes.length) {
-            selectAll.addEventListener('change', function () {
-                checkboxes.forEach(cb => cb.checked = selectAll.checked);
-            });
-            checkboxes.forEach(cb => {
-                cb.addEventListener('change', function () {
-                    selectAll.checked = Array.from(checkboxes).every(c => c.checked);
+    var stateEl = document.getElementById('state');
+    if (stateEl) {
+        stateEl.addEventListener('change', function() {
+            var distSel = document.getElementById('city');
+            if (!distSel) return;
+            distSel.innerHTML = '<option value="">Select District</option>';
+            var list = stateDistricts[this.value];
+            if (list) {
+                list.forEach(function(d) {
+                    var o = document.createElement('option');
+                    o.value = o.textContent = d;
+                    distSel.appendChild(o);
                 });
-            });
-        }
+            } else {
+                distSel.innerHTML = '<option value="">No districts listed</option>';
+            }
+        });
+    }
 
+    /* ── AJAX Submit ── */
+    var form = document.getElementById('edit_student_form');
+    if (!form) return;
+    var isSubmitting = false;
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (isSubmitting) return;
+        isSubmitting = true;
+
+        var btn = document.getElementById('updateBtn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving...'; }
+
+        $.ajax({
+            url:         form.getAttribute('action'),
+            type:        'POST',
+            data:        new FormData(form),
+            processData: false,
+            contentType: false,
+            dataType:    'json',
+            success: function(res) {
+                if (res.status === 'success') {
+                    if (res.photo_notice) showAlert('info', res.photo_notice);
+                    showAlert('success', 'Student updated successfully!');
+                    setTimeout(function() { window.location.href = '<?= base_url("sis/students") ?>'; }, 1500);
+                } else {
+                    showAlert('error', res.message || 'Failed to update student.');
+                    isSubmitting = false;
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa fa-save"></i> Update Student'; }
+                }
+            },
+            error: function() {
+                showAlert('error', 'Server error. Please try again.');
+                isSubmitting = false;
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa fa-save"></i> Update Student'; }
+            }
+        });
     });
+
+    /* ── Sidebar active highlight on scroll ── */
+    var sections = document.querySelectorAll('.sa-section');
+    var navItems = document.querySelectorAll('.sa-nav-item');
+    window.addEventListener('scroll', function() {
+        var scrollY = window.scrollY + 120;
+        sections.forEach(function(sec) {
+            if (sec.offsetTop <= scrollY && sec.offsetTop + sec.offsetHeight > scrollY) {
+                navItems.forEach(function(n) { n.classList.remove('active'); });
+                var match = document.querySelector('.sa-nav-item[href="#' + sec.id + '"]');
+                if (match) match.classList.add('active');
+            }
+        });
+    });
+
+    /* ── Datepicker ── */
+    if (typeof $.fn.datepicker !== 'undefined') {
+        $('.datepicker').datepicker({
+            format: 'dd-mm-yyyy',
+            autoclose: true,
+            todayHighlight: true
+        });
+    }
+
+});
 </script>
 
 
-
-
-
 <style>
-    /* PAGE BACKGROUND */
-    .content-wrapper {
-        background: #f4f6f9;
-        padding: 15px;
-    }
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap');
 
-    /* PAGE HEADER */
-    .content-header {
-        margin-bottom: 20px;
-    }
+:root {
+    --sa-navy:   #0c1e38;
+    --sa-blue:   #0f766e;
+    --sa-sky:    #e6f4f1;
+    --sa-green:  #15803d;
+    --sa-red:    #dc2626;
+    --sa-amber:  #d97706;
+    --sa-text:   #1a2535;
+    --sa-muted:  #64748b;
+    --sa-border: #e2e8f0;
+    --sa-white:  #ffffff;
+    --sa-bg:     #f1f5fb;
+    --sa-shadow: 0 1px 12px rgba(12,30,56,.07);
+    --sa-radius: 12px;
+}
 
-    .content-header h1 {
-        font-weight: 600;
-        font-size: 22px;
-        margin-bottom: 6px;
-    }
+.sa-wrap { font-family:'Instrument Sans',sans-serif; background:var(--sa-bg); color:var(--sa-text); padding:26px 22px 60px; min-height:100vh; }
+.sa-topbar { margin-bottom:28px; }
+.sa-page-title { font-family:'Lora',serif; font-size:25px; font-weight:700; color:var(--sa-navy); display:flex; align-items:center; gap:10px; margin:0 0 6px; }
+.sa-page-title i { color:var(--sa-blue); }
+.sa-breadcrumb { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--sa-muted); list-style:none; margin:0; padding:0; }
+.sa-breadcrumb a { color:var(--sa-blue); text-decoration:none; font-weight:500; }
+.sa-breadcrumb a:hover { text-decoration:underline; }
+.sa-breadcrumb li::before { content:'/'; margin-right:6px; color:#cbd5e1; }
+.sa-breadcrumb li:first-child::before { display:none; }
 
-    /* BREADCRUMB */
-    .content-header .breadcrumb {
-        float: none !important;
-        position: relative;
-        right: auto;
-        top: auto;
-        margin-top: 6px;
-        padding-left: 0;
-        background: transparent;
-        font-size: 13px;
-    }
+.sa-layout { display:grid; grid-template-columns:220px 1fr; gap:20px; align-items:start; }
+@media(max-width:900px){ .sa-layout{grid-template-columns:1fr;} .sa-sidebar{display:none;} }
 
-    .page-title {
-        font-size: 22px;
-        font-weight: 600;
-        margin-bottom: 5px;
-    }
+.sa-sidebar { background:var(--sa-white); border-radius:var(--sa-radius); box-shadow:var(--sa-shadow); overflow:hidden; position:sticky; top:16px; }
+.sa-sidebar-title { padding:14px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.7px; color:var(--sa-muted); border-bottom:1px solid var(--sa-border); background:var(--sa-bg); }
+.sa-nav-item { display:flex; align-items:center; gap:10px; padding:11px 16px; font-size:13px; font-weight:500; color:var(--sa-muted); border-bottom:1px solid var(--sa-border); cursor:pointer; transition:background .12s,color .12s; text-decoration:none; }
+.sa-nav-item:last-child { border-bottom:none; }
+.sa-nav-item i { width:16px; text-align:center; color:#94a3b8; transition:color .12s; }
+.sa-nav-item:hover { background:var(--sa-sky); color:var(--sa-blue); }
+.sa-nav-item:hover i { color:var(--sa-blue); }
+.sa-nav-item.active { background:var(--sa-sky); color:var(--sa-blue); font-weight:600; border-left:3px solid var(--sa-blue); }
+.sa-nav-item.active i { color:var(--sa-blue); }
 
-    .custom-breadcrumb>li+li:before {
-        content: ">";
-        padding: 0 6px;
-        color: #999;
-    }
+.sa-main { display:flex; flex-direction:column; gap:18px; }
+.sa-section { background:var(--sa-white); border-radius:var(--sa-radius); box-shadow:var(--sa-shadow); overflow:hidden; }
+.sa-section-head { padding:15px 22px; border-bottom:1px solid var(--sa-border); display:flex; align-items:center; gap:10px; background:linear-gradient(90deg,var(--sa-sky) 0%,var(--sa-white) 100%); }
+.sa-section-head i { color:var(--sa-blue); font-size:15px; }
+.sa-section-head h3 { margin:0; font-family:'Lora',serif; font-size:15px; font-weight:600; color:var(--sa-navy); }
+.sa-section-body { padding:22px 22px 10px; }
 
-    /* MAIN CARD */
-    .erp-card {
-        border-radius: 12px;
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.05);
-        border: none;
-        margin-top: 15px;
-    }
+.sa-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px 20px; }
+.sa-grid-3 { grid-template-columns:repeat(3,1fr); }
+.sa-grid-2 { grid-template-columns:repeat(2,1fr); }
+.sa-col-2 { grid-column:span 2; }
+@media(max-width:1100px){ .sa-grid{grid-template-columns:repeat(3,1fr);} }
+@media(max-width:768px){ .sa-grid{grid-template-columns:repeat(2,1fr);} .sa-col-2{grid-column:span 2;} }
+@media(max-width:480px){ .sa-grid{grid-template-columns:1fr;} .sa-col-2{grid-column:span 1;} }
 
-    /* SECTION CARD */
-    .section-card {
-        background: #ffffff;
-        border-radius: 10px;
-        padding: 25px;
-        margin-bottom: 25px;
-        box-shadow: 0 3px 12px rgba(0, 0, 0, 0.04);
-        border-top: 3px solid #007bff;
-    }
+.sa-field { display:flex; flex-direction:column; gap:5px; }
+.sa-field label { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; color:var(--sa-muted); }
+.sa-field label .req { color:var(--sa-red); margin-left:2px; }
 
-    /* SECTION TITLE */
-    .section-title {
-        font-size: 15px;
-        font-weight: 600;
-        margin-bottom: 18px;
-        color: #2c3e50;
-        display: flex;
-        align-items: center;
-    }
+.sa-input,.sa-select { height:40px; padding:0 12px; border:1.5px solid var(--sa-border); border-radius:8px; font-size:13.5px; color:var(--sa-text); background:#fafbff; outline:none; transition:border-color .14s,box-shadow .14s; font-family:'Instrument Sans',sans-serif; width:100%; }
+.sa-input:focus,.sa-select:focus { border-color:var(--sa-blue); box-shadow:0 0 0 3px rgba(15,118,110,.1); background:#fff; }
+.sa-input[readonly] { background:#f1f5f9; color:var(--sa-muted); cursor:not-allowed; }
+.sa-select { appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%2364748b' d='M5 7L0 2h10z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 11px center; background-color:#fafbff; padding-right:30px; }
 
-    .section-title i {
-        margin-right: 8px;
-        color: #007bff;
-    }
+.sa-file-wrap { position:relative; border:1.5px dashed var(--sa-border); border-radius:8px; padding:12px 14px; background:#fafbff; transition:border-color .14s; cursor:pointer; }
+.sa-file-wrap:hover { border-color:var(--sa-blue); }
+.sa-file-wrap input[type="file"] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+.sa-file-label { display:flex; align-items:center; gap:10px; pointer-events:none; }
+.sa-file-icon { width:34px; height:34px; border-radius:7px; background:var(--sa-sky); display:flex; align-items:center; justify-content:center; color:var(--sa-blue); font-size:14px; flex-shrink:0; }
+.sa-file-text { font-size:12.5px; color:var(--sa-muted); }
+.sa-file-text strong { display:block; font-size:13px; color:var(--sa-text); font-weight:600; }
+.sa-file-name { font-size:11.5px; color:var(--sa-green); font-weight:600; margin-top:4px; display:none; }
 
-    /* FORM */
-    .form-group {
-        margin-bottom: 18px;
-    }
+.sa-photo-wrap { display:flex; gap:20px; align-items:flex-start; }
+.sa-photo-preview-box { width:120px; flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:8px; }
+.sa-photo-preview-box img { width:110px; height:130px; object-fit:cover; border-radius:8px; border:2px solid var(--sa-border); box-shadow:var(--sa-shadow); }
+.sa-photo-hint { font-size:11px; color:var(--sa-muted); text-align:center; }
 
-    .form-group label {
-        font-weight: 600;
-        font-size: 12.5px;
-        color: #555;
-    }
+.sa-check-group { border:1.5px solid var(--sa-border); border-radius:8px; padding:12px 14px; background:#fafbff; max-height:160px; overflow-y:auto; }
+.sa-check-item { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:13px; color:var(--sa-text); cursor:pointer; }
+.sa-check-item input[type="checkbox"] { width:15px; height:15px; accent-color:var(--sa-blue); cursor:pointer; flex-shrink:0; }
+.sa-check-item:hover { color:var(--sa-blue); }
+.sa-check-muted { font-size:13px; color:var(--sa-muted); padding:4px 0; }
+.sa-check-all { display:flex; align-items:center; gap:8px; padding:8px 0 10px; font-size:12.5px; font-weight:600; color:var(--sa-blue); cursor:pointer; border-bottom:1px solid var(--sa-border); margin-bottom:8px; }
+.sa-check-all input { accent-color:var(--sa-blue); width:15px; height:15px; }
 
-    .form-control {
-        border-radius: 6px;
-        border: 1px solid #dcdcdc;
-        height: 36px;
-        font-size: 13px;
-    }
+.sa-action-bar { background:var(--sa-white); border-radius:var(--sa-radius); box-shadow:var(--sa-shadow); padding:16px 22px; display:flex; align-items:center; justify-content:flex-end; gap:12px; }
+.sa-btn { display:inline-flex; align-items:center; gap:7px; padding:10px 22px; border-radius:9px; font-size:13.5px; font-weight:600; cursor:pointer; border:none; text-decoration:none; transition:opacity .13s,transform .1s; font-family:'Instrument Sans',sans-serif; white-space:nowrap; }
+.sa-btn:hover { opacity:.86; transform:translateY(-1px); }
+.sa-btn:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+.sa-btn-primary { background:var(--sa-blue); color:#fff; box-shadow:0 2px 10px rgba(15,118,110,.25); }
+.sa-btn-ghost { background:var(--sa-white); color:var(--sa-text); border:1.5px solid var(--sa-border); }
+.sa-btn-ghost:hover { border-color:var(--sa-blue); color:var(--sa-blue); }
 
-    .form-control:focus {
-        border-color: #007bff;
-        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.12);
-    }
-
-    /* SUBJECT BOX */
-    .subject-box {
-        border: 1px solid #e5e5e5;
-        padding: 12px;
-        border-radius: 6px;
-        max-height: 150px;
-        overflow-y: auto;
-        background: #fafafa;
-    }
-
-    /* PHOTO */
-    .img-thumbnail {
-        border-radius: 8px;
-    }
-
-    /* BUTTONS */
-    .btn-primary,
-    .btn-danger {
-        padding: 8px 20px;
-        border-radius: 6px;
-        font-size: 13px;
-    }
+.sa-toast { position:fixed; top:20px; right:20px; padding:12px 18px; border-radius:10px; font-size:13.5px; font-weight:500; color:#fff; z-index:99999; box-shadow:0 4px 14px rgba(0,0,0,.18); display:flex; align-items:center; gap:9px; animation:sa-toast-in .25s ease; max-width:340px; }
+@keyframes sa-toast-in { from{transform:translateX(20px);opacity:0;} to{transform:translateX(0);opacity:1;} }
+.sa-toast.success { background:var(--sa-green); }
+.sa-toast.error { background:var(--sa-red); }
+.sa-toast.info { background:var(--sa-blue); }
 </style>

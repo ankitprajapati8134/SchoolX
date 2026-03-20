@@ -69,13 +69,28 @@ html { font-size: 16px !important; }
             <label>Section</label>
             <select id="secFilter"><option value="">All Sections</option></select>
         </div>
+        <div class="fg">
+            <label>Gender</label>
+            <select id="genderFilter">
+                <option value="">All</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+            </select>
+        </div>
         <button class="btn-search" onclick="loadStudents(1)"><i class="fa fa-search"></i> Search</button>
+    </div>
+
+    <div id="bulkBar" style="display:none;background:var(--bg2);border:1px solid var(--gold);border-radius:10px;padding:12px 16px;margin-bottom:12px;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="font-size:.88rem;color:var(--t1);font-weight:600;" id="bulkCount">0 selected</span>
+        <button class="btn-search" onclick="bulkDelete()" style="background:#E05C6F;font-size:.82rem;padding:6px 14px;"><i class="fa fa-trash"></i> Delete Selected</button>
+        <button onclick="clearSelection()" style="padding:6px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:.82rem;color:var(--t2);">Clear Selection</button>
     </div>
 
     <div class="students-table-wrap">
         <table class="students-table">
             <thead>
                 <tr>
+                    <th style="width:30px"><input type="checkbox" id="selectAllCb" title="Select All"></th>
                     <th>#</th>
                     <th>Photo</th>
                     <th>ID</th>
@@ -83,13 +98,16 @@ html { font-size: 16px !important; }
                     <th>Father Name</th>
                     <th>Class</th>
                     <th>Section</th>
+                    <th>Gender</th>
+                    <th>DOB</th>
+                    <th>Admission</th>
                     <th>Phone</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="studentsTbody">
-                <tr><td colspan="9" class="tbl-empty"><i class="fa fa-spinner fa-spin"></i> Loading...</td></tr>
+                <tr><td colspan="14" class="tbl-empty"><i class="fa fa-spinner fa-spin"></i> Loading...</td></tr>
             </tbody>
         </table>
         <div class="pagination" id="paginationWrap"></div>
@@ -124,12 +142,13 @@ document.getElementById('searchQ').addEventListener('keydown', e => {
 function loadStudents(page) {
     currentPage = page;
     const tbody = document.getElementById('studentsTbody');
-    tbody.innerHTML = '<tr><td colspan="9" class="tbl-empty"><i class="fa fa-spinner fa-spin"></i> Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14" class="tbl-empty"><i class="fa fa-spinner fa-spin"></i> Loading...</td></tr>';
 
     var params = new URLSearchParams({
         query:   document.getElementById('searchQ').value.trim(),
         class:   document.getElementById('classFilter').value,
         section: document.getElementById('secFilter').value,
+        gender:  document.getElementById('genderFilter').value,
         page:    page,
     });
     params.append(csrfName, csrfToken);
@@ -143,12 +162,12 @@ function loadStudents(page) {
     .then(r => r.json())
     .then(data => {
         if (data.status !== 'success') {
-            tbody.innerHTML = `<tr><td colspan="9" class="tbl-empty">${data.message || 'No results'}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="14" class="tbl-empty">${data.message || 'No results'}</td></tr>`;
             return;
         }
         const students = data.students;
         if (!students || students.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="tbl-empty">No students found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="14" class="tbl-empty">No students found.</td></tr>';
             document.getElementById('paginationWrap').innerHTML = '';
             return;
         }
@@ -158,6 +177,7 @@ function loadStudents(page) {
             const photo = s.photo || fallback;
             const badgeCls = s.status === 'Active' ? 'active' : (s.status === 'TC' ? 'tc' : 'inactive');
             return `<tr>
+                <td><input type="checkbox" class="row-cb" value="${esc(s.user_id)}" data-name="${esc(s.name)}"></td>
                 <td>${offset + i + 1}</td>
                 <td><img src="${esc(photo)}" onerror="this.src='${fallback}'"
                     style="width:34px;height:34px;border-radius:50%;object-fit:cover;border:2px solid var(--gold-ring);"></td>
@@ -166,13 +186,15 @@ function loadStudents(page) {
                 <td>${esc(s.father_name)}</td>
                 <td>Class ${esc(s.class)}</td>
                 <td>${esc(s.section)}</td>
+                <td>${esc(s.gender)}</td>
+                <td style="font-size:.85rem;">${esc(s.dob)}</td>
+                <td style="font-size:.85rem;">${esc(s.admission_date)}</td>
                 <td>${esc(s.phone)}</td>
                 <td><span class="badge-${badgeCls}">${esc(s.status)}</span></td>
                 <td style="white-space:nowrap;">
-                    <a href="<?= base_url('sis/profile/') ?>${encodeURIComponent(s.user_id)}" class="act-btn" title="SIS Profile"><i class="fa fa-eye"></i></a>
-                    <a href="<?= base_url('student/student_profile/') ?>${encodeURIComponent(s.user_id)}" class="act-btn" title="Full Profile"><i class="fa fa-user"></i></a>
+                    <a href="<?= base_url('sis/profile/') ?>${encodeURIComponent(s.user_id)}" class="act-btn" title="View Profile"><i class="fa fa-eye"></i></a>
+                    <a href="<?= base_url('sis/edit_student/') ?>${encodeURIComponent(s.user_id)}" class="act-btn" title="Edit Student" style="background:var(--gold-dim);color:var(--gold);"><i class="fa fa-pencil"></i></a>
                     <a href="<?= base_url('sis/documents/') ?>${encodeURIComponent(s.user_id)}" class="act-btn" title="Documents"><i class="fa fa-folder-open-o"></i></a>
-                    <a href="<?= base_url('sis/history/') ?>${encodeURIComponent(s.user_id)}" class="act-btn" title="History"><i class="fa fa-history"></i></a>
                     ${s.status !== 'Inactive' ? `<button class="act-btn red" title="Withdraw" onclick="withdrawStudent('${esc(s.user_id)}','${esc(s.name)}')"><i class="fa fa-sign-out"></i></button>` : ''}
                 </td>
             </tr>`;
@@ -191,16 +213,22 @@ function loadStudents(page) {
         document.getElementById('paginationWrap').innerHTML = paginHtml;
     })
     .catch(() => {
-        tbody.innerHTML = '<tr><td colspan="9" class="tbl-empty">Failed to load students.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="14" class="tbl-empty">Failed to load students.</td></tr>';
     });
 }
 
 function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function withdrawStudent(userId, name) {
-    var reason = prompt('Withdraw "' + name + '"?\nEnter reason (or leave blank for "Withdrawn"):') ;
-    if (reason === null) return; // cancelled
-    var body = new URLSearchParams({ user_id: userId, reason: reason || 'Withdrawn' });
+function withdrawStudent(userId, name, forceOverride) {
+    if (!forceOverride) {
+        var reason = prompt('Withdraw "' + name + '"?\nEnter reason (or leave blank for "Withdrawn"):');
+        if (reason === null) return;
+        window._withdrawReason = reason || 'Withdrawn';
+        window._withdrawUserId = userId;
+        window._withdrawName = name;
+    }
+    var body = new URLSearchParams({ user_id: window._withdrawUserId || userId, reason: window._withdrawReason || 'Withdrawn' });
+    if (forceOverride) body.append('force_override', 'true');
     body.append(csrfName, csrfToken);
     fetch('<?= base_url('sis/withdraw') ?>', {
         method: 'POST',
@@ -209,10 +237,72 @@ function withdrawStudent(userId, name) {
     })
     .then(r => r.json())
     .then(data => {
-        alert(data.message);
-        if (data.status === 'success') loadStudents(currentPage);
+        if (data.status === 'success') {
+            alert(data.message);
+            loadStudents(currentPage);
+        } else if (data.can_override && data.dues) {
+            if (confirm(data.message + '\n\nDo you want to withdraw anyway? (Admin override)')) {
+                withdrawStudent(userId, name, true);
+            }
+        } else {
+            alert(data.message);
+        }
     })
     .catch(() => alert('Request failed.'));
+}
+
+// Gender filter
+document.getElementById('genderFilter').addEventListener('change', () => loadStudents(1));
+
+// Bulk selection
+document.getElementById('selectAllCb').addEventListener('change', function() {
+    document.querySelectorAll('.row-cb').forEach(cb => { cb.checked = this.checked; });
+    updateBulkBar();
+});
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('row-cb')) updateBulkBar();
+});
+
+function updateBulkBar() {
+    var checked = document.querySelectorAll('.row-cb:checked');
+    var bar = document.getElementById('bulkBar');
+    if (checked.length > 0) {
+        bar.style.display = 'flex';
+        document.getElementById('bulkCount').textContent = checked.length + ' selected';
+    } else {
+        bar.style.display = 'none';
+    }
+    // Sync select-all
+    var all = document.querySelectorAll('.row-cb');
+    document.getElementById('selectAllCb').checked = all.length > 0 && checked.length === all.length;
+}
+
+function clearSelection() {
+    document.querySelectorAll('.row-cb').forEach(cb => { cb.checked = false; });
+    document.getElementById('selectAllCb').checked = false;
+    updateBulkBar();
+}
+
+function bulkDelete() {
+    var checked = document.querySelectorAll('.row-cb:checked');
+    if (checked.length === 0) return;
+    var names = Array.from(checked).map(cb => cb.dataset.name).slice(0, 5).join(', ');
+    if (checked.length > 5) names += '... and ' + (checked.length - 5) + ' more';
+    if (!confirm('Delete ' + checked.length + ' student(s)?\n' + names)) return;
+    var ids = Array.from(checked).map(cb => cb.value);
+    var completed = 0;
+    ids.forEach(function(id) {
+        var body = new URLSearchParams({ user_id: id });
+        body.append(csrfName, csrfToken);
+        fetch('<?= base_url("sis/delete_student/") ?>' + encodeURIComponent(id), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+            body: body.toString(),
+        }).then(() => {
+            completed++;
+            if (completed === ids.length) { alert('Deleted ' + ids.length + ' student(s).'); loadStudents(currentPage); }
+        });
+    });
 }
 
 // Initial load — show all enrolled students on page open

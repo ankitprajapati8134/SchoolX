@@ -63,18 +63,40 @@ class School_config extends MY_Controller
         $sessions = $this->firebase->get("Schools/{$school}/Sessions")       ?? [];
         $activeSess = $this->firebase->get("Schools/{$school}/Config/ActiveSession") ?? $this->session_year;
 
-        // ── Issue 1: Profile fallback to onboarding data ────────────────
-        // Onboarding writes profile to System/Schools/{school}/profile.
-        // If Config/Profile is empty or missing key fields, merge onboarding
-        // data so the form is pre-filled on first open.
+        // ── Fallback: populate from onboarding / canonical data ──────────
+        // Onboarding writes to System/Schools/{school_id}/profile with
+        // lowercase keys (school_name, city, street, email, phone, logo_url).
+        // save_profile dual-writes to the same path with Title Case keys
+        // (School Name, City, Address, etc.).
+        // We check BOTH key styles so data is found regardless of source.
         if (!is_array($profile)) $profile = [];
 
-        // Fallback: if Config/Profile is empty, pull from canonical
-        // System/Schools/{school} (written by manage_school/edit_school)
         if (empty($profile['display_name'])) {
-            $canonical = $this->firebase->get("System/Schools/{$school}") ?? [];
-            if (is_array($canonical) && !empty($canonical)) {
+            $canonical = $this->firebase->get("System/Schools/{$school}/profile") ?? [];
+            if (!is_array($canonical)) $canonical = [];
+
+            // If the profile sub-node is empty, try the top-level node
+            // (legacy schools may store fields directly under System/Schools/{school})
+            if (empty($canonical)) {
+                $topLevel = $this->firebase->get("System/Schools/{$school}") ?? [];
+                if (is_array($topLevel)) $canonical = $topLevel;
+            }
+
+            if (!empty($canonical)) {
+                // Map from ALL possible source key formats to config field names.
+                // Onboarding uses lowercase: school_name, city, street, email, phone, logo_url
+                // save_profile dual-write uses Title Case: School Name, City, Address, etc.
+                // Legacy schools may use either format.
                 $fieldMap = [
+                    // Onboarding lowercase keys
+                    'school_name'        => 'display_name',
+                    'name'               => 'display_name',   // onboarding also writes 'name'
+                    'city'               => 'city',
+                    'street'             => 'address',         // onboarding stores street, config expects address
+                    'email'              => 'email',
+                    'phone'              => 'phone',
+                    'logo_url'           => 'logo_url',
+                    // Title Case keys (from save_profile dual-write or legacy)
                     'School Name'        => 'display_name',
                     'City'               => 'city',
                     'Address'            => 'address',
@@ -134,14 +156,20 @@ class School_config extends MY_Controller
             $this->session->set_userdata('available_sessions', $sessions);
         }
 
+        // Report card template preference
+        $rcTemplate = $this->firebase->get("Schools/{$school}/Config/ReportCardTemplate");
+        $rcAllowed  = ['classic', 'cbse', 'minimal', 'modern', 'elegant'];
+        if (!$rcTemplate || !is_string($rcTemplate) || !in_array($rcTemplate, $rcAllowed, true)) $rcTemplate = 'classic';
+
         $this->json_success([
-            'profile'        => is_array($profile)  ? $profile  : [],
-            'board'          => is_array($board)     ? $board    : [],
-            'classes'        => $classes,
-            'streams'        => is_array($streams)   ? $streams  : [],
-            'sessions'       => $sessions,
-            'active_session' => (string) $activeSess,
-            'firebase_path'  => "Schools/{$school}/Sessions",
+            'profile'               => is_array($profile)  ? $profile  : [],
+            'board'                 => is_array($board)     ? $board    : [],
+            'classes'               => $classes,
+            'streams'               => is_array($streams)   ? $streams  : [],
+            'sessions'              => $sessions,
+            'active_session'        => (string) $activeSess,
+            'firebase_path'         => "Schools/{$school}/Sessions",
+            'report_card_template'  => $rcTemplate,
         ]);
     }
 
@@ -195,25 +223,29 @@ class School_config extends MY_Controller
         }
 
         // ── Dual-write to System/Schools/{school}/profile (canonical profile) ──
-        // schoolProfile() and manage_school list read from this path using
-        // title-case field names like "Address", "Phone Number", etc.
+        // Write BOTH Title Case keys (for legacy readers like manage_school)
+        // AND lowercase keys (matching onboarding format) so all consumers
+        // find the data regardless of which key format they expect.
         $canonicalMap = [
-            'display_name'     => 'School Name',
-            'address'          => 'Address',
-            'phone'            => 'Phone Number',
-            'email'            => 'Email',
-            'website'          => 'Website',
-            'principal_name'   => 'School Principal',
-            'affiliation_board'=> 'Affiliated To',
-            'affiliation_no'   => 'Affiliation Number',
-            'city'             => 'City',
-            'state'            => 'State',
-            'pincode'          => 'Pincode',
+            'display_name'     => ['School Name', 'school_name', 'name'],
+            'address'          => ['Address', 'street'],
+            'phone'            => ['Phone Number', 'phone'],
+            'email'            => ['Email', 'email'],
+            'website'          => ['Website'],
+            'principal_name'   => ['School Principal'],
+            'affiliation_board'=> ['Affiliated To'],
+            'affiliation_no'   => ['Affiliation Number'],
+            'city'             => ['City', 'city'],
+            'state'            => ['State'],
+            'pincode'          => ['Pincode'],
+            'logo_url'         => ['Logo', 'logo_url'],
         ];
         $canonicalData = [];
-        foreach ($canonicalMap as $configKey => $profileKey) {
+        foreach ($canonicalMap as $configKey => $profileKeys) {
             if (!empty($data[$configKey])) {
-                $canonicalData[$profileKey] = $data[$configKey];
+                foreach ($profileKeys as $pk) {
+                    $canonicalData[$pk] = $data[$configKey];
+                }
             }
         }
         if (!empty($canonicalData)) {
@@ -641,35 +673,44 @@ class School_config extends MY_Controller
         $this->_require_role(self::ADMIN_ROLES, 'school_config_seed_streams');
         $school = $this->school_name;
 
-        $defaults = [
-            'Science'  => ['key' => 'Science',  'label' => 'Science',  'enabled' => true],
-            'Commerce' => ['key' => 'Commerce', 'label' => 'Commerce', 'enabled' => true],
-            'Arts'     => ['key' => 'Arts',     'label' => 'Arts',     'enabled' => true],
-            'General'  => ['key' => 'General',  'label' => 'General',  'enabled' => true],
-        ];
+        try {
+            $defaults = [
+                'Science'  => ['key' => 'Science',  'label' => 'Science',  'enabled' => true],
+                'Commerce' => ['key' => 'Commerce', 'label' => 'Commerce', 'enabled' => true],
+                'Arts'     => ['key' => 'Arts',     'label' => 'Arts',     'enabled' => true],
+                'General'  => ['key' => 'General',  'label' => 'General',  'enabled' => true],
+            ];
 
-        $existing = $this->firebase->get("Schools/{$school}/Config/Streams") ?? [];
-        if (!is_array($existing)) $existing = [];
+            $existing = $this->firebase->get("Schools/{$school}/Config/Streams") ?? [];
+            if (!is_array($existing)) $existing = [];
 
-        $added   = 0;
-        $skipped = 0;
+            $added   = 0;
+            $skipped = 0;
 
-        foreach ($defaults as $key => $streamData) {
-            if (isset($existing[$key])) {
-                $skipped++;
-                continue;
+            foreach ($defaults as $key => $streamData) {
+                if (isset($existing[$key])) {
+                    $skipped++;
+                    continue;
+                }
+                $ok = $this->firebase->set("Schools/{$school}/Config/Streams/{$key}", $streamData);
+                if ($ok) {
+                    $existing[$key] = $streamData;
+                    $added++;
+                } else {
+                    log_message('error', "seed_streams: failed to write stream [{$key}] for school [{$school}]");
+                }
             }
-            $this->firebase->set("Schools/{$school}/Config/Streams/{$key}", $streamData);
-            $existing[$key] = $streamData;
-            $added++;
-        }
 
-        $this->json_success([
-            'message' => "{$added} stream(s) seeded. {$skipped} already existed.",
-            'streams' => $existing,
-            'added'   => $added,
-            'skipped' => $skipped,
-        ]);
+            $this->json_success([
+                'message' => "{$added} stream(s) seeded. {$skipped} already existed.",
+                'streams' => $existing,
+                'added'   => $added,
+                'skipped' => $skipped,
+            ]);
+        } catch (\Exception $e) {
+            log_message('error', 'seed_streams error: ' . $e->getMessage());
+            $this->json_error('Failed to seed streams: ' . $e->getMessage());
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -796,23 +837,208 @@ class School_config extends MY_Controller
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // POST  /school_config/get_all_sections
+    // Returns sections for ALL classes in the given session (bulk view)
+    // For stream-enabled classes (11, 12), sections are grouped by stream.
+    // ─────────────────────────────────────────────────────────────────────
+    public function get_all_sections()
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_get_all_sections');
+        $school      = $this->school_name;
+        $sessionYear = trim((string) $this->input->post('session', TRUE));
+
+        if ($sessionYear === '') {
+            $sessionYear = $this->session_year;
+        }
+        if (!preg_match('/^\d{4}-\d{2}$/', $sessionYear)) {
+            return $this->json_error('Invalid session format.');
+        }
+
+        $classes = $this->firebase->get("Schools/{$school}/Config/Classes") ?? [];
+        if (!is_array($classes)) $classes = [];
+        $classes = array_values(array_filter($classes, function ($c) {
+            return is_array($c) && empty($c['deleted']);
+        }));
+
+        // If Config/Classes empty, enumerate from session root
+        if (empty($classes)) {
+            $sessionRoot = $this->firebase->shallow_get("Schools/{$school}/{$sessionYear}");
+            if (is_array($sessionRoot)) {
+                $order = 0;
+                foreach ($sessionRoot as $nodeKey) {
+                    if (strpos($nodeKey, 'Class ') !== 0) continue;
+                    $raw   = trim(str_replace('Class ', '', $nodeKey));
+                    $lower = strtolower($raw);
+                    $isF   = in_array($lower, ['nursery', 'lkg', 'ukg', 'playgroup'], true);
+                    $key   = $isF ? strtoupper($raw) : (string)(int) preg_replace('/\D/', '', $raw);
+                    if ($key === '' || $key === '0') continue;
+                    $classes[] = [
+                        'key'             => $key,
+                        'label'           => $nodeKey,
+                        'order'           => $order++,
+                        'streams_enabled' => in_array($key, ['11', '12'], true),
+                    ];
+                }
+            }
+        }
+
+        // Load configured streams for stream-enabled classes
+        $streams = $this->firebase->get("Schools/{$school}/Config/Streams") ?? [];
+        if (!is_array($streams)) $streams = [];
+        $enabledStreams = [];
+        foreach ($streams as $sk => $sv) {
+            if (is_array($sv) && !empty($sv['enabled'])) {
+                $enabledStreams[] = $sv['key'] ?? $sk;
+            }
+        }
+
+        $result = [];
+        foreach ($classes as $cls) {
+            $classNode       = $this->_class_node_name($cls['key']);
+            $streamsEnabled  = !empty($cls['streams_enabled']);
+            $sectionKeys     = $this->firebase->shallow_get("Schools/{$school}/{$sessionYear}/{$classNode}");
+            $sections        = [];
+            $streamSections  = []; // { "Science": ["A","B"], "Commerce": ["A"] }
+
+            if (is_array($sectionKeys)) {
+                foreach ($sectionKeys as $k) {
+                    if (strpos($k, 'Section ') !== 0) continue;
+                    $sectionLabel = str_replace('Section ', '', $k);
+
+                    if ($streamsEnabled && !empty($enabledStreams)) {
+                        // Check if section label starts with a stream name
+                        // e.g. "Science A" → stream=Science, letter=A
+                        $matched = false;
+                        foreach ($enabledStreams as $stm) {
+                            if (strpos($sectionLabel, $stm . ' ') === 0) {
+                                $letter = trim(substr($sectionLabel, strlen($stm)));
+                                if (!isset($streamSections[$stm])) $streamSections[$stm] = [];
+                                $streamSections[$stm][] = $letter;
+                                $matched = true;
+                                break;
+                            }
+                        }
+                        // If not matched to any stream, treat as plain section
+                        if (!$matched) {
+                            $sections[] = $sectionLabel;
+                        }
+                    } else {
+                        $sections[] = $sectionLabel;
+                    }
+                }
+                sort($sections);
+                foreach ($streamSections as &$letters) sort($letters);
+                unset($letters);
+            }
+
+            $entry = [
+                'key'             => $cls['key'],
+                'label'           => $cls['label'] ?? $classNode,
+                'node'            => $classNode,
+                'sections'        => $sections,
+                'streams_enabled' => $streamsEnabled,
+            ];
+            if ($streamsEnabled) {
+                $entry['stream_sections'] = $streamSections;
+            }
+            $result[] = $entry;
+        }
+
+        $this->json_success([
+            'classes' => $result,
+            'session' => $sessionYear,
+            'streams' => $enabledStreams,
+        ]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // POST  /school_config/bulk_save_sections
+    // Accepts JSON: { session, changes: [ {class_key, add:["A","B"], remove:["C"]} ] }
+    // ─────────────────────────────────────────────────────────────────────
+    public function bulk_save_sections()
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_bulk_save_sections');
+        $school      = $this->school_name;
+        $sessionYear = trim((string) $this->input->post('session', TRUE));
+        $changesRaw  = $this->input->post('changes', TRUE);
+
+        if ($sessionYear === '') {
+            $sessionYear = $this->session_year;
+        }
+        if (!preg_match('/^\d{4}-\d{2}$/', $sessionYear)) {
+            return $this->json_error('Invalid session format.');
+        }
+
+        $changes = is_string($changesRaw) ? json_decode($changesRaw, true) : $changesRaw;
+        if (!is_array($changes) || empty($changes)) {
+            return $this->json_error('No changes provided.');
+        }
+
+        $created  = 0;
+        $removed  = 0;
+        $skipped  = [];
+        $now      = date('Y-m-d H:i:s');
+
+        foreach ($changes as $ch) {
+            if (!is_array($ch) || empty($ch['class_key'])) continue;
+            $classNode = $this->_class_node_name($ch['class_key']);
+
+            // Add sections — supports both plain ("A") and stream-based ("Science A")
+            foreach (($ch['add'] ?? []) as $sectionLabel) {
+                $sectionLabel = trim((string) $sectionLabel);
+                // Validate: either a single letter "A" or "StreamName Letter" like "Science A"
+                if (!preg_match('/^(?:[A-Za-z]+(?: [A-Za-z]+)* )?[A-Z]$/', $sectionLabel)) continue;
+                $path = "Schools/{$school}/{$sessionYear}/{$classNode}/Section {$sectionLabel}";
+                if ($this->firebase->exists($path)) continue;
+                $this->firebase->set($path, ['created_at' => $now]);
+                $created++;
+            }
+
+            // Remove sections
+            foreach (($ch['remove'] ?? []) as $sectionLabel) {
+                $sectionLabel = trim((string) $sectionLabel);
+                if (!preg_match('/^(?:[A-Za-z]+(?: [A-Za-z]+)* )?[A-Z]$/', $sectionLabel)) continue;
+                $path = "Schools/{$school}/{$sessionYear}/{$classNode}/Section {$sectionLabel}";
+                if (!$this->firebase->exists($path)) continue;
+                // Safety: refuse if students enrolled
+                $students = $this->firebase->shallow_get("{$path}/Students/List");
+                if (!empty($students)) {
+                    $skipped[] = "{$classNode} Section {$sectionLabel} (has students)";
+                    continue;
+                }
+                $this->firebase->delete($path);
+                $removed++;
+            }
+        }
+
+        $msg = "Done: {$created} created, {$removed} removed.";
+        if (!empty($skipped)) {
+            $msg .= ' Skipped: ' . implode(', ', $skipped);
+        }
+
+        $this->json_success(['message' => $msg, 'created' => $created, 'removed' => $removed, 'skipped' => $skipped]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // POST  /school_config/get_subjects
     // ─────────────────────────────────────────────────────────────────────
     public function get_subjects()
     {
         $this->_require_role(self::ADMIN_ROLES, 'school_config_get_subjects');
-        $school   = $this->school_name;
-        $classKey = trim((string) $this->input->post('class_key', TRUE));
 
-        if ($classKey === '') {
-            return $this->json_error('class_key is required.');
-        }
+        try {
+            $school   = $this->school_name;
+            $classKey = trim((string) $this->input->post('class_key', TRUE));
 
-        $numKey  = $this->_numeric_class_key($classKey);
-        $rawData = $this->firebase->get("Schools/{$school}/Subject_list/{$numKey}") ?? [];
+            if ($classKey === '') {
+                return $this->json_error('class_key is required.');
+            }
 
-        $subjects = [];
-        if (is_array($rawData)) {
+            $numKey  = $this->_numeric_class_key($classKey);
+            $rawData = $this->firebase->get("Schools/{$school}/Subject_list/{$numKey}");
+            if (!is_array($rawData)) $rawData = [];
+
+            $subjects = [];
             foreach ($rawData as $code => $sub) {
                 if ($code === 'pattern_type') continue;
                 if (is_array($sub)) {
@@ -824,12 +1050,15 @@ class School_config extends MY_Controller
                     ];
                 }
             }
-        }
 
-        $this->json_success([
-            'subjects'     => $subjects,
-            'pattern_type' => isset($rawData['pattern_type']) ? (int) $rawData['pattern_type'] : null,
-        ]);
+            $this->json_success([
+                'subjects'     => $subjects,
+                'pattern_type' => isset($rawData['pattern_type']) ? (int) $rawData['pattern_type'] : null,
+            ]);
+        } catch (\Exception $e) {
+            log_message('error', 'get_subjects failed: ' . $e->getMessage());
+            $this->json_error('Failed to load subjects: ' . $e->getMessage());
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -840,93 +1069,142 @@ class School_config extends MY_Controller
     public function get_suggested_subjects()
     {
         $this->_require_role(self::ADMIN_ROLES, 'school_config_get_suggested_subjects');
-        $school   = $this->school_name;
-        $classKey = trim((string) $this->input->post('class_key', TRUE));
 
-        if ($classKey === '') {
-            return $this->json_error('class_key is required.');
-        }
+        try {
+            $school   = $this->school_name;
+            $classKey = trim((string) $this->input->post('class_key', TRUE));
 
-        // 1. Read school's board config
-        $board = $this->firebase->get("Schools/{$school}/Config/Board") ?? [];
-        $boardType = trim($board['type'] ?? '');
-        if ($boardType === '') {
-            return $this->json_error('No board configured. Set your board in the Board tab first.');
-        }
-
-        // 2. Map class key to master list range
-        $classRange = $this->_class_key_to_range($classKey);
-        if ($classRange === '') {
-            return $this->json_error("Cannot determine class range for '{$classKey}'.");
-        }
-
-        // 3. Find latest pattern for this board
-        // shallow_get returns indexed array of key names like ["CBSE_Pattern_2025_26", "tree", "_created"]
-        // Filter to only keys containing "Pattern" (the naming convention from SA Master List Manager)
-        $boardPath   = "Subject Master_List/{$boardType}";
-        $patternKeys = $this->firebase->shallow_get($boardPath);
-
-        if (!is_array($patternKeys) || empty($patternKeys)) {
-            return $this->json_error("No subject patterns found for board: {$boardType}.");
-        }
-
-        $patterns = array_filter($patternKeys, function ($k) {
-            return stripos($k, 'Pattern') !== false;
-        });
-        $patterns = array_values($patterns);
-        rsort($patterns); // latest pattern first (e.g. 2026_27 > 2025_26)
-        if (empty($patterns)) {
-            return $this->json_error("No patterns available for board: {$boardType}. Keys found: " . implode(', ', $patternKeys));
-        }
-        $pattern = $patterns[0];
-
-        // 4. Read the class range data
-        $masterData = $this->firebase->get("Subject Master_List/{$boardType}/{$pattern}/{$classRange}");
-        if (!is_array($masterData) || empty($masterData)) {
-            return $this->json_error("No subjects found for {$boardType} / {$pattern} / range {$classRange}.");
-        }
-
-        // 5. Build grouped response
-        $groups = [];
-        foreach ($masterData as $groupName => $groupData) {
-            if (in_array($groupName, ['Assessment', 'rules', 'Streams', '_created'], true)) continue;
-            if (!is_array($groupData)) continue;
-
-            $compulsory = !empty($groupData['compulsory']);
-            $options    = $groupData['options'] ?? $groupData;
-            if (!is_array($options)) continue;
-
-            $subjects = [];
-            foreach ($options as $subjectName) {
-                if (!is_string($subjectName) || trim($subjectName) === '') continue;
-                $subjects[] = trim($subjectName);
+            if ($classKey === '') {
+                return $this->json_error('class_key is required.');
             }
-            if (empty($subjects)) continue;
 
-            // Derive category from group name
-            $category = $compulsory ? 'Core' : 'Elective';
-            if (stripos($groupName, 'Language') !== false) $category = 'Language';
-            if (stripos($groupName, 'Vocational') !== false) $category = 'Vocational';
-            if (stripos($groupName, 'Additional') !== false) $category = 'Additional';
+            // 1. Read school's board config
+            $board = $this->firebase->get("Schools/{$school}/Config/Board");
+            if (!is_array($board)) $board = [];
+            $boardType = trim($board['type'] ?? '');
+            if ($boardType === '') {
+                return $this->json_error('No board configured. Set your board in the Board tab first.');
+            }
 
-            $groups[] = [
-                'group'      => $groupName,
-                'compulsory' => $compulsory,
-                'category'   => $category,
-                'subjects'   => $subjects,
-            ];
+            // 2. Map class key to master list range
+            $classRange = $this->_class_key_to_range($classKey);
+            if ($classRange === '') {
+                return $this->json_error("Cannot determine class range for '{$classKey}'.");
+            }
+
+            // 3. Find latest pattern for this board
+            $boardPath   = "Subject Master_List/{$boardType}";
+            $patternKeys = $this->firebase->shallow_get($boardPath);
+
+            if (!is_array($patternKeys) || empty($patternKeys)) {
+                return $this->json_error("No subject patterns found for board: {$boardType}.");
+            }
+
+            $patterns = array_filter($patternKeys, function ($k) {
+                return stripos($k, 'Pattern') !== false;
+            });
+            $patterns = array_values($patterns);
+            rsort($patterns); // latest pattern first (e.g. 2026_27 > 2025_26)
+            if (empty($patterns)) {
+                return $this->json_error("No patterns available for board: {$boardType}. Keys found: " . implode(', ', $patternKeys));
+            }
+            $pattern = $patterns[0];
+
+            // 4. Read the class range data
+            $masterData = $this->firebase->get("Subject Master_List/{$boardType}/{$pattern}/{$classRange}");
+            if (!is_array($masterData) || empty($masterData)) {
+                return $this->json_error("No subjects found for {$boardType} / {$pattern} / range {$classRange}.");
+            }
+
+            // 5. Detect if this range has stream-specific subjects (11-12)
+            $hasStreams   = isset($masterData['Streams']) && is_array($masterData['Streams']);
+            $streamNames = [];
+
+            // 6. Build grouped response — common subjects first
+            $groups = [];
+            foreach ($masterData as $groupName => $groupData) {
+                if (in_array($groupName, ['Assessment', 'rules', 'Streams', '_created'], true)) continue;
+                if (!is_array($groupData)) continue;
+
+                $compulsory = !empty($groupData['compulsory']);
+                $options    = $groupData['options'] ?? $groupData;
+                if (!is_array($options)) continue;
+
+                $subjects = [];
+                foreach ($options as $subKey => $subjectName) {
+                    if (!is_string($subjectName) || trim($subjectName) === '') continue;
+                    $subjects[] = trim($subjectName);
+                }
+                if (empty($subjects)) continue;
+
+                // Derive category from group name
+                $category = $compulsory ? 'Core' : 'Elective';
+                if (stripos($groupName, 'Language') !== false) $category = 'Language';
+                if (stripos($groupName, 'Vocational') !== false) $category = 'Vocational';
+                if (stripos($groupName, 'Additional') !== false) $category = 'Additional';
+
+                $groups[] = [
+                    'group'      => $groupName,
+                    'compulsory' => $compulsory,
+                    'category'   => $category,
+                    'stream'     => 'common',
+                    'subjects'   => $subjects,
+                ];
+            }
+
+            // 7. Process stream-specific subjects (e.g. Science, Commerce, Arts)
+            if ($hasStreams) {
+                foreach ($masterData['Streams'] as $streamName => $streamData) {
+                    if (!is_array($streamData)) continue;
+                    $streamNames[] = $streamName;
+
+                    foreach ($streamData as $sgName => $sgData) {
+                        if (!is_array($sgData)) continue;
+
+                        $compulsory = !empty($sgData['compulsory']);
+                        $options    = $sgData['options'] ?? $sgData;
+                        if (!is_array($options)) continue;
+
+                        $subjects = [];
+                        foreach ($options as $subKey => $subVal) {
+                            if (is_string($subVal) && trim($subVal) !== '') {
+                                $subjects[] = trim($subVal);
+                            }
+                        }
+                        if (empty($subjects)) continue;
+
+                        $category = $compulsory ? 'Core' : 'Elective';
+                        if (stripos($sgName, 'Language') !== false) $category = 'Language';
+                        if (stripos($sgName, 'Vocational') !== false) $category = 'Vocational';
+                        if (stripos($sgName, 'Additional') !== false) $category = 'Additional';
+
+                        $groups[] = [
+                            'group'      => $streamName . ' — ' . $sgName,
+                            'compulsory' => $compulsory,
+                            'category'   => $category,
+                            'stream'     => $streamName,
+                            'subjects'   => $subjects,
+                        ];
+                    }
+                }
+            }
+
+            if (empty($groups)) {
+                return $this->json_error("No subject groups found for range {$classRange}.");
+            }
+
+            $this->json_success([
+                'board'      => $boardType,
+                'pattern'    => $pattern,
+                'classRange' => $classRange,
+                'hasStreams'  => $hasStreams,
+                'streams'    => $streamNames,
+                'groups'     => $groups,
+            ]);
+        } catch (\Exception $e) {
+            log_message('error', 'get_suggested_subjects failed: ' . $e->getMessage());
+            $this->json_error('Failed to load suggestions: ' . $e->getMessage());
         }
-
-        if (empty($groups)) {
-            return $this->json_error("No subject groups found for range {$classRange}.");
-        }
-
-        $this->json_success([
-            'board'      => $boardType,
-            'pattern'    => $pattern,
-            'classRange' => $classRange,
-            'groups'     => $groups,
-        ]);
     }
 
     /**
@@ -1054,6 +1332,258 @@ class School_config extends MY_Controller
         }
 
         $this->json_success(['message' => 'Subject deleted.']);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // POST  /school_config/get_default_subjects
+    // Returns a built-in foundational subject list for a class level.
+    // No Firebase master list dependency — works out of the box.
+    // ─────────────────────────────────────────────────────────────────────
+    public function get_default_subjects()
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_get_default_subjects');
+
+        $classKey = trim((string) $this->input->post('class_key', TRUE));
+        if ($classKey === '') {
+            return $this->json_error('class_key is required.');
+        }
+
+        $range = $this->_class_key_to_range($classKey);
+
+        // ── Comprehensive Indian curriculum defaults ──────────────────
+        $curriculum = [
+            'Playgroup' => [
+                'common' => [
+                    ['name'=>'Rhymes & Songs',        'category'=>'Core'],
+                    ['name'=>'Story Time',            'category'=>'Core'],
+                    ['name'=>'Drawing & Colouring',   'category'=>'Core'],
+                    ['name'=>'Free Play & Motor Skills','category'=>'Core'],
+                    ['name'=>'Number Fun',            'category'=>'Core'],
+                    ['name'=>'Language Development',   'category'=>'Language'],
+                ],
+            ],
+            'Nursery' => [
+                'common' => [
+                    ['name'=>'English',               'category'=>'Language'],
+                    ['name'=>'Hindi',                 'category'=>'Language'],
+                    ['name'=>'Mathematics',            'category'=>'Core'],
+                    ['name'=>'Environmental Studies',  'category'=>'Core'],
+                    ['name'=>'Art & Craft',            'category'=>'Core'],
+                    ['name'=>'Rhymes & Music',         'category'=>'Core'],
+                    ['name'=>'Physical Activity',      'category'=>'Assessment'],
+                ],
+            ],
+            'LKG' => [
+                'common' => [
+                    ['name'=>'English',               'category'=>'Language'],
+                    ['name'=>'Hindi',                 'category'=>'Language'],
+                    ['name'=>'Mathematics',            'category'=>'Core'],
+                    ['name'=>'Environmental Studies',  'category'=>'Core'],
+                    ['name'=>'Art & Craft',            'category'=>'Core'],
+                    ['name'=>'Rhymes & Music',         'category'=>'Core'],
+                    ['name'=>'General Knowledge',      'category'=>'Core'],
+                    ['name'=>'Physical Activity',      'category'=>'Assessment'],
+                ],
+            ],
+            'UKG' => [
+                'common' => [
+                    ['name'=>'English',               'category'=>'Language'],
+                    ['name'=>'Hindi',                 'category'=>'Language'],
+                    ['name'=>'Mathematics',            'category'=>'Core'],
+                    ['name'=>'Environmental Studies',  'category'=>'Core'],
+                    ['name'=>'Art & Craft',            'category'=>'Core'],
+                    ['name'=>'General Knowledge',      'category'=>'Core'],
+                    ['name'=>'Computer Awareness',     'category'=>'Core'],
+                    ['name'=>'Physical Activity',      'category'=>'Assessment'],
+                ],
+            ],
+            '1-5' => [
+                'common' => [
+                    ['name'=>'English',               'category'=>'Language'],
+                    ['name'=>'Hindi',                 'category'=>'Language'],
+                    ['name'=>'Mathematics',            'category'=>'Core'],
+                    ['name'=>'Environmental Studies',  'category'=>'Core'],
+                    ['name'=>'General Knowledge',      'category'=>'Core'],
+                    ['name'=>'Computer Science',       'category'=>'Core'],
+                    ['name'=>'Art & Craft',            'category'=>'Additional'],
+                    ['name'=>'Moral Science',          'category'=>'Additional'],
+                    ['name'=>'Physical Education',     'category'=>'Assessment'],
+                ],
+            ],
+            '6-8' => [
+                'common' => [
+                    ['name'=>'English',               'category'=>'Language'],
+                    ['name'=>'Hindi',                 'category'=>'Language'],
+                    ['name'=>'Sanskrit',              'category'=>'Language'],
+                    ['name'=>'Mathematics',            'category'=>'Core'],
+                    ['name'=>'Science',                'category'=>'Core'],
+                    ['name'=>'Social Science',         'category'=>'Core'],
+                    ['name'=>'Computer Science',       'category'=>'Core'],
+                    ['name'=>'General Knowledge',      'category'=>'Additional'],
+                    ['name'=>'Art Education',          'category'=>'Additional'],
+                    ['name'=>'Physical Education',     'category'=>'Assessment'],
+                    ['name'=>'Moral Science',          'category'=>'Additional'],
+                ],
+            ],
+            '9-10' => [
+                'common' => [
+                    ['name'=>'English',                   'category'=>'Language'],
+                    ['name'=>'Hindi',                     'category'=>'Language'],
+                    ['name'=>'Mathematics',                'category'=>'Core'],
+                    ['name'=>'Science',                    'category'=>'Core'],
+                    ['name'=>'Social Science',             'category'=>'Core'],
+                    ['name'=>'Sanskrit',                  'category'=>'Language'],
+                    ['name'=>'Computer Applications',     'category'=>'Elective'],
+                    ['name'=>'Information Technology',     'category'=>'Elective'],
+                    ['name'=>'Home Science',               'category'=>'Elective'],
+                    ['name'=>'Art Education',              'category'=>'Additional'],
+                    ['name'=>'Physical Education',         'category'=>'Assessment'],
+                ],
+            ],
+            '11-12' => [
+                'common' => [
+                    ['name'=>'English',                   'category'=>'Language'],
+                    ['name'=>'Hindi',                     'category'=>'Language'],
+                    ['name'=>'Physical Education',         'category'=>'Assessment'],
+                ],
+                'Science' => [
+                    ['name'=>'Physics',                    'category'=>'Core'],
+                    ['name'=>'Chemistry',                  'category'=>'Core'],
+                    ['name'=>'Mathematics',                'category'=>'Core'],
+                    ['name'=>'Biology',                    'category'=>'Core'],
+                    ['name'=>'Computer Science',           'category'=>'Elective'],
+                    ['name'=>'Informatics Practices',      'category'=>'Elective'],
+                    ['name'=>'Biotechnology',              'category'=>'Elective'],
+                    ['name'=>'Physical Education',         'category'=>'Elective'],
+                ],
+                'Commerce' => [
+                    ['name'=>'Accountancy',                'category'=>'Core'],
+                    ['name'=>'Business Studies',           'category'=>'Core'],
+                    ['name'=>'Economics',                  'category'=>'Core'],
+                    ['name'=>'Mathematics',                'category'=>'Elective'],
+                    ['name'=>'Informatics Practices',      'category'=>'Elective'],
+                    ['name'=>'Entrepreneurship',           'category'=>'Elective'],
+                    ['name'=>'Physical Education',         'category'=>'Elective'],
+                ],
+                'Arts' => [
+                    ['name'=>'History',                    'category'=>'Core'],
+                    ['name'=>'Geography',                  'category'=>'Core'],
+                    ['name'=>'Political Science',          'category'=>'Core'],
+                    ['name'=>'Economics',                  'category'=>'Elective'],
+                    ['name'=>'Psychology',                 'category'=>'Elective'],
+                    ['name'=>'Sociology',                  'category'=>'Elective'],
+                    ['name'=>'Home Science',               'category'=>'Elective'],
+                    ['name'=>'Fine Arts',                  'category'=>'Elective'],
+                    ['name'=>'Music',                      'category'=>'Elective'],
+                    ['name'=>'Physical Education',         'category'=>'Elective'],
+                ],
+            ],
+        ];
+
+        $defaults = $curriculum[$range] ?? [];
+        if (empty($defaults)) {
+            return $this->json_error("No default subjects available for class range '{$range}'.");
+        }
+
+        $hasStreams = isset($defaults['Science']) || isset($defaults['Commerce']) || isset($defaults['Arts']);
+        $streams    = [];
+        if ($hasStreams) {
+            foreach (array_keys($defaults) as $k) {
+                if ($k !== 'common') $streams[] = $k;
+            }
+        }
+
+        $this->json_success([
+            'defaults'   => $defaults,
+            'hasStreams'  => $hasStreams,
+            'streams'    => $streams,
+            'classRange' => $range,
+        ]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // POST  /school_config/save_bulk_subjects
+    // Saves an entire subjects list for a class in one shot.
+    // Replaces existing subjects for the class.
+    // ─────────────────────────────────────────────────────────────────────
+    public function save_bulk_subjects()
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'school_config_save_bulk_subjects');
+
+        $school   = $this->school_name;
+        $classKey = trim((string) $this->input->post('class_key', TRUE));
+        $jsonData = $this->input->post('subjects', TRUE); // JSON string
+
+        if ($classKey === '' || empty($jsonData)) {
+            return $this->json_error('class_key and subjects are required.');
+        }
+
+        $subjects = json_decode($jsonData, true);
+        if (!is_array($subjects)) {
+            return $this->json_error('Invalid subjects format.');
+        }
+
+        $numKey = $this->_numeric_class_key($classKey);
+        $validCategories = ['Core', 'Elective', 'Additional', 'Language', 'Vocational', 'Assessment'];
+
+        // Build the full subject map to write
+        $subjectMap = [];
+        $usedNames  = [];
+
+        foreach ($subjects as $idx => $sub) {
+            $name     = trim($sub['name'] ?? '');
+            $category = trim($sub['category'] ?? 'Core');
+            $stream   = trim($sub['stream'] ?? 'common');
+            $code     = trim($sub['code'] ?? '');
+
+            if ($name === '') continue; // skip blank entries
+
+            // Skip duplicates (case-insensitive, same stream)
+            $dedupeKey = strtolower($name) . '|' . strtolower($stream);
+            if (isset($usedNames[$dedupeKey])) continue;
+            $usedNames[$dedupeKey] = true;
+
+            if (!in_array($category, $validCategories, true)) $category = 'Core';
+
+            // Auto-generate code if blank
+            if ($code === '') {
+                if (is_numeric($numKey)) {
+                    $code = (string) ((int) $numKey * 100 + count($subjectMap) + 1);
+                } else {
+                    $prefix = strtoupper(substr($numKey, 0, 3));
+                    $code   = $prefix . str_pad(count($subjectMap) + 1, 2, '0', STR_PAD_LEFT);
+                }
+            }
+
+            if (!preg_match('/^[A-Za-z0-9_]+$/', $code)) {
+                $code = 'SUB' . str_pad(count($subjectMap) + 1, 3, '0', STR_PAD_LEFT);
+            }
+
+            $entry = [
+                'subject_name' => $name,
+                'name'         => $name,
+                'category'     => $category,
+                'subject_code' => $code,
+            ];
+            if ($stream !== 'common') $entry['stream'] = $stream;
+
+            $subjectMap[$code] = $entry;
+        }
+
+        if (empty($subjectMap)) {
+            return $this->json_error('No valid subjects to save.');
+        }
+
+        try {
+            // Replace entire subject list for this class
+            $this->firebase->set("Schools/{$school}/Subject_list/{$numKey}", $subjectMap);
+            $this->json_success([
+                'message' => count($subjectMap) . ' subjects saved for class ' . $classKey . '.',
+                'count'   => count($subjectMap),
+            ]);
+        } catch (\Exception $e) {
+            $this->json_error('Failed to save subjects: ' . $e->getMessage());
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1398,5 +1928,27 @@ class School_config extends MY_Controller
             case 3:  return 'rd';
             default: return 'th';
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // POST  /school_config/save_report_card_template
+    // ─────────────────────────────────────────────────────────────────────
+    public function save_report_card_template()
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'save_rc_template');
+        $school   = $this->school_name;
+        $template = trim((string) $this->input->post('template', TRUE));
+
+        $allowed = ['classic', 'cbse', 'minimal', 'modern', 'elegant'];
+        if (!in_array($template, $allowed, true)) {
+            return $this->json_error('Invalid template selection.');
+        }
+
+        $ok = $this->firebase->set("Schools/{$school}/Config/ReportCardTemplate", $template);
+        if ($ok === false) {
+            return $this->json_error('Failed to save template preference.');
+        }
+
+        $this->json_success(['message' => 'Report card template saved.', 'template' => $template]);
     }
 }

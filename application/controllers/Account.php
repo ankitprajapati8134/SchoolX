@@ -17,9 +17,16 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Account extends MY_Controller
 {
+    /** Roles allowed to create/edit/delete accounts and vouchers. */
+    private const MANAGE_ROLES = ['Admin', 'Principal', 'Accountant'];
+
+    /** Roles allowed to view accounting data. */
+    private const VIEW_ROLES = ['Admin', 'Principal', 'Accountant'];
+
     public function __construct()
     {
         parent::__construct();
+        require_permission('Accounting');
         $this->load->library('firebase');
     }
 
@@ -34,6 +41,7 @@ class Account extends MY_Controller
 
     public function account_book()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_account_book');
         $accounts = $this->firebase->get($this->base_path() . '/Accounts/Account_book');
 
         // SESSION ISOLATION FIX: use the active session selected by the admin,
@@ -67,6 +75,7 @@ class Account extends MY_Controller
 
     public function populateTable()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_accounts_table');
         header('Content-Type: application/json');
 
         // [FIX-1]
@@ -114,6 +123,7 @@ class Account extends MY_Controller
 
     public function create_account()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'create_account');
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -170,6 +180,7 @@ class Account extends MY_Controller
 
     public function check_account()
     {
+        $this->_require_role(self::VIEW_ROLES, 'check_account');
         header('Content-Type: application/json');
 
         $accountName = trim((string) $this->input->post('accountName'));
@@ -196,6 +207,7 @@ class Account extends MY_Controller
 
     public function update_account()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'update_account');
         header('Content-Type: application/json');
 
         $accountId      = trim((string) $this->input->post('accountId'));
@@ -233,6 +245,7 @@ class Account extends MY_Controller
 
     public function delete_account()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'delete_account');
         header('Content-Type: application/json');
 
         $accountName = trim((string) $this->input->post('accountName'));
@@ -251,6 +264,7 @@ class Account extends MY_Controller
 
     public function vouchers()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_vouchers');
         $accounts = $this->firebase->get($this->base_path() . '/Accounts/Account_book');
 
         $accountsList            = [];
@@ -278,6 +292,7 @@ class Account extends MY_Controller
 
     public function save_voucher()
     {
+        $this->_require_role(self::MANAGE_ROLES, 'save_voucher');
         header('Content-Type: application/json');
 
         $school_name  = $this->school_name;
@@ -338,6 +353,7 @@ class Account extends MY_Controller
 
     public function view_voucher()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_voucher');
         $this->load->view('include/header');
         $this->load->view('view_voucher');
         $this->load->view('include/footer');
@@ -345,6 +361,7 @@ class Account extends MY_Controller
 
     public function show_vouchers()
     {
+        $this->_require_role(self::VIEW_ROLES, 'show_vouchers');
         header('Content-Type: application/json');
 
         $school_name  = $this->school_name;
@@ -427,6 +444,7 @@ class Account extends MY_Controller
 
     public function day_book()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_day_book');
         $this->load->view('include/header');
         $this->load->view('day_book');
         $this->load->view('include/footer');
@@ -434,6 +452,7 @@ class Account extends MY_Controller
 
     public function view_accounts()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_accounts');
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -502,6 +521,7 @@ class Account extends MY_Controller
 
     public function cash_book()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_cash_book');
         $this->load->view('include/header');
         $data['accounts'] = $this->calculate_current_balances();
         $this->load->view('cash_book', $data);
@@ -510,6 +530,7 @@ class Account extends MY_Controller
 
     public function get_server_date()
     {
+        $this->_require_role(self::VIEW_ROLES, 'get_server_date');
         header('Content-Type: application/json');
         echo json_encode(['date' => date('d-m-Y')]);
     }
@@ -588,6 +609,7 @@ class Account extends MY_Controller
 
     public function cash_book_month()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_cash_book_month');
         header('Content-Type: application/json');
 
         $school_name  = $this->school_name;
@@ -642,6 +664,7 @@ class Account extends MY_Controller
 
     public function cash_book_dates()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_cash_book_dates');
         header('Content-Type: application/json');
 
         $school_name  = $this->school_name;
@@ -778,6 +801,7 @@ class Account extends MY_Controller
 
     public function cash_book_details()
     {
+        $this->_require_role(self::VIEW_ROLES, 'view_cash_book_details');
         header('Content-Type: application/json');
 
         $school_name  = $this->school_name;

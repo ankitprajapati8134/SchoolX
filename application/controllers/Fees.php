@@ -1124,11 +1124,11 @@ class Fees extends MY_Controller
             if ($mFee > 0 && $totalSubmitted >= $mFee) {
                 try {
                     $this->firebase->set("$studentBase/Month Fee/$m", 1);
+                    $totalSubmitted -= $mFee;  // R5-FIN-x: only decrement budget if month write succeeded
                 } catch (\Exception $e) {
                     log_message('error', "submit_fees: Failed to mark month '$m' as paid for student $userId receipt $receiptNo — " . $e->getMessage());
                     $failedMonths[] = $m;
                 }
-                $totalSubmitted -= $mFee;
             }
         }
 

@@ -200,6 +200,173 @@ class Admin extends MY_Controller
         ]);
     }
 
+    // ====================================================================
+    //  SUBSCRIPTION & PAYMENT INFO — school-side AJAX endpoint
+    // ====================================================================
+
+    public function get_subscription_info()
+    {
+        header('Content-Type: application/json');
+
+        $school_uid = $this->school_name;
+        $today      = date('Y-m-d');
+
+        try {
+            $sub = $this->firebase->get("System/Schools/{$school_uid}/subscription") ?? [];
+            $plan_id   = $sub['plan_id'] ?? '';
+            $plan_data = [];
+            if ($plan_id) {
+                $plan_data = $this->firebase->get("System/Plans/{$plan_id}") ?? [];
+            }
+
+            $allPayments = $this->firebase->get('System/Payments') ?? [];
+            $payments    = [];
+            $totalPaid   = 0;
+            $totalBalance = 0;
+            $nextDueAmt  = 0;
+            $nextDueDate = '';
+
+            if (is_array($allPayments)) {
+                foreach ($allPayments as $pid => $p) {
+                    if (!is_array($p)) continue;
+                    if (($p['school_uid'] ?? '') !== $school_uid) continue;
+                    $p['payment_id'] = $pid;
+                    $payments[] = $p;
+
+                    $totalPaid += (float)($p['amount_paid'] ?? 0);
+
+                    $st = $p['status'] ?? '';
+                    if (in_array($st, ['pending', 'partial', 'overdue'])) {
+                        $bal = isset($p['balance']) ? (float)$p['balance']
+                             : ((float)($p['amount'] ?? 0) - (float)($p['amount_paid'] ?? 0));
+                        $totalBalance += $bal;
+                        $dd = $p['due_date'] ?? '';
+                        if (!$nextDueDate || ($dd && $dd < $nextDueDate)) {
+                            $nextDueDate = $dd;
+                            $nextDueAmt  = $bal;
+                        }
+                    }
+                }
+                usort($payments, fn($a, $b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
+            }
+
+            $expiry   = $sub['expiry_date'] ?? '';
+            $daysLeft = $expiry ? (int) ceil((strtotime($expiry) - strtotime($today)) / 86400) : null;
+
+            echo json_encode([
+                'plan_name'      => $plan_data['name'] ?? ($sub['plan_name'] ?? '—'),
+                'billing_cycle'  => $plan_data['billing_cycle'] ?? ($sub['billing_cycle'] ?? '—'),
+                'sub_status'     => $sub['status'] ?? 'Inactive',
+                'expiry_date'    => $expiry,
+                'days_left'      => $daysLeft,
+                'total_paid'     => $totalPaid,
+                'total_balance'  => $totalBalance,
+                'next_due_date'  => $nextDueDate,
+                'next_due_amount'=> $nextDueAmt,
+                'payments'       => array_slice($payments, 0, 10),
+            ]);
+        } catch (Exception $e) {
+            echo json_encode(['error' => 'Failed to load subscription info.']);
+        }
+    }
+
+    // ====================================================================
+    //  MY PROFILE — accessible to ALL logged-in admins (no role gate)
+    // ====================================================================
+
+    public function profile()
+    {
+        $school_id = $this->parent_db_key;
+        $admin_id  = $this->admin_id;
+
+        // POST: update own profile or password
+        if ($this->input->method() === 'post') {
+            header('Content-Type: application/json');
+
+            $action = trim((string) $this->input->post('action'));
+
+            // ── Password change ─────────────────────────────────────────
+            if ($action === 'change_password') {
+                $current  = (string) $this->input->post('current_password', FALSE);
+                $newPass  = (string) $this->input->post('new_password', FALSE);
+                $confirm  = (string) $this->input->post('confirm_password', FALSE);
+
+                if (!$current || !$newPass || !$confirm) {
+                    $this->json_error('All password fields are required.'); return;
+                }
+                if ($newPass !== $confirm) {
+                    $this->json_error('New passwords do not match.'); return;
+                }
+                if (strlen($newPass) < 8) {
+                    $this->json_error('Password must be at least 8 characters.'); return;
+                }
+                if (strlen($newPass) > 72) {
+                    $this->json_error('Password must not exceed 72 characters.'); return;
+                }
+
+                // Verify current password
+                $adminData = $this->firebase->get("Users/Admin/{$school_id}/{$admin_id}");
+                $stored = $adminData['Credentials']['Password'] ?? '';
+                if (!$stored || !password_verify($current, $stored)) {
+                    // Fallback: plain-text check for legacy records
+                    if ($stored !== $current) {
+                        $this->json_error('Current password is incorrect.'); return;
+                    }
+                }
+
+                $hashed = password_hash($newPass, PASSWORD_DEFAULT);
+                $this->firebase->update("Users/Admin/{$school_id}/{$admin_id}", [
+                    'Credentials' => ['Password' => $hashed],
+                ]);
+                $this->json_success(['message' => 'Password changed successfully.']);
+                return;
+            }
+
+            // ── Update profile details ──────────────────────────────────
+            if ($action === 'update_profile') {
+                $name   = trim($this->input->post('name',   TRUE) ?? '');
+                $email  = trim($this->input->post('email',  TRUE) ?? '');
+                $phone  = trim($this->input->post('phone',  TRUE) ?? '');
+                $gender = trim($this->input->post('gender', TRUE) ?? '');
+
+                if (empty($name)) { $this->json_error('Name is required.'); return; }
+
+                $update = ['Name' => $name];
+                if ($email  !== '') $update['Email']  = $email;
+                if ($phone  !== '') $update['Phone']  = $phone;
+                if ($gender !== '') $update['Gender'] = $gender;
+
+                $this->firebase->update("Users/Admin/{$school_id}/{$admin_id}", $update);
+                // Update session name
+                $this->session->set_userdata('admin_name', $name);
+                $this->json_success(['message' => 'Profile updated successfully.']);
+                return;
+            }
+
+            $this->json_error('Invalid action.'); return;
+        }
+
+        // GET: Load profile page
+        $adminData = $this->firebase->get("Users/Admin/{$school_id}/{$admin_id}") ?? [];
+
+        $data = [
+            'profile' => [
+                'admin_id' => $admin_id,
+                'name'     => $adminData['Name']    ?? ($this->admin_name ?? ''),
+                'email'    => $adminData['Email']   ?? '',
+                'phone'    => $adminData['Phone']   ?? '',
+                'role'     => $adminData['Role']    ?? ($this->admin_role ?? ''),
+                'gender'   => $adminData['Gender']  ?? '',
+                'status'   => $adminData['Status']  ?? 'Active',
+                'dob'      => $adminData['DOB']     ?? '',
+            ],
+        ];
+
+        $this->load->view('include/header', $data);
+        $this->load->view('admin_profile', $data);
+        $this->load->view('include/footer');
+    }
+
     public function manage_admin()
     {
         $this->_require_role(self::ADMIN_ROLES);
@@ -261,7 +428,7 @@ class Admin extends MY_Controller
             $dob      = trim((string) $this->input->post('dob'));
             $gender   = trim((string) $this->input->post('gender'));
             $role     = trim((string) $this->input->post('role'));
-            $password = (string) $this->input->post('password');
+            $password = (string) $this->input->post('password', FALSE);  // R5-SEC-1: bypass XSS filter
 
             if (!$name || !$email || !$password || !$role) {
                 $this->json_error('Required fields missing.', 400);
@@ -392,7 +559,9 @@ class Admin extends MY_Controller
      */
     public function switch_session(): void
     {
-        $this->_require_role(self::ADMIN_ROLES);
+        // All logged-in roles can switch session — it only changes their own
+        // PHP session view, not the school's global active session.
+        $this->_require_role(self::VIEW_ROLES);
         if ($this->input->method() !== 'post') {
             $this->json_error('Method not allowed.', 405);
         }

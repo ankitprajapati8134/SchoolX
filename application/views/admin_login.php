@@ -915,9 +915,9 @@
                     <i class="fas fa-shield-halved"></i>
                     256-bit encrypted
                 </div>
-                <a href="<?= base_url('admin_login/forgot_password') ?>" class="lx-forgot">
-                    Forgot password? <i class="fas fa-arrow-right" style="font-size:9px;"></i>
-                </a>
+                <span class="lx-forgot" style="cursor:default;opacity:.5;" title="Contact your school administrator">
+                    Forgot password?
+                </span>
             </div>
 
         </div>

@@ -27,9 +27,219 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Staff extends MY_Controller
 {
+    private const MANAGE_ROLES = ['Admin', 'Principal'];
+    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+
+    // ── Default staff role definitions (seeded on first access) ────────────
+    private const DEFAULT_STAFF_ROLES = [
+        'ROLE_TEACHER'      => ['label' => 'Teacher',         'category' => 'Teaching',       'flags' => ['can_teach' => true, 'can_access_timetable' => true], 'attendance_type' => 'standard', 'is_system' => true],
+        'ROLE_ACCOUNTANT'   => ['label' => 'Accountant',      'category' => 'Administrative', 'flags' => ['can_handle_fees' => true],                          'attendance_type' => 'standard', 'is_system' => true],
+        'ROLE_LIBRARIAN'    => ['label' => 'Librarian',       'category' => 'Non-Teaching',   'flags' => ['can_manage_library' => true],                       'attendance_type' => 'standard', 'is_system' => true],
+        'ROLE_LAB_ASST'     => ['label' => 'Lab Assistant',   'category' => 'Non-Teaching',   'flags' => [],                                                  'attendance_type' => 'standard', 'is_system' => true],
+        'ROLE_CLERK'        => ['label' => 'Clerk',           'category' => 'Administrative', 'flags' => [],                                                  'attendance_type' => 'standard', 'is_system' => true],
+        'ROLE_DRIVER'       => ['label' => 'Driver',          'category' => 'Support',        'flags' => ['can_manage_transport' => true],                     'attendance_type' => 'shift',    'is_system' => true],
+        'ROLE_SECURITY'     => ['label' => 'Security',        'category' => 'Support',        'flags' => [],                                                  'attendance_type' => 'shift',    'is_system' => true],
+        'ROLE_HOUSE_WARDEN' => ['label' => 'House Warden',    'category' => 'Non-Teaching',   'flags' => ['can_manage_hostel' => true],                        'attendance_type' => 'standard', 'is_system' => false],
+        'ROLE_PEON'         => ['label' => 'Peon/Attendant',  'category' => 'Support',        'flags' => [],                                                  'attendance_type' => 'standard', 'is_system' => false],
+    ];
+
+    // Keyword → role_id mapping for migration from free-text Position field
+    private const POSITION_ROLE_MAP = [
+        'teacher'    => 'ROLE_TEACHER',
+        'lecturer'   => 'ROLE_TEACHER',
+        'professor'  => 'ROLE_TEACHER',
+        'instructor' => 'ROLE_TEACHER',
+        'accountant' => 'ROLE_ACCOUNTANT',
+        'librarian'  => 'ROLE_LIBRARIAN',
+        'clerk'      => 'ROLE_CLERK',
+        'driver'     => 'ROLE_DRIVER',
+        'security'   => 'ROLE_SECURITY',
+        'guard'      => 'ROLE_SECURITY',
+        'peon'       => 'ROLE_PEON',
+        'attendant'  => 'ROLE_PEON',
+        'sweeper'    => 'ROLE_PEON',
+        'warden'     => 'ROLE_HOUSE_WARDEN',
+        'hostel'     => 'ROLE_HOUSE_WARDEN',
+        'lab'        => 'ROLE_LAB_ASST',
+    ];
+
     public function __construct()
     {
         parent::__construct();
+        require_permission('SIS');
+        // Lazy-seed staff role definitions on first access
+        $this->_seed_staff_roles();
+    }
+
+    /**
+     * Seed default staff roles if Config/StaffRoles is empty.
+     * Called once per school — subsequent calls are a no-op (1 shallow read).
+     */
+    private function _seed_staff_roles(): void
+    {
+        if (empty($this->school_name)) return; // not logged in yet
+        $path = "Schools/{$this->school_name}/Config/StaffRoles";
+        $existing = $this->firebase->shallow_get($path);
+        if (!empty($existing)) return;
+        $this->firebase->set($path, self::DEFAULT_STAFF_ROLES);
+    }
+
+    /**
+     * Infer staff role IDs from free-text Position field (for unmigrated records).
+     */
+    private function _infer_roles_from_position(string $position): array
+    {
+        $pos = strtolower(trim($position));
+        if ($pos === '') return ['ROLE_TEACHER'];
+        foreach (self::POSITION_ROLE_MAP as $keyword => $roleId) {
+            if (strpos($pos, $keyword) !== false) {
+                return [$roleId];
+            }
+        }
+        return ['ROLE_TEACHER']; // safe default
+    }
+
+    // ── Salary Structure Auto-Sync ─────────────────────────────────────────
+
+    /** Hardcoded fallback — overridden by Firebase Config/SalaryDefaults if set */
+    private const SALARY_DEFAULTS_FALLBACK = [
+        'hra_pct_of_basic'  => 40,
+        'da_pct_of_basic'   => 10,
+        'ta_share'          => 0.30,
+        'medical_share'     => 0.25,
+        'pf_employee'       => 12,
+        'pf_employer'       => 12,
+        'esi_employee'      => 0.75,
+        'esi_employer'      => 3.25,
+        'professional_tax'  => 200,
+        'tds'               => 0,
+        'other_deductions'  => 0,
+    ];
+
+    /**
+     * Load salary split config — per-school Firebase config with constant fallback.
+     * Path: Schools/{school}/Config/SalaryDefaults
+     */
+    private function _salary_config(): array
+    {
+        static $cached = null;
+        if ($cached !== null) return $cached;
+
+        $fbConfig = $this->firebase->get("Schools/{$this->school_name}/Config/SalaryDefaults");
+        $defaults = self::SALARY_DEFAULTS_FALLBACK;
+        if (is_array($fbConfig)) {
+            // Merge — Firebase values override constants, missing keys use fallback
+            foreach ($defaults as $k => $v) {
+                if (isset($fbConfig[$k]) && is_numeric($fbConfig[$k])) {
+                    $defaults[$k] = (float) $fbConfig[$k];
+                }
+            }
+        }
+        $cached = $defaults;
+        return $cached;
+    }
+
+    /**
+     * Validate salary values — reusable across create/edit/backfill.
+     * Returns sanitised array or throws json_error.
+     */
+    private function _validate_salary(float $basic, float $allowances): array
+    {
+        if (!is_finite($basic) || $basic < 0) {
+            $this->json_error('Basic salary must be a non-negative number.');
+        }
+        if (!is_finite($allowances) || $allowances < 0) {
+            $this->json_error('Allowances must be a non-negative number.');
+        }
+        return ['basic' => round($basic, 2), 'allowances' => round(max($allowances, 0), 2)];
+    }
+
+    /**
+     * Build a full salary structure array from basic + allowances using config.
+     */
+    private function _build_salary_structure(float $basic, float $allowances): array
+    {
+        $cfg = $this->_salary_config();
+
+        $hra = round($basic * ($cfg['hra_pct_of_basic'] / 100), 2);
+        $da  = round($basic * ($cfg['da_pct_of_basic'] / 100), 2);
+
+        $remaining = max(0, $allowances - $hra - $da);
+        if ($allowances < ($hra + $da)) {
+            $hra = round($allowances * 0.6, 2);
+            $da  = round($allowances * 0.3, 2);
+            $remaining = max(0, $allowances - $hra - $da);
+        }
+
+        $ta      = round($remaining * $cfg['ta_share'], 2);
+        $medical = round($remaining * $cfg['medical_share'], 2);
+        $other   = round($remaining - $ta - $medical, 2);
+
+        return [
+            'basic' => $basic, 'hra' => $hra, 'da' => $da, 'ta' => $ta,
+            'medical' => $medical, 'other_allowances' => $other,
+            'pf_employee' => $cfg['pf_employee'], 'pf_employer' => $cfg['pf_employer'],
+            'esi_employee' => $cfg['esi_employee'], 'esi_employer' => $cfg['esi_employer'],
+            'professional_tax' => $cfg['professional_tax'], 'tds' => $cfg['tds'],
+            'other_deductions' => $cfg['other_deductions'],
+        ];
+    }
+
+    /**
+     * Create or update a Salary Structure from staff registration data.
+     *
+     * Rules:
+     *  - basic <= 0 → skip (zero-salary staff)
+     *  - No structure → create with source='registration'
+     *  - source='registration' → update (version bump)
+     *  - source='manual' → DO NOT overwrite (HR owns it), update sync timestamp
+     */
+    private function _sync_salary_structure(string $staffId, float $basic, float $allowances): bool
+    {
+        if ($basic <= 0) return false;
+
+        $structPath = "Schools/{$this->school_name}/HR/Salary_Structures/{$staffId}";
+        $existing   = $this->firebase->get($structPath);
+        $now        = date('c');
+
+        // Manual structure → don't overwrite, just note the sync
+        if (is_array($existing) && ($existing['source'] ?? '') === 'manual') {
+            $this->firebase->update($structPath, ['last_synced_at' => $now]);
+            return false;
+        }
+
+        $structure = $this->_build_salary_structure($basic, $allowances);
+        $structure['source']     = 'registration';
+        $structure['updated_at'] = $now;
+        $structure['updated_by'] = $this->admin_name ?? 'system';
+
+        // Version tracking for concurrent-write safety
+        $oldVersion = is_array($existing) ? (int) ($existing['_version'] ?? 0) : 0;
+        $structure['_version'] = $oldVersion + 1;
+
+        if (is_array($existing)) {
+            $structure['created_at']     = $existing['created_at'] ?? $now;
+            $structure['last_synced_at'] = $now;
+            // Audit: store previous values
+            $structure['_prev'] = [
+                'basic' => $existing['basic'] ?? 0,
+                'updated_at' => $existing['updated_at'] ?? '',
+                'updated_by' => $existing['updated_by'] ?? '',
+            ];
+        } else {
+            $structure['created_at']     = $now;
+            $structure['last_synced_at'] = $now;
+        }
+
+        $this->firebase->set($structPath, $structure);
+
+        log_message('info',
+            "Salary structure auto-" . (is_array($existing) ? "updated(v{$structure['_version']})" : 'created')
+            . " staff=[{$staffId}] school=[{$this->school_name}]"
+            . " basic={$basic} allowances={$allowances}"
+        );
+
+        return true;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -61,6 +271,16 @@ class Staff extends MY_Controller
         }
 
         $ext       = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
+        // M-03 FIX: Validate MIME type server-side via finfo (callers already check
+        // mime_content_type for photo/aadhar, but this guards the generic path)
+        $allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $realMime = $finfo->file($file['tmp_name']);
+        if (!in_array($realMime, $allowedMimes, true)) {
+            return false;
+        }
+
         $timestamp = time();
         $random    = substr(md5(uniqid()), 0, 6);
         $safeLabel = str_replace([' ', '.', '#', '$', '[', ']'], '_', $label);
@@ -169,7 +389,8 @@ class Staff extends MY_Controller
 
     public function all_staff()
     {
-        $school_id   = $this->school_id;
+        $this->_require_role(self::VIEW_ROLES);
+        $school_id   = $this->parent_db_key;
         $school_name = $this->school_name;
 
         $data['staff'] = $this->CM->select_data("Users/Teachers/{$school_id}");
@@ -201,6 +422,10 @@ class Staff extends MY_Controller
 
         $data['school_name'] = $school_name;
 
+        // Load staff role definitions for badge display and filtering
+        $data['staff_role_defs'] = $this->firebase->get("Schools/{$school_name}/Config/StaffRoles") ?? [];
+        if (!is_array($data['staff_role_defs'])) $data['staff_role_defs'] = [];
+
         $this->load->view('include/header');
         $this->load->view('all_staff', $data);
         $this->load->view('include/footer');
@@ -208,6 +433,7 @@ class Staff extends MY_Controller
 
     public function master_staff()
     {
+        $this->_require_role(self::VIEW_ROLES);
         $this->load->view('include/header');
         $this->load->view('import_staff'); // view file
         $this->load->view('include/footer');
@@ -217,9 +443,10 @@ class Staff extends MY_Controller
 
     public function import_staff()
     {
+        $this->_require_role(self::MANAGE_ROLES);
         try {
 
-            $school_id    = $this->school_id;
+            $school_id    = $this->parent_db_key;
             $school_name  = $this->school_name;
             $session_year = $this->session_year;
 
@@ -364,6 +591,9 @@ class Staff extends MY_Controller
                     'Name' => $name
                 ]);
 
+                // Tenant-scoped phone index (primary)
+                $this->CM->addKey_pair_data("Schools/{$school_name}/Phone_Index/", [$phone => $staffId]);
+                // Legacy global indexes — kept for mobile app backward compatibility
                 $this->CM->addKey_pair_data('Exits/', [$phone => $school_id]);
                 $this->CM->addKey_pair_data('User_ids_pno/', [$phone => $staffId]);
 
@@ -387,7 +617,7 @@ class Staff extends MY_Controller
 
     // public function add_staff($data)
     // {
-    //     $school_id    = $this->school_id;
+    //     $school_id    = $this->parent_db_key;
     //     $school_name  = $this->school_name;
     //     $session_year = $this->session_year;
 
@@ -439,8 +669,9 @@ class Staff extends MY_Controller
 
     public function new_staff()
     {
+        $this->_require_role(self::MANAGE_ROLES);
         // [FIX-1] All school info from session
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -566,6 +797,24 @@ class Staff extends MY_Controller
                 $rawPassword = substr(ucfirst($staffName), 0, 3) . '123@';
             }
 
+            // ── Staff roles (multi-role support) ─────────────────────────
+            $rawRoles = $normalizedPostData['staff_roles'] ?? '';
+            if (is_string($rawRoles) && $rawRoles !== '') {
+                $roleIds = array_values(array_filter(array_map('trim', explode(',', $rawRoles))));
+            } elseif (is_array($rawRoles)) {
+                $roleIds = array_values(array_filter(array_map('trim', $rawRoles)));
+            } else {
+                $roleIds = [];
+            }
+            // Default to Teacher if no roles selected
+            if (empty($roleIds)) {
+                $roleIds = $this->_infer_roles_from_position($normalizedPostData['staff_position'] ?? '');
+            }
+            $primaryRole = trim($normalizedPostData['primary_role'] ?? '');
+            if ($primaryRole === '' || !in_array($primaryRole, $roleIds, true)) {
+                $primaryRole = $roleIds[0] ?? 'ROLE_TEACHER';
+            }
+
             $staffRecord = [
                 'Name'            => $staffName,
                 'User ID'         => $staffId,
@@ -589,6 +838,8 @@ class Staff extends MY_Controller
                 'ProfilePic'      => $docData['Photo']['url'],
                 'Doc'             => $docData,
                 'lastUpdated'     => date('Y-m-d'),
+                'staff_roles'     => $roleIds,
+                'primary_role'    => $primaryRole,
                 // [FIX-2] Hashed password stored under Credentials
                 'Credentials'     => ['Password' => password_hash($rawPassword, PASSWORD_DEFAULT)],
             ];
@@ -598,13 +849,22 @@ class Staff extends MY_Controller
             $result    = $this->firebase->set($StaffPath, $staffRecord);
 
             if ($result !== false) {
+                // Tenant-scoped phone index (primary)
+                $this->CM->addKey_pair_data("Schools/{$school_name}/Phone_Index/", [$phoneNumber => $staffId]);
+                // Legacy global indexes — kept for mobile app backward compatibility
                 $this->CM->addKey_pair_data('Exits/', [$phoneNumber => $school_id]);
                 $this->CM->addKey_pair_data('User_ids_pno/', [$phoneNumber => $staffId]);
                 $newCount = $staffIdCount + 1;
                 $this->CM->addKey_pair_data("Users/Teachers/{$school_id}/", ['Count' => $newCount]);
-                $this->CM->addKey_pair_data("Schools/{$school_name}/{$session_year}/Teachers/{$staffId}", ['Name' => $staffName]);
+                $this->firebase->set("Schools/{$school_name}/{$session_year}/Teachers/{$staffId}", [
+                    'Name'  => $staffName,
+                    'roles' => $roleIds,
+                ]);
 
-                $this->json_success(['message' => 'Staff added successfully.']);
+                // Auto-create salary structure for payroll
+                $this->_sync_salary_structure($staffId, $basicSalary, $allowances);
+
+                $this->json_success(['message' => 'Staff added successfully.', 'staff_id' => $staffId]);
             } else {
                 $this->json_error('Failed to save staff record.', 500);
             }
@@ -619,7 +879,8 @@ class Staff extends MY_Controller
 
     public function delete_staff($id)
     {
-        $school_id    = $this->school_id;
+        $this->_require_role(self::MANAGE_ROLES);
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -634,6 +895,9 @@ class Staff extends MY_Controller
             $phoneNumber = $staff['Phone Number'];
 
             $this->CM->delete_data("Schools/{$school_name}/{$session_year}/Teachers", $id);
+            // Remove from tenant-scoped phone index
+            $this->CM->delete_data("Schools/{$school_name}/Phone_Index", $phoneNumber);
+            // Remove legacy global indexes
             $this->CM->delete_data('Exits', $phoneNumber);
             $this->CM->delete_data('User_ids_pno', $phoneNumber);
         }
@@ -645,8 +909,9 @@ class Staff extends MY_Controller
 
     public function edit_staff($user_id)
     {
+        $this->_require_role(self::MANAGE_ROLES);
         // [FIX-5] All school info from session
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -750,6 +1015,26 @@ class Staff extends MY_Controller
             // Prevent Credentials from being overwritten via edit
             unset($formattedData['Credentials']);
 
+            // ── Staff roles update ───────────────────────────────────────
+            $rawRoles = $postData['staff_roles'] ?? '';
+            if (is_string($rawRoles) && $rawRoles !== '') {
+                $editRoleIds = array_values(array_filter(array_map('trim', explode(',', $rawRoles))));
+            } elseif (is_array($rawRoles)) {
+                $editRoleIds = array_values(array_filter(array_map('trim', $rawRoles)));
+            } else {
+                $editRoleIds = null; // not submitted = don't change
+            }
+            if ($editRoleIds !== null) {
+                $formattedData['staff_roles'] = $editRoleIds;
+                $editPrimary = trim($postData['primary_role'] ?? '');
+                if ($editPrimary === '' || !in_array($editPrimary, $editRoleIds, true)) {
+                    $editPrimary = $editRoleIds[0] ?? 'ROLE_TEACHER';
+                }
+                $formattedData['primary_role'] = $editPrimary;
+            }
+            // Remove raw keys so they don't pollute the flat write
+            unset($formattedData['staff_roles_raw'], $postData['staff_roles'], $postData['primary_role']);
+
             // Merge updated Doc entries (if any files were uploaded) into the
             // existing Doc node so unchanged documents are preserved.
             if (!empty($docUpdates)) {
@@ -765,18 +1050,44 @@ class Staff extends MY_Controller
                 // Phone number changed — update lookup tables
                 if (!empty($formattedData['Phone Number']) && $formattedData['Phone Number'] !== $oldPhoneNumber) {
                     if ($oldPhoneNumber) {
+                        // Remove old phone from tenant-scoped index
+                        $this->firebase->delete("Schools/{$school_name}/Phone_Index/{$oldPhoneNumber}");
+                        // Remove old phone from legacy global indexes
                         $this->firebase->delete('Exits/' . $oldPhoneNumber);
                         $this->firebase->delete('User_ids_pno/' . $oldPhoneNumber);
                     }
                     $newPhone = $formattedData['Phone Number'];
+                    // Tenant-scoped phone index (primary)
+                    $this->CM->update_data('', "Schools/{$school_name}/Phone_Index/", [$newPhone => $user_id]);
+                    // Legacy global indexes — kept for mobile app backward compatibility
                     $this->CM->update_data('', 'Exits/',       [$newPhone => $school_id]);
                     $this->CM->update_data('', 'User_ids_pno/', [$newPhone => $user_id]);
                 }
 
-                // Name changed — update school teachers list
+                // Sync salary structure if salary fields were submitted
+                $editBasic = (float) ($postData['basicSalary'] ?? $postData['Basicsalary'] ?? 0);
+                $editAllow = (float) ($postData['allowances']  ?? $postData['Allowances']  ?? 0);
+                if ($editBasic > 0) {
+                    $this->_sync_salary_structure($user_id, $editBasic, $editAllow);
+                    // Also update the salaryDetails node in the staff profile
+                    $this->firebase->update("Users/Teachers/{$school_id}/{$user_id}", [
+                        'salaryDetails' => [
+                            'basicSalary' => $editBasic,
+                            'Allowances'  => $editAllow,
+                            'Net Salary'  => $editBasic + $editAllow,
+                        ],
+                    ]);
+                }
+
+                // Name or roles changed — update session roster
                 $teacherName = $formattedData['Name'] ?? null;
-                if ($teacherName && $teacherName !== $oldName) {
-                    $this->firebase->set("Schools/{$school_name}/{$session_year}/Teachers/{$user_id}", ['Name' => $teacherName]);
+                $rolesChanged = isset($formattedData['staff_roles']);
+                if (($teacherName && $teacherName !== $oldName) || $rolesChanged) {
+                    $rosterUpdate = ['Name' => $teacherName ?: $oldName];
+                    if ($rolesChanged) {
+                        $rosterUpdate['roles'] = $formattedData['staff_roles'];
+                    }
+                    $this->firebase->set("Schools/{$school_name}/{$session_year}/Teachers/{$user_id}", $rosterUpdate);
                 }
 
                 $this->json_success();
@@ -801,7 +1112,8 @@ class Staff extends MY_Controller
 
     public function teacher_profile($id)
     {
-        $school_id = $this->school_id;
+        $this->_require_role(self::VIEW_ROLES);
+        $school_id = $this->parent_db_key;
 
         if (!$id || !preg_match('/^[A-Za-z0-9]+$/', $id)) {
             show_404();
@@ -819,6 +1131,7 @@ class Staff extends MY_Controller
 
     public function search_teacher()
     {
+        $this->_require_role(self::VIEW_ROLES);
         header('Content-Type: application/json');
 
         $searchResults = [];
@@ -834,7 +1147,7 @@ class Staff extends MY_Controller
 
     private function search_by_name(string $entry): array
     {
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $results      = [];
         $teachers     = $this->CM->get_data("Users/Teachers/{$school_id}");
 
@@ -865,79 +1178,9 @@ class Staff extends MY_Controller
 
     // ─────────────────────────────────────────────────────────────────────────
 
-    public function teacher_duty()
-    {
-        $school_id    = $this->school_id;
-        $school_name  = $this->school_name;
-        $session_year = $this->session_year;
-
-        $teachersPath       = "Schools/{$school_name}/{$session_year}/Teachers";
-        $teacherDetailsPath = "Users/Teachers/{$school_id}";
-
-        $teacherIds  = $this->CM->get_data($teachersPath);
-
-        $data['teachers'] = [];
-        $ClassesData      = [];
-
-        if (!empty($teacherIds)) {
-            foreach ($teacherIds as $teacherId => $value) {
-                $teacherName = $this->CM->get_data("{$teacherDetailsPath}/{$teacherId}/Name");
-                if (!empty($teacherName)) {
-                    $data['teachers'][] = "{$teacherId} - {$teacherName}";
-                }
-
-                $dutiesData = $this->CM->get_data("Schools/{$school_name}/{$session_year}/Teachers/{$teacherId}/Duties");
-                if (!empty($dutiesData)) {
-                    foreach ($dutiesData as $dutyType => $classes) {
-                        foreach ((array) $classes as $className => $subjects) {
-                            foreach ((array) $subjects as $subject => $time) {
-                                // Parse "Class 9th 'A'" → class="Class 9th", section="A"
-                                preg_match("/^(.+?)\s*'([^']*)'\s*$/", $className, $parts);
-                                $classOnly   = isset($parts[1]) ? trim($parts[1]) : $className;
-                                $sectionOnly = isset($parts[2]) ? trim($parts[2]) : '';
-
-                                $data['duties'][] = [
-                                    'class_section' => $className,
-                                    'class'         => $classOnly,
-                                    'section'       => $sectionOnly,
-                                    'subject'       => $subject,
-                                    'teacher_name'  => "{$teacherId} - {$teacherName}",
-                                    'duty_type'     => $dutyType,
-                                    'duty_time'     => is_string($time) ? $time : '',
-                                ];
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Build class/section list from the correct Firebase structure:
-        // Schools/{school}/{session}/Class 9th/Section A/...
-        $sessionClassKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}");
-        foreach ($sessionClassKeys as $classKey) {
-            if (strpos($classKey, 'Class ') !== 0) continue;
-            $sectionKeys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}/{$classKey}");
-            foreach ($sectionKeys as $sectionKey) {
-                if (strpos($sectionKey, 'Section ') !== 0) continue;
-                $ClassesData[] = [
-                    'class_name' => $classKey,
-                    'section'    => str_replace('Section ', '', $sectionKey),
-                ];
-            }
-        }
-
-        $data['Classes'] = $ClassesData;
-
-        $this->load->view('include/header');
-        $this->load->view('teacher_duty', $data);
-        $this->load->view('include/footer');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-
     public function fetch_subjects()
     {
+        $this->_require_role(self::VIEW_ROLES);
         header('Content-Type: application/json');
 
         $school_name  = $this->school_name;
@@ -970,9 +1213,10 @@ class Staff extends MY_Controller
 
     public function assign_duty()
     {
+        $this->_require_role(self::MANAGE_ROLES);
         header('Content-Type: application/json');
 
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -1020,10 +1264,11 @@ class Staff extends MY_Controller
 
     public function markInactive_duty()
     {
+        $this->_require_role(self::MANAGE_ROLES);
         header('Content-Type: application/json');
 
         // [FIX-6] Use school_name (not school_id) consistently
-        $school_id    = $this->school_id;
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -1094,7 +1339,8 @@ class Staff extends MY_Controller
 
     public function teacher_id_card()
     {
-        $school_id    = $this->school_id;
+        $this->_require_role(self::VIEW_ROLES);
+        $school_id    = $this->parent_db_key;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;
 
@@ -1113,12 +1359,228 @@ class Staff extends MY_Controller
             $allStaff = [];
         }
 
+        // Fetch school display name and logo for ID card header
+        $displayName = $this->school_display_name ?: $school_name;
+        $schoolLogo  = '';
+        $sysSchool   = $this->firebase->get("System/Schools/{$this->school_id}/profile");
+        if (is_array($sysSchool)) {
+            $schoolLogo  = $sysSchool['logo_url'] ?? $sysSchool['Logo'] ?? '';
+            if (empty($displayName) || $displayName === $school_name) {
+                $displayName = $sysSchool['school_name'] ?? $sysSchool['name'] ?? $sysSchool['School Name'] ?? $displayName;
+            }
+        }
+        if (empty($schoolLogo)) {
+            $configProfile = $this->firebase->get("Schools/{$school_name}/Config/Profile");
+            if (is_array($configProfile)) {
+                $schoolLogo = $configProfile['logo_url'] ?? '';
+                if (empty($displayName) || $displayName === $school_name) {
+                    $displayName = $configProfile['display_name'] ?? $displayName;
+                }
+            }
+        }
+
         $data['staff']        = array_values($allStaff);
         $data['session_year'] = $session_year;
-        $data['school_name']  = $school_name;
+        $data['school_name']  = $displayName;
+        $data['school_logo']  = $schoolLogo;
 
         $this->load->view('include/header');
         $this->load->view('teacher_id_card', $data);
         $this->load->view('include/footer');
+    }
+
+    // =========================================================================
+    //  STAFF ROLE MANAGEMENT (AJAX)
+    // =========================================================================
+
+    /**
+     * GET /staff/get_staff_roles
+     * Returns all staff role definitions for dropdowns/multi-selects.
+     */
+    public function get_staff_roles()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'get_staff_roles');
+        $roles = $this->firebase->get("Schools/{$this->school_name}/Config/StaffRoles") ?? [];
+        if (!is_array($roles)) $roles = [];
+        $this->json_success(['roles' => $roles]);
+    }
+
+    /**
+     * POST /staff/save_staff_role
+     * Create or update a custom staff role definition.
+     */
+    public function save_staff_role()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'save_staff_role');
+        $roleId   = trim($this->input->post('role_id', TRUE) ?? '');
+        $label    = trim($this->input->post('label', TRUE) ?? '');
+        $category = trim($this->input->post('category', TRUE) ?? '');
+
+        if ($roleId === '' || $label === '') {
+            return $this->json_error('Role ID and label are required.');
+        }
+        if (!preg_match('/^ROLE_[A-Z0-9_]+$/', $roleId)) {
+            return $this->json_error('Role ID must be ROLE_ followed by uppercase letters/digits/underscores.');
+        }
+
+        $validCategories = ['Teaching', 'Non-Teaching', 'Administrative', 'Support'];
+        if (!in_array($category, $validCategories, true)) {
+            return $this->json_error('Invalid category. Must be: ' . implode(', ', $validCategories));
+        }
+
+        $path = "Schools/{$this->school_name}/Config/StaffRoles/{$roleId}";
+        $existing = $this->firebase->get($path);
+
+        // Don't allow changing system role category or label
+        if (is_array($existing) && !empty($existing['is_system'])) {
+            // System roles: only flags can be edited
+            $flagsRaw = $this->input->post('flags') ?? [];
+            $flags = is_array($flagsRaw) ? $flagsRaw : [];
+            $this->firebase->update($path, ['flags' => $flags]);
+            return $this->json_success(['message' => "System role '{$label}' flags updated."]);
+        }
+
+        $flagsRaw = $this->input->post('flags') ?? [];
+        $flags = is_array($flagsRaw) ? $flagsRaw : [];
+        $attendanceType = trim($this->input->post('attendance_type', TRUE) ?? 'standard');
+        if (!in_array($attendanceType, ['standard', 'shift', 'flexible'], true)) {
+            $attendanceType = 'standard';
+        }
+
+        $roleData = [
+            'label'           => $label,
+            'category'        => $category,
+            'flags'           => $flags,
+            'attendance_type' => $attendanceType,
+            'is_system'       => false,
+        ];
+
+        $this->firebase->set($path, $roleData);
+        $this->json_success(['message' => "Staff role '{$label}' saved.", 'role_id' => $roleId]);
+    }
+
+    /**
+     * POST /staff/delete_staff_role
+     * Delete a custom (non-system) staff role.
+     */
+    public function delete_staff_role()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'delete_staff_role');
+        $roleId = trim($this->input->post('role_id', TRUE) ?? '');
+        if ($roleId === '') return $this->json_error('role_id is required.');
+
+        $path = "Schools/{$this->school_name}/Config/StaffRoles/{$roleId}";
+        $existing = $this->firebase->get($path);
+        if (!is_array($existing)) return $this->json_error('Role not found.');
+        if (!empty($existing['is_system'])) return $this->json_error('System roles cannot be deleted.');
+
+        $this->firebase->delete("Schools/{$this->school_name}/Config/StaffRoles", $roleId);
+        $this->json_success(['message' => 'Staff role deleted.']);
+    }
+
+    /**
+     * POST /staff/get_staff_by_role
+     * Returns staff list filtered by a specific role.
+     */
+    public function get_staff_by_role()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'get_staff_by_role');
+        $roleId = trim($this->input->post('role_id', TRUE) ?? '');
+        if ($roleId === '') return $this->json_error('role_id is required.');
+
+        $school_id    = $this->parent_db_key;
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        $allStaff = $this->firebase->get("Users/Teachers/{$school_id}") ?? [];
+        if (!is_array($allStaff)) $allStaff = [];
+        $allStaff = array_filter($allStaff, 'is_array');
+
+        // Session isolation
+        $roster = $this->firebase->get("Schools/{$school_name}/{$session_year}/Teachers") ?? [];
+        if (is_array($roster) && !empty($roster)) {
+            $allStaff = array_intersect_key($allStaff, $roster);
+        } else {
+            $allStaff = [];
+        }
+
+        $filtered = [];
+        foreach ($allStaff as $sid => $s) {
+            $roles = $s['staff_roles'] ?? [];
+            // Fallback for unmigrated staff
+            if (empty($roles)) {
+                $roles = $this->_infer_roles_from_position($s['Position'] ?? '');
+            }
+            if (in_array($roleId, $roles, true)) {
+                $filtered[] = [
+                    'id'           => $sid,
+                    'name'         => $s['Name'] ?? $sid,
+                    'department'   => $s['Department'] ?? '',
+                    'position'     => $s['Position'] ?? '',
+                    'staff_roles'  => $roles,
+                    'primary_role' => $s['primary_role'] ?? ($roles[0] ?? ''),
+                    'phone'        => $s['Phone Number'] ?? '',
+                ];
+            }
+        }
+
+        $this->json_success(['staff' => $filtered, 'role_id' => $roleId]);
+    }
+
+    /**
+     * POST /staff/migrate_staff_roles
+     * One-shot bulk migration: infer roles from Position field for all staff
+     * that don't have staff_roles set yet. Admin-triggered only.
+     */
+    public function migrate_staff_roles()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'migrate_staff_roles');
+        $school_id    = $this->parent_db_key;
+        $school_name  = $this->school_name;
+        $session_year = $this->session_year;
+
+        $allStaff = $this->firebase->get("Users/Teachers/{$school_id}") ?? [];
+        if (!is_array($allStaff)) $allStaff = [];
+        $allStaff = array_filter($allStaff, 'is_array');
+
+        $migrated = 0;
+        $skipped  = 0;
+        $errors   = 0;
+
+        foreach ($allStaff as $sid => $s) {
+            // Skip if already has staff_roles
+            if (!empty($s['staff_roles']) && is_array($s['staff_roles'])) {
+                $skipped++;
+                continue;
+            }
+
+            $position = $s['Position'] ?? '';
+            $roleIds  = $this->_infer_roles_from_position($position);
+            $primary  = $roleIds[0] ?? 'ROLE_TEACHER';
+
+            $ok = $this->firebase->update("Users/Teachers/{$school_id}/{$sid}", [
+                'staff_roles'  => $roleIds,
+                'primary_role' => $primary,
+            ]);
+
+            if ($ok !== false) {
+                // Update roster if exists
+                $rosterPath = "Schools/{$school_name}/{$session_year}/Teachers/{$sid}";
+                $rosterData = $this->firebase->get($rosterPath);
+                if (is_array($rosterData)) {
+                    $this->firebase->update($rosterPath, ['roles' => $roleIds]);
+                }
+                $migrated++;
+            } else {
+                $errors++;
+            }
+        }
+
+        $this->json_success([
+            'message'  => "{$migrated} staff migrated, {$skipped} already had roles, {$errors} errors.",
+            'migrated' => $migrated,
+            'skipped'  => $skipped,
+            'errors'   => $errors,
+        ]);
     }
 }

@@ -2,249 +2,404 @@
 
 <style>
 :root {
-    --att-primary: var(--gold);
-    --att-bg: var(--bg);
-    --att-bg2: var(--bg2);
-    --att-bg3: var(--bg3);
-    --att-bg4: var(--bg4);
-    --att-border: var(--border);
-    --att-text: var(--t1);
-    --att-text2: var(--t2);
-    --att-text3: var(--t3);
-    --att-shadow: var(--sh);
-    --att-card: var(--card, var(--bg2));
-    --att-ease: var(--ease);
-    --att-r: var(--r-sm, 8px);
-    --att-font: var(--font-b, 'Plus Jakarta Sans', sans-serif);
-    --att-font-m: var(--font-m, 'JetBrains Mono', monospace);
+    --sa-primary: var(--gold, #0f766e);
+    --sa-primary-dim: var(--gold-dim, rgba(15,118,110,.10));
+    --sa-primary-ring: var(--gold-ring, rgba(15,118,110,.22));
+    --sa-bg: var(--bg, #f0f7f5);
+    --sa-bg2: var(--bg2, #ffffff);
+    --sa-bg3: var(--bg3, #e6f4f1);
+    --sa-bg4: var(--bg4, #cce9e4);
+    --sa-border: var(--border, #d1ddd9);
+    --sa-t1: var(--t1, #1a1a2e);
+    --sa-t2: var(--t2, #475569);
+    --sa-t3: var(--t3, #94a3b8);
+    --sa-shadow: var(--sh, 0 1px 3px rgba(0,0,0,.06));
+    --sa-card: var(--card, var(--bg2, #fff));
+    --sa-ease: var(--ease, all .2s ease);
+    --sa-r: 10px;
+    --sa-font: var(--font-b, 'Plus Jakarta Sans', sans-serif);
+    --sa-mono: var(--font-m, 'JetBrains Mono', monospace);
 
-    --att-p: #16a34a;
-    --att-a: #dc2626;
-    --att-l: #d97706;
-    --att-t: #2563eb;
-    --att-h: #7c3aed;
-    --att-v: #9ca3af;
+    --sa-p: #10b981;
+    --sa-a: #ef4444;
+    --sa-l: #f59e0b;
+    --sa-t: #3b82f6;
+    --sa-h: #8b5cf6;
+    --sa-v: #94a3b8;
 
-    --att-p-bg: rgba(22,163,74,.15);
-    --att-a-bg: rgba(220,38,38,.15);
-    --att-l-bg: rgba(217,119,6,.15);
-    --att-t-bg: rgba(37,99,235,.15);
-    --att-h-bg: rgba(124,58,237,.15);
-    --att-v-bg: rgba(156,163,175,.12);
+    --sa-p-bg: rgba(16,185,129,.12);
+    --sa-a-bg: rgba(239,68,68,.12);
+    --sa-l-bg: rgba(245,158,11,.12);
+    --sa-t-bg: rgba(59,130,246,.12);
+    --sa-h-bg: rgba(139,92,246,.12);
+    --sa-v-bg: rgba(148,163,184,.10);
 
-    --att-dirty: rgba(234,179,8,.45);
-    --att-sunday: rgba(156,163,175,.08);
-    --att-holiday: rgba(124,58,237,.08);
+    --sa-p-bg2: rgba(16,185,129,.22);
+    --sa-a-bg2: rgba(239,68,68,.22);
+    --sa-l-bg2: rgba(245,158,11,.22);
+
+    --sa-dirty: rgba(234,179,8,.50);
+    --sa-sun-bg: rgba(148,163,184,.06);
+    --sa-hol-bg: rgba(139,92,246,.06);
 }
 
-/* ── Filter Bar ── */
-.att-filter-bar {
-    display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
-    padding: 18px 20px; border-radius: var(--att-r);
-    background: var(--att-card); border: 1px solid var(--att-border);
-    box-shadow: var(--att-shadow); margin-bottom: 16px;
+/* ── Page Header ── */
+.sa-page-head {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:20px; flex-wrap:wrap; gap:10px;
 }
-.att-filter-bar .att-fg { display: flex; flex-direction: column; gap: 4px; }
-.att-filter-bar label {
-    font-family: var(--att-font); font-size: 11px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: .5px; color: var(--att-text3);
+.sa-page-title {
+    font-family:var(--sa-font); font-weight:800; font-size:20px;
+    color:var(--sa-t1); margin:0; display:flex; align-items:center; gap:10px;
 }
-.att-filter-bar select, .att-filter-bar button {
-    font-family: var(--att-font); font-size: 13px; height: 38px;
-    border-radius: 6px; padding: 0 12px; border: 1px solid var(--att-border);
-    background: var(--att-bg); color: var(--att-text); transition: var(--att-ease);
+.sa-page-title i { color:var(--sa-primary); font-size:22px; }
+.sa-page-sub {
+    font-family:var(--sa-font); font-size:13px; color:var(--sa-t3); margin:2px 0 0;
 }
-.att-filter-bar select:focus { outline: none; border-color: var(--att-primary); box-shadow: 0 0 0 3px rgba(15,118,110,.15); }
-.att-filter-bar select { min-width: 150px; cursor: pointer; }
-.att-btn {
-    font-family: var(--att-font); font-size: 13px; font-weight: 600;
-    border: none; border-radius: 6px; padding: 0 20px; height: 38px;
-    cursor: pointer; transition: var(--att-ease); display: inline-flex;
-    align-items: center; gap: 6px;
+.sa-badge-month {
+    display:inline-flex; align-items:center; gap:5px;
+    font-family:var(--sa-font); font-size:12px; font-weight:600;
+    background:var(--sa-primary-dim); color:var(--sa-primary);
+    padding:4px 12px; border-radius:20px; display:none;
 }
-.att-btn-primary { background: var(--att-primary); color: #fff; }
-.att-btn-primary:hover { opacity: .88; }
-.att-btn-primary:disabled { opacity: .45; cursor: not-allowed; }
-.att-btn-sm { height: 32px; padding: 0 14px; font-size: 12px; }
-.att-btn-outline {
-    background: transparent; border: 1px solid var(--att-border);
-    color: var(--att-text2);
+
+/* ── Filter Card ── */
+.sa-filter-card {
+    display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end;
+    padding:20px 22px; border-radius:var(--sa-r);
+    background:var(--sa-card); border:1px solid var(--sa-border);
+    box-shadow:var(--sa-shadow); margin-bottom:18px;
 }
-.att-btn-outline:hover { background: var(--att-bg3); }
+.sa-fg { display:flex; flex-direction:column; gap:5px; }
+.sa-fg label {
+    font-family:var(--sa-font); font-size:10.5px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.8px; color:var(--sa-t3);
+}
+.sa-fg select {
+    font-family:var(--sa-font); font-size:13px; height:40px;
+    border-radius:8px; padding:0 14px; border:1px solid var(--sa-border);
+    background:var(--sa-bg); color:var(--sa-t1); cursor:pointer;
+    transition:var(--sa-ease); min-width:160px; appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 12px center;
+    padding-right:32px;
+}
+.sa-fg select:focus {
+    outline:none; border-color:var(--sa-primary);
+    box-shadow:0 0 0 3px var(--sa-primary-ring);
+}
+.sa-btn {
+    font-family:var(--sa-font); font-size:13px; font-weight:700;
+    border:none; border-radius:8px; padding:0 22px; height:40px;
+    cursor:pointer; transition:var(--sa-ease); display:inline-flex;
+    align-items:center; gap:7px; letter-spacing:.2px;
+}
+.sa-btn-primary {
+    background:var(--sa-primary); color:#fff;
+    box-shadow:0 2px 8px rgba(15,118,110,.25);
+}
+.sa-btn-primary:hover { opacity:.9; transform:translateY(-1px); box-shadow:0 4px 12px rgba(15,118,110,.3); }
+.sa-btn-primary:active { transform:translateY(0); }
+.sa-btn-primary:disabled { opacity:.4; cursor:not-allowed; transform:none; box-shadow:none; }
+.sa-btn-sm { height:34px; padding:0 14px; font-size:12px; border-radius:7px; }
+.sa-btn-outline {
+    background:transparent; border:1.5px solid var(--sa-border); color:var(--sa-t2);
+}
+.sa-btn-outline:hover { background:var(--sa-bg3); border-color:var(--sa-primary); color:var(--sa-primary); }
+.sa-btn-ghost {
+    background:transparent; border:none; color:var(--sa-t3);
+    padding:0 10px;
+}
+.sa-btn-ghost:hover { color:var(--sa-primary); }
+
+/* ── Stats Strip ── */
+.sa-stats-strip {
+    display:none; gap:10px; margin-bottom:16px;
+    grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));
+}
+.sa-stats-strip.visible { display:grid; }
+.sa-stat-card {
+    padding:14px 16px; border-radius:var(--sa-r);
+    background:var(--sa-card); border:1px solid var(--sa-border);
+    box-shadow:var(--sa-shadow); text-align:center;
+    transition:var(--sa-ease);
+}
+.sa-stat-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.08); }
+.sa-stat-num {
+    font-family:var(--sa-mono); font-size:24px; font-weight:800;
+    line-height:1.1;
+}
+.sa-stat-label {
+    font-family:var(--sa-font); font-size:10.5px; font-weight:600;
+    text-transform:uppercase; letter-spacing:.6px; color:var(--sa-t3);
+    margin-top:4px;
+}
 
 /* ── Toolbar ── */
-.att-toolbar {
-    display: none; flex-wrap: wrap; gap: 10px; align-items: center;
-    padding: 14px 20px; border-radius: var(--att-r);
-    background: var(--att-card); border: 1px solid var(--att-border);
-    box-shadow: var(--att-shadow); margin-bottom: 16px;
+.sa-toolbar {
+    display:none; flex-wrap:wrap; gap:10px; align-items:center;
+    padding:12px 18px; border-radius:var(--sa-r);
+    background:var(--sa-card); border:1px solid var(--sa-border);
+    box-shadow:var(--sa-shadow); margin-bottom:16px;
 }
-.att-toolbar.visible { display: flex; }
-.att-toolbar-section { display: flex; gap: 8px; align-items: center; }
-.att-toolbar-divider { width: 1px; height: 28px; background: var(--att-border); margin: 0 6px; }
-.att-day-picker {
-    width: 56px; height: 32px; text-align: center; font-family: var(--att-font-m);
-    font-size: 13px; border: 1px solid var(--att-border); border-radius: 6px;
-    background: var(--att-bg); color: var(--att-text);
+.sa-toolbar.visible { display:flex; }
+.sa-toolbar-group { display:flex; gap:8px; align-items:center; }
+.sa-toolbar-sep { width:1px; height:26px; background:var(--sa-border); margin:0 4px; }
+.sa-day-input {
+    width:52px; height:34px; text-align:center; font-family:var(--sa-mono);
+    font-size:13px; font-weight:600; border:1.5px solid var(--sa-border); border-radius:7px;
+    background:var(--sa-bg); color:var(--sa-t1); transition:var(--sa-ease);
 }
-.att-day-picker:focus { outline: none; border-color: var(--att-primary); }
+.sa-day-input:focus { outline:none; border-color:var(--sa-primary); box-shadow:0 0 0 3px var(--sa-primary-ring); }
 
 /* ── Legend ── */
-.att-legend {
-    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
-    margin-left: auto; font-family: var(--att-font); font-size: 12px; color: var(--att-text2);
+.sa-legend {
+    display:flex; flex-wrap:wrap; gap:14px; align-items:center;
+    margin-left:auto; font-family:var(--sa-font); font-size:11.5px; color:var(--sa-t2);
 }
-.att-legend-item { display: flex; align-items: center; gap: 4px; }
-.att-legend-dot {
-    width: 14px; height: 14px; border-radius: 4px; display: inline-flex;
-    align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: #fff;
+.sa-legend-chip {
+    display:inline-flex; align-items:center; gap:5px;
+    padding:3px 10px 3px 4px; border-radius:6px;
+    background:var(--sa-bg); border:1px solid var(--sa-border);
+}
+.sa-legend-pip {
+    width:22px; height:22px; border-radius:5px; display:inline-flex;
+    align-items:center; justify-content:center;
+    font-size:10px; font-weight:800; color:#fff;
 }
 
-/* ── Grid Table ── */
-.att-grid-wrap {
-    border-radius: var(--att-r); background: var(--att-card);
-    border: 1px solid var(--att-border); box-shadow: var(--att-shadow);
-    overflow: auto; max-height: calc(100vh - 260px);
+/* ── Attendance Grid ── */
+.sa-grid-wrap {
+    border-radius:var(--sa-r); background:var(--sa-card);
+    border:1px solid var(--sa-border); box-shadow:var(--sa-shadow);
+    overflow:auto; max-height:calc(100vh - 280px);
+    scrollbar-width:thin; scrollbar-color:var(--sa-border) transparent;
 }
-.att-grid {
-    width: max-content; min-width: 100%; border-collapse: separate;
-    border-spacing: 0; font-family: var(--att-font);
-}
-.att-grid thead { position: sticky; top: 0; z-index: 10; }
-.att-grid th {
-    background: var(--att-bg3); color: var(--att-text2); font-size: 11px;
-    font-weight: 600; text-transform: uppercase; letter-spacing: .3px;
-    padding: 10px 6px; text-align: center; white-space: nowrap;
-    border-bottom: 2px solid var(--att-border);
-}
-.att-grid th.att-th-name { text-align: left; padding-left: 14px; min-width: 160px; }
-.att-grid th.att-th-id { text-align: left; min-width: 90px; }
-.att-grid th.att-th-summary { min-width: 110px; }
-.att-grid th.att-th-day { width: 36px; }
-.att-grid th.att-col-sunday { background: rgba(156,163,175,.14); }
-.att-grid th.att-col-holiday { background: rgba(124,58,237,.14); }
+.sa-grid-wrap::-webkit-scrollbar { width:6px; height:6px; }
+.sa-grid-wrap::-webkit-scrollbar-thumb { background:var(--sa-border); border-radius:3px; }
 
-.att-grid td {
-    padding: 4px; text-align: center; border-bottom: 1px solid var(--att-border);
-    font-size: 13px; color: var(--att-text); vertical-align: middle;
+.sa-grid {
+    width:max-content; min-width:100%; border-collapse:separate;
+    border-spacing:0; font-family:var(--sa-font);
 }
-.att-grid td.att-td-idx { font-family: var(--att-font-m); font-size: 12px; color: var(--att-text3); padding: 4px 8px; }
-.att-grid td.att-td-name {
-    text-align: left; padding-left: 14px; font-weight: 500;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;
-}
-.att-grid td.att-td-id {
-    text-align: left; font-family: var(--att-font-m); font-size: 11px; color: var(--att-text3);
-}
-.att-grid td.att-td-summary {
-    font-family: var(--att-font-m); font-size: 11px; white-space: nowrap;
-}
-.att-grid td.att-col-sunday { background: var(--att-sunday); }
-.att-grid td.att-col-holiday { background: var(--att-holiday); }
 
-.att-grid tbody tr:hover td { background: var(--att-bg3); }
-.att-grid tbody tr:hover td.att-col-sunday { background: rgba(156,163,175,.14); }
-.att-grid tbody tr:hover td.att-col-holiday { background: rgba(124,58,237,.14); }
+/* ── Sticky columns ── */
+.sa-grid th:nth-child(1),
+.sa-grid td:nth-child(1),
+.sa-grid th:nth-child(2),
+.sa-grid td:nth-child(2) { position:sticky; z-index:5; }
+.sa-grid th:nth-child(1),
+.sa-grid td:nth-child(1) { left:0; }
+.sa-grid th:nth-child(2),
+.sa-grid td:nth-child(2) { left:42px; }
+.sa-grid td:nth-child(1),
+.sa-grid td:nth-child(2) { background:var(--sa-card); }
+
+.sa-grid thead { position:sticky; top:0; z-index:12; }
+.sa-grid thead th:nth-child(1),
+.sa-grid thead th:nth-child(2) { z-index:15; }
+
+.sa-grid th {
+    background:var(--sa-bg3); color:var(--sa-t3); font-size:10px;
+    font-weight:700; text-transform:uppercase; letter-spacing:.5px;
+    padding:11px 6px; text-align:center; white-space:nowrap;
+    border-bottom:2px solid var(--sa-border);
+}
+.sa-grid th.sa-th-idx { width:42px; text-align:center; padding-left:10px; }
+.sa-grid th.sa-th-student { text-align:left; padding-left:14px; min-width:200px; }
+.sa-grid th.sa-th-day { width:38px; }
+.sa-grid th.sa-th-pct { min-width:100px; }
+.sa-grid th.sa-col-sun { background:rgba(148,163,184,.12); }
+.sa-grid th.sa-col-hol { background:rgba(139,92,246,.12); }
+
+.sa-grid td {
+    padding:4px; text-align:center; border-bottom:1px solid var(--sa-border);
+    font-size:13px; color:var(--sa-t1); vertical-align:middle;
+}
+.sa-grid td.sa-td-idx {
+    font-family:var(--sa-mono); font-size:11px; color:var(--sa-t3);
+    padding:4px 8px; text-align:center;
+}
+.sa-grid td.sa-td-student {
+    text-align:left; padding:6px 14px;
+}
+.sa-td-student-inner {
+    display:flex; align-items:center; gap:10px;
+}
+.sa-avatar {
+    width:32px; height:32px; border-radius:8px; display:flex;
+    align-items:center; justify-content:center;
+    font-family:var(--sa-font); font-size:12px; font-weight:800;
+    color:#fff; flex-shrink:0; text-transform:uppercase;
+    background:var(--sa-primary);
+}
+.sa-avatar.av-1 { background:#0f766e; }
+.sa-avatar.av-2 { background:#7c3aed; }
+.sa-avatar.av-3 { background:#2563eb; }
+.sa-avatar.av-4 { background:#dc2626; }
+.sa-avatar.av-5 { background:#d97706; }
+.sa-avatar.av-6 { background:#059669; }
+
+.sa-stu-info { overflow:hidden; }
+.sa-stu-name {
+    font-weight:600; font-size:13px; color:var(--sa-t1);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:160px;
+    line-height:1.3;
+}
+.sa-stu-id {
+    font-family:var(--sa-mono); font-size:10px; color:var(--sa-t3);
+    letter-spacing:.3px;
+}
+
+.sa-grid td.sa-col-sun { background:var(--sa-sun-bg); }
+.sa-grid td.sa-col-hol { background:var(--sa-hol-bg); }
+
+.sa-grid td.sa-td-pct { padding:6px 10px; }
+.sa-pct-wrap {
+    display:flex; align-items:center; gap:8px;
+}
+.sa-pct-bar-track {
+    flex:1; height:6px; border-radius:3px; background:var(--sa-bg3);
+    overflow:hidden; min-width:40px;
+}
+.sa-pct-bar-fill {
+    height:100%; border-radius:3px; transition:width .4s ease;
+}
+.sa-pct-num {
+    font-family:var(--sa-mono); font-size:11px; font-weight:700;
+    min-width:32px; text-align:right;
+}
+.sa-pct-counts {
+    font-family:var(--sa-mono); font-size:10px; color:var(--sa-t3);
+    display:flex; gap:6px; margin-top:2px;
+}
+
+.sa-grid tbody tr { transition:background .15s ease; }
+.sa-grid tbody tr:hover td { background:var(--sa-bg3); }
+.sa-grid tbody tr:hover td:nth-child(1),
+.sa-grid tbody tr:hover td:nth-child(2) { background:var(--sa-bg3); }
+.sa-grid tbody tr:hover td.sa-col-sun { background:rgba(148,163,184,.12); }
+.sa-grid tbody tr:hover td.sa-col-hol { background:rgba(139,92,246,.12); }
 
 /* ── Day Cells ── */
-.att-cell {
-    width: 32px; height: 32px; border-radius: 6px; display: inline-flex;
-    align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
-    cursor: pointer; user-select: none; transition: transform .1s, box-shadow .15s;
-    position: relative; line-height: 1;
+.sa-cell {
+    width:30px; height:30px; border-radius:7px; display:inline-flex;
+    align-items:center; justify-content:center; font-size:10px; font-weight:800;
+    cursor:pointer; user-select:none; transition:transform .12s ease, box-shadow .15s ease;
+    position:relative; line-height:1; letter-spacing:.3px;
 }
-.att-cell:hover { transform: scale(1.12); }
-.att-cell:active { transform: scale(.95); }
-.att-cell.att-dirty { box-shadow: 0 0 0 2px var(--att-dirty); }
+.sa-cell:hover { transform:scale(1.18); z-index:2; }
+.sa-cell:active { transform:scale(.92); }
+.sa-cell.sa-dirty { box-shadow:0 0 0 2.5px var(--sa-dirty); }
 
-.att-cell[data-v="P"] { background: var(--att-p-bg); color: var(--att-p); }
-.att-cell[data-v="A"] { background: var(--att-a-bg); color: var(--att-a); }
-.att-cell[data-v="L"] { background: var(--att-l-bg); color: var(--att-l); }
-.att-cell[data-v="T"] { background: var(--att-t-bg); color: var(--att-t); }
-.att-cell[data-v="H"] { background: var(--att-h-bg); color: var(--att-h); }
-.att-cell[data-v="V"] { background: var(--att-v-bg); color: var(--att-v); }
+.sa-cell[data-v="P"] { background:var(--sa-p-bg); color:var(--sa-p); }
+.sa-cell[data-v="A"] { background:var(--sa-a-bg); color:var(--sa-a); }
+.sa-cell[data-v="L"] { background:var(--sa-l-bg); color:var(--sa-l); }
+.sa-cell[data-v="T"] { background:var(--sa-t-bg); color:var(--sa-t); }
+.sa-cell[data-v="H"] { background:var(--sa-h-bg); color:var(--sa-h); }
+.sa-cell[data-v="V"] { background:var(--sa-v-bg); color:var(--sa-v); }
 
-.att-cell .att-clock {
-    position: absolute; top: -3px; right: -3px; width: 12px; height: 12px;
-    font-size: 8px; display: flex; align-items: center; justify-content: center;
-    background: var(--att-t); color: #fff; border-radius: 50%;
+.sa-cell .sa-late-dot {
+    position:absolute; top:-2px; right:-2px; width:10px; height:10px;
+    background:var(--sa-t); border-radius:50%;
+    border:2px solid var(--sa-card);
 }
 
 /* ── Toast ── */
-.att-toast {
-    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
-    padding: 12px 22px; border-radius: 8px; font-family: var(--att-font);
-    font-size: 13px; font-weight: 600; color: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.25);
-    transform: translateY(100px); opacity: 0; transition: all .3s ease;
-    pointer-events: none;
+.sa-toast {
+    position:fixed; bottom:24px; right:24px; z-index:9999;
+    padding:14px 24px; border-radius:10px; font-family:var(--sa-font);
+    font-size:13px; font-weight:600; color:#fff;
+    box-shadow:0 10px 30px rgba(0,0,0,.2);
+    transform:translateY(120px); opacity:0; transition:all .35s cubic-bezier(.4,0,.2,1);
+    pointer-events:none; display:flex; align-items:center; gap:8px;
 }
-.att-toast.show { transform: translateY(0); opacity: 1; }
-.att-toast.success { background: var(--att-p); }
-.att-toast.error { background: var(--att-a); }
+.sa-toast.show { transform:translateY(0); opacity:1; }
+.sa-toast.success { background:var(--sa-p); }
+.sa-toast.error { background:var(--sa-a); }
 
 /* ── Modal ── */
-.att-modal-overlay {
-    position: fixed; inset: 0; z-index: 9998; background: rgba(0,0,0,.5);
-    display: none; align-items: center; justify-content: center;
-    backdrop-filter: blur(4px);
+.sa-modal-overlay {
+    position:fixed; inset:0; z-index:9998; background:rgba(0,0,0,.45);
+    display:none; align-items:center; justify-content:center;
+    backdrop-filter:blur(6px);
 }
-.att-modal-overlay.open { display: flex; }
-.att-modal {
-    background: var(--att-card); border: 1px solid var(--att-border);
-    border-radius: var(--att-r); box-shadow: 0 16px 48px rgba(0,0,0,.3);
-    width: 420px; max-width: 92vw; max-height: 80vh; overflow-y: auto;
-    padding: 24px;
+.sa-modal-overlay.open { display:flex; }
+.sa-modal {
+    background:var(--sa-card); border:1px solid var(--sa-border);
+    border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.25);
+    width:440px; max-width:92vw; max-height:80vh; overflow-y:auto;
+    padding:28px; animation:sa-modal-in .25s ease;
 }
-.att-modal h3 {
-    font-family: var(--att-font); font-size: 16px; font-weight: 700;
-    color: var(--att-text); margin: 0 0 16px;
+@keyframes sa-modal-in {
+    from { opacity:0; transform:scale(.95) translateY(10px); }
+    to { opacity:1; transform:scale(1) translateY(0); }
 }
-.att-modal-close {
-    float: right; background: none; border: none; font-size: 18px;
-    color: var(--att-text3); cursor: pointer; padding: 0; line-height: 1;
+.sa-modal-head {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:20px;
 }
-.att-modal-close:hover { color: var(--att-text); }
-.att-modal-stat {
-    display: flex; justify-content: space-between; padding: 8px 0;
-    border-bottom: 1px solid var(--att-border); font-family: var(--att-font);
-    font-size: 13px; color: var(--att-text2);
+.sa-modal h3 {
+    font-family:var(--sa-font); font-size:16px; font-weight:700;
+    color:var(--sa-t1); margin:0;
 }
-.att-modal-stat span:last-child { font-weight: 600; color: var(--att-text); }
-.att-modal-bar-wrap {
-    margin-top: 16px; height: 10px; border-radius: 5px;
-    background: var(--att-bg3); overflow: hidden; display: flex;
+.sa-modal-close {
+    width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+    background:var(--sa-bg3); border:none; border-radius:8px; font-size:16px;
+    color:var(--sa-t3); cursor:pointer; transition:var(--sa-ease);
 }
-.att-modal-bar-seg { height: 100%; transition: width .3s ease; }
+.sa-modal-close:hover { background:var(--sa-a-bg); color:var(--sa-a); }
+.sa-modal-stat {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 0; border-bottom:1px solid var(--sa-border);
+    font-family:var(--sa-font); font-size:13px; color:var(--sa-t2);
+}
+.sa-modal-stat:last-of-type { border-bottom:none; }
+.sa-modal-stat span:last-child { font-weight:700; color:var(--sa-t1); }
+.sa-modal-stat .sa-stat-dot {
+    width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px;
+}
+.sa-modal-bar-wrap {
+    margin-top:18px; height:10px; border-radius:5px;
+    background:var(--sa-bg3); overflow:hidden; display:flex;
+}
+.sa-modal-bar-seg { height:100%; transition:width .4s ease; }
 
 /* ── Loading ── */
-.att-loading {
-    display: none; text-align: center; padding: 48px 20px;
-    font-family: var(--att-font); font-size: 14px; color: var(--att-text3);
+.sa-loading {
+    display:none; text-align:center; padding:60px 20px;
+    font-family:var(--sa-font); font-size:14px; color:var(--sa-t3);
 }
-.att-loading.visible { display: block; }
-.att-spinner {
-    width: 32px; height: 32px; border: 3px solid var(--att-border);
-    border-top-color: var(--att-primary); border-radius: 50%;
-    animation: att-spin .7s linear infinite; margin: 0 auto 12px;
+.sa-loading.visible { display:block; }
+.sa-spinner {
+    width:36px; height:36px; border:3px solid var(--sa-border);
+    border-top-color:var(--sa-primary); border-radius:50%;
+    animation:sa-spin .7s linear infinite; margin:0 auto 14px;
 }
-@keyframes att-spin { to { transform: rotate(360deg); } }
+@keyframes sa-spin { to { transform:rotate(360deg); } }
 
 /* ── Empty State ── */
-.att-empty {
-    text-align: center; padding: 60px 20px; font-family: var(--att-font);
-    color: var(--att-text3);
+.sa-empty {
+    text-align:center; padding:70px 20px; font-family:var(--sa-font); color:var(--sa-t3);
 }
-.att-empty i { font-size: 48px; margin-bottom: 12px; display: block; opacity: .4; }
-.att-empty p { font-size: 14px; margin: 0; }
+.sa-empty i { font-size:52px; margin-bottom:14px; display:block; opacity:.3; }
+.sa-empty p { font-size:14px; margin:4px 0 0; }
+.sa-empty strong { color:var(--sa-t2); }
 
 /* ── Responsive ── */
-@media (max-width: 767px) {
-    .att-filter-bar { flex-direction: column; align-items: stretch; }
-    .att-filter-bar select { min-width: 100%; }
-    .att-toolbar { flex-direction: column; align-items: stretch; }
-    .att-legend { margin-left: 0; margin-top: 8px; }
-    .att-toolbar-divider { display: none; }
-    .att-modal { padding: 16px; }
+@media (max-width:767px) {
+    .sa-filter-card { flex-direction:column; align-items:stretch; }
+    .sa-fg select { min-width:100%; }
+    .sa-toolbar { flex-direction:column; align-items:stretch; }
+    .sa-legend { margin-left:0; margin-top:8px; }
+    .sa-toolbar-sep { display:none; }
+    .sa-stats-strip.visible { grid-template-columns:repeat(2, 1fr); }
+    .sa-modal { padding:18px; }
+    .sa-page-head { flex-direction:column; align-items:flex-start; }
+    .sa-grid th.sa-th-student { min-width:140px; }
+    .sa-grid th:nth-child(2),
+    .sa-grid td:nth-child(2) { left:36px; }
+    .sa-grid th:nth-child(1) { width:36px; }
 }
 </style>
 
@@ -253,19 +408,21 @@
 <div class="container-fluid">
 
     <!-- Page Header -->
-    <div style="margin-bottom:18px;">
-        <h4 style="font-family:var(--att-font);font-weight:700;color:var(--att-text);margin:0 0 4px;">
-            <i class="fa fa-calendar-check-o" style="color:var(--att-primary);margin-right:6px;"></i>
-            Student Attendance
-        </h4>
-        <p style="font-family:var(--att-font);font-size:13px;color:var(--att-text3);margin:0;">
-            Mark daily attendance for students by class and section
-        </p>
+    <div class="sa-page-head">
+        <div>
+            <h4 class="sa-page-title">
+                <i class="fa fa-calendar-check-o"></i> Student Attendance
+            </h4>
+            <p class="sa-page-sub">Mark and manage daily student attendance by class &amp; section</p>
+        </div>
+        <span class="sa-badge-month" id="saMonthBadge">
+            <i class="fa fa-calendar"></i> <span id="saMonthLabel"></span>
+        </span>
     </div>
 
-    <!-- Filter Bar -->
-    <div class="att-filter-bar">
-        <div class="att-fg">
+    <!-- Filter Card -->
+    <div class="sa-filter-card">
+        <div class="sa-fg">
             <label for="attClass">Class</label>
             <select id="attClass">
                 <option value="">Select Class</option>
@@ -283,13 +440,13 @@
                 ?>
             </select>
         </div>
-        <div class="att-fg">
+        <div class="sa-fg">
             <label for="attSection">Section</label>
             <select id="attSection" disabled>
                 <option value="">Select Section</option>
             </select>
         </div>
-        <div class="att-fg">
+        <div class="sa-fg">
             <label for="attMonth">Month</label>
             <select id="attMonth">
                 <?php
@@ -304,76 +461,106 @@
                 ?>
             </select>
         </div>
-        <div class="att-fg" style="align-self:flex-end;">
-            <button type="button" class="att-btn att-btn-primary" id="attLoadBtn">
-                <i class="fa fa-search"></i> Load
+        <div class="sa-fg" style="align-self:flex-end;">
+            <button type="button" class="sa-btn sa-btn-primary" id="attLoadBtn">
+                <i class="fa fa-search"></i> Load Attendance
             </button>
+        </div>
+    </div>
+
+    <!-- Stats Strip -->
+    <div class="sa-stats-strip" id="saStatsStrip">
+        <div class="sa-stat-card">
+            <div class="sa-stat-num" style="color:var(--sa-t1)" id="ssTotalStudents">0</div>
+            <div class="sa-stat-label">Students</div>
+        </div>
+        <div class="sa-stat-card">
+            <div class="sa-stat-num" style="color:var(--sa-p)" id="ssTotalPresent">0</div>
+            <div class="sa-stat-label">Total Present</div>
+        </div>
+        <div class="sa-stat-card">
+            <div class="sa-stat-num" style="color:var(--sa-a)" id="ssTotalAbsent">0</div>
+            <div class="sa-stat-label">Total Absent</div>
+        </div>
+        <div class="sa-stat-card">
+            <div class="sa-stat-num" style="color:var(--sa-l)" id="ssTotalLeave">0</div>
+            <div class="sa-stat-label">On Leave</div>
+        </div>
+        <div class="sa-stat-card">
+            <div class="sa-stat-num" style="color:var(--sa-primary)" id="ssAvgPct">0%</div>
+            <div class="sa-stat-label">Avg Attendance</div>
         </div>
     </div>
 
     <!-- Toolbar -->
-    <div class="att-toolbar" id="attToolbar">
-        <div class="att-toolbar-section">
-            <button type="button" class="att-btn att-btn-primary att-btn-sm" id="attSaveBtn" disabled>
+    <div class="sa-toolbar" id="attToolbar">
+        <div class="sa-toolbar-group">
+            <button type="button" class="sa-btn sa-btn-primary sa-btn-sm" id="attSaveBtn" disabled>
                 <i class="fa fa-save"></i> Save Changes
             </button>
+            <span id="saDirtyCount" style="font-family:var(--sa-font);font-size:11px;color:var(--sa-t3);display:none;">
+                <i class="fa fa-pencil"></i> <em id="saDirtyNum">0</em> modified
+            </span>
         </div>
-        <div class="att-toolbar-divider"></div>
-        <div class="att-toolbar-section">
-            <label style="font-family:var(--att-font);font-size:12px;font-weight:600;color:var(--att-text3);">Day:</label>
-            <input type="number" id="attDayPicker" class="att-day-picker" min="1" max="31" value="1">
-            <button type="button" class="att-btn att-btn-outline att-btn-sm" data-bulk="P">
+        <div class="sa-toolbar-sep"></div>
+        <div class="sa-toolbar-group">
+            <label style="font-family:var(--sa-font);font-size:11px;font-weight:700;color:var(--sa-t3);letter-spacing:.5px;">DAY:</label>
+            <input type="number" id="attDayPicker" class="sa-day-input" min="1" max="31" value="1">
+            <button type="button" class="sa-btn sa-btn-outline sa-btn-sm" data-bulk="P">
                 <i class="fa fa-check"></i> All Present
             </button>
-            <button type="button" class="att-btn att-btn-outline att-btn-sm" data-bulk="A">
+            <button type="button" class="sa-btn sa-btn-outline sa-btn-sm" data-bulk="A">
                 <i class="fa fa-times"></i> All Absent
             </button>
-            <button type="button" class="att-btn att-btn-outline att-btn-sm" data-bulk="H">
+            <button type="button" class="sa-btn sa-btn-outline sa-btn-sm" data-bulk="H">
                 <i class="fa fa-star"></i> Holiday
             </button>
         </div>
-        <div class="att-toolbar-divider"></div>
-        <div class="att-legend">
-            <span class="att-legend-item"><span class="att-legend-dot" style="background:var(--att-p);">P</span> Present</span>
-            <span class="att-legend-item"><span class="att-legend-dot" style="background:var(--att-a);">A</span> Absent</span>
-            <span class="att-legend-item"><span class="att-legend-dot" style="background:var(--att-l);">L</span> Leave</span>
-            <span class="att-legend-item"><span class="att-legend-dot" style="background:var(--att-t);">T</span> Late</span>
-            <span class="att-legend-item"><span class="att-legend-dot" style="background:var(--att-h);">H</span> Holiday</span>
-            <span class="att-legend-item"><span class="att-legend-dot" style="background:var(--att-v);">V</span> Vacant</span>
+        <div class="sa-toolbar-sep"></div>
+        <div class="sa-legend">
+            <span class="sa-legend-chip"><span class="sa-legend-pip" style="background:var(--sa-p);">P</span> Present</span>
+            <span class="sa-legend-chip"><span class="sa-legend-pip" style="background:var(--sa-a);">A</span> Absent</span>
+            <span class="sa-legend-chip"><span class="sa-legend-pip" style="background:var(--sa-l);">L</span> Leave</span>
+            <span class="sa-legend-chip"><span class="sa-legend-pip" style="background:var(--sa-t);">T</span> Late</span>
+            <span class="sa-legend-chip"><span class="sa-legend-pip" style="background:var(--sa-h);">H</span> Holiday</span>
+            <span class="sa-legend-chip"><span class="sa-legend-pip" style="background:var(--sa-v);">V</span> Vacant</span>
         </div>
     </div>
 
     <!-- Loading -->
-    <div class="att-loading" id="attLoading">
-        <div class="att-spinner"></div>
+    <div class="sa-loading" id="attLoading">
+        <div class="sa-spinner"></div>
         Loading attendance data&hellip;
     </div>
 
     <!-- Empty State -->
-    <div class="att-empty" id="attEmpty" style="display:none;">
+    <div class="sa-empty" id="attEmpty" style="display:none;">
         <i class="fa fa-calendar-o"></i>
-        <p>Select a class, section, and month, then click Load.</p>
+        <p><strong>No data loaded</strong></p>
+        <p>Select a class, section, and month, then click <strong>Load Attendance</strong></p>
     </div>
 
     <!-- Grid -->
-    <div class="att-grid-wrap" id="attGridWrap" style="display:none;">
-        <table class="att-grid" id="attGrid">
+    <div class="sa-grid-wrap" id="attGridWrap" style="display:none;">
+        <table class="sa-grid" id="attGrid">
             <thead id="attGridHead"></thead>
             <tbody id="attGridBody"></tbody>
         </table>
     </div>
 
     <!-- Student Summary Modal -->
-    <div class="att-modal-overlay" id="attModal">
-        <div class="att-modal">
-            <button class="att-modal-close" id="attModalClose">&times;</button>
-            <h3 id="attModalTitle">Student Summary</h3>
+    <div class="sa-modal-overlay" id="attModal">
+        <div class="sa-modal">
+            <div class="sa-modal-head">
+                <h3 id="attModalTitle">Student Summary</h3>
+                <button class="sa-modal-close" id="attModalClose"><i class="fa fa-times"></i></button>
+            </div>
             <div id="attModalBody"></div>
         </div>
     </div>
 
     <!-- Toast -->
-    <div class="att-toast" id="attToast"></div>
+    <div class="sa-toast" id="attToast"></div>
 
 </div>
 </section>
@@ -389,6 +576,8 @@
 
     var classesData = <?= json_encode($Classes ?: []) ?>;
 
+    var AVATAR_COLORS = ['av-1','av-2','av-3','av-4','av-5','av-6'];
+
     /* ── State ── */
     var state = {
         students: [],
@@ -397,8 +586,8 @@
         holidays: {},
         month: '',
         year: 0,
-        attendance: {},   /* studentId -> array of day chars */
-        original: {},     /* studentId -> original string */
+        attendance: {},
+        original: {},
         dirty: new Set()
     };
 
@@ -419,6 +608,11 @@
     var elModalTitle = document.getElementById('attModalTitle');
     var elModalBody  = document.getElementById('attModalBody');
     var elToast    = document.getElementById('attToast');
+    var elStatsStrip = document.getElementById('saStatsStrip');
+    var elMonthBadge = document.getElementById('saMonthBadge');
+    var elMonthLabel = document.getElementById('saMonthLabel');
+    var elDirtyCount = document.getElementById('saDirtyCount');
+    var elDirtyNum   = document.getElementById('saDirtyNum');
 
     /* ── Helpers ── */
     function esc(s) {
@@ -435,9 +629,16 @@
         return CYCLE[(i + 1) % CYCLE.length];
     }
 
+    function getInitials(name) {
+        if (!name) return '?';
+        var parts = name.trim().split(/\s+/);
+        if (parts.length >= 2) return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+        return parts[0].substring(0,2).toUpperCase();
+    }
+
     function showToast(msg, type) {
-        elToast.textContent = msg;
-        elToast.className = 'att-toast ' + (type || 'success');
+        elToast.innerHTML = '<i class="fa fa-' + (type === 'error' ? 'exclamation-circle' : 'check-circle') + '"></i> ' + esc(msg);
+        elToast.className = 'sa-toast ' + (type || 'success');
         setTimeout(function(){ elToast.classList.add('show'); }, 10);
         setTimeout(function(){ elToast.classList.remove('show'); }, 3000);
     }
@@ -492,6 +693,8 @@
         elGridWrap.style.display = 'none';
         elEmpty.style.display = 'none';
         elToolbar.classList.remove('visible');
+        elStatsStrip.classList.remove('visible');
+        elMonthBadge.style.display = 'none';
         elLoading.classList.add('visible');
 
         postData('attendance/fetch_student', { 'class': cls, section: sec, month: mon })
@@ -526,9 +729,15 @@
                 elDayPick.max = state.daysInMonth;
                 if (parseInt(elDayPick.value, 10) > state.daysInMonth) elDayPick.value = 1;
 
+                /* Month badge */
+                elMonthLabel.textContent = state.month + ' ' + state.year;
+                elMonthBadge.style.display = 'inline-flex';
+
                 renderGrid();
+                updateStats();
                 elGridWrap.style.display = 'block';
                 elToolbar.classList.add('visible');
+                elStatsStrip.classList.add('visible');
                 updateSaveBtn();
             })
             .catch(function() {
@@ -538,6 +747,28 @@
             });
     }
 
+    /* ── Update Stats ── */
+    function updateStats() {
+        var totalP = 0, totalA = 0, totalL = 0, totalWorking = 0, totalPresent = 0;
+        state.students.forEach(function(s) {
+            var arr = state.attendance[s.id];
+            var c = {P:0,A:0,L:0,T:0,H:0,V:0};
+            arr.forEach(function(v){ if (c[v] !== undefined) c[v]++; });
+            totalP += c.P + c.T;
+            totalA += c.A;
+            totalL += c.L;
+            var w = state.daysInMonth - c.H - c.V;
+            totalWorking += w;
+            totalPresent += c.P + c.T;
+        });
+        document.getElementById('ssTotalStudents').textContent = state.students.length;
+        document.getElementById('ssTotalPresent').textContent = totalP;
+        document.getElementById('ssTotalAbsent').textContent = totalA;
+        document.getElementById('ssTotalLeave').textContent = totalL;
+        var avgPct = totalWorking > 0 ? Math.round(totalPresent / totalWorking * 100) : 0;
+        document.getElementById('ssAvgPct').textContent = avgPct + '%';
+    }
+
     /* ── Render Grid ── */
     function renderGrid() {
         var sundaySet = {};
@@ -545,70 +776,125 @@
         var holidaySet = {};
         Object.keys(state.holidays).forEach(function(d){ holidaySet[parseInt(d,10)] = state.holidays[d]; });
 
+        /* Day names for header */
+        var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
         /* Header */
-        var hHtml = '<tr><th class="att-th-idx">#</th><th class="att-th-name">Name</th><th class="att-th-id">ID</th>';
+        var hHtml = '<tr><th class="sa-th-idx">#</th><th class="sa-th-student">Student</th>';
         for (var d = 1; d <= state.daysInMonth; d++) {
-            var cls = 'att-th-day';
-            if (sundaySet[d]) cls += ' att-col-sunday';
-            if (holidaySet[d]) cls += ' att-col-holiday';
-            hHtml += '<th class="' + cls + '">' + d + '</th>';
+            var cls = 'sa-th-day';
+            if (sundaySet[d]) cls += ' sa-col-sun';
+            if (holidaySet[d]) cls += ' sa-col-hol';
+            var dt = new Date(state.year, getMonthIndex(state.month), d);
+            var dn = dayNames[dt.getDay()];
+            hHtml += '<th class="' + cls + '" title="' + dn + ', ' + state.month + ' ' + d + '">';
+            hHtml += '<div style="line-height:1.2">' + d + '</div>';
+            hHtml += '<div style="font-size:8px;opacity:.6;font-weight:500;letter-spacing:0">' + dn.charAt(0) + '</div>';
+            hHtml += '</th>';
         }
-        hHtml += '<th class="att-th-summary">Summary</th></tr>';
+        hHtml += '<th class="sa-th-pct">Attendance</th></tr>';
         elHead.innerHTML = hHtml;
 
         /* Body */
         var bHtml = '';
         state.students.forEach(function(s, idx) {
             var att = state.attendance[s.id];
+            var avColor = AVATAR_COLORS[idx % AVATAR_COLORS.length];
+
             bHtml += '<tr data-sid="' + esc(s.id) + '">';
-            bHtml += '<td class="att-td-idx">' + (idx + 1) + '</td>';
-            bHtml += '<td class="att-td-name" title="' + esc(s.name) + '">' + esc(s.name) + '</td>';
-            bHtml += '<td class="att-td-id">' + esc(s.id) + '</td>';
+            bHtml += '<td class="sa-td-idx">' + (idx + 1) + '</td>';
+            bHtml += '<td class="sa-td-student"><div class="sa-td-student-inner">';
+            bHtml += '<div class="sa-avatar ' + avColor + '">' + getInitials(s.name) + '</div>';
+            bHtml += '<div class="sa-stu-info">';
+            bHtml += '<div class="sa-stu-name" title="' + esc(s.name) + '">' + esc(s.name) + '</div>';
+            bHtml += '<div class="sa-stu-id">' + esc(s.id) + '</div>';
+            bHtml += '</div></div></td>';
+
             for (var d = 0; d < state.daysInMonth; d++) {
                 var day = d + 1;
                 var v = att[d];
                 var tdCls = '';
-                if (sundaySet[day]) tdCls += ' att-col-sunday';
-                if (holidaySet[day]) tdCls += ' att-col-holiday';
-                var dirtyMark = state.dirty.has(s.id) && att[d] !== state.original[s.id].charAt(d) ? ' att-dirty' : '';
-                var clock = v === 'T' ? '<span class="att-clock"><i class="fa fa-clock-o"></i></span>' : '';
+                if (sundaySet[day]) tdCls += ' sa-col-sun';
+                if (holidaySet[day]) tdCls += ' sa-col-hol';
+                var dirtyMark = state.dirty.has(s.id) && att[d] !== state.original[s.id].charAt(d) ? ' sa-dirty' : '';
+                var lateDot = v === 'T' ? '<span class="sa-late-dot"></span>' : '';
                 bHtml += '<td class="' + tdCls + '">';
-                bHtml += '<span class="att-cell' + dirtyMark + '" data-v="' + v + '" data-sid="' + esc(s.id) + '" data-d="' + d + '">';
-                bHtml += v + clock + '</span></td>';
+                bHtml += '<span class="sa-cell' + dirtyMark + '" data-v="' + v + '" data-sid="' + esc(s.id) + '" data-d="' + d + '">';
+                bHtml += v + lateDot + '</span></td>';
             }
-            bHtml += '<td class="att-td-summary">' + summaryText(att) + '</td>';
+
+            /* Percentage bar */
+            var c = {P:0,A:0,L:0,T:0,H:0,V:0};
+            att.forEach(function(v){ if (c[v] !== undefined) c[v]++; });
+            var working = state.daysInMonth - c.H - c.V;
+            var pct = working > 0 ? Math.round((c.P + c.T) / working * 100) : 0;
+            var barColor = pct >= 75 ? 'var(--sa-p)' : (pct >= 50 ? 'var(--sa-l)' : 'var(--sa-a)');
+
+            bHtml += '<td class="sa-td-pct"><div class="sa-pct-wrap">';
+            bHtml += '<div class="sa-pct-bar-track"><div class="sa-pct-bar-fill" style="width:' + pct + '%;background:' + barColor + '"></div></div>';
+            bHtml += '<span class="sa-pct-num" style="color:' + barColor + '">' + pct + '%</span>';
+            bHtml += '</div>';
+            bHtml += '<div class="sa-pct-counts">';
+            bHtml += '<span style="color:var(--sa-p)">P:' + (c.P+c.T) + '</span>';
+            bHtml += '<span style="color:var(--sa-a)">A:' + c.A + '</span>';
+            bHtml += '<span style="color:var(--sa-l)">L:' + c.L + '</span>';
+            bHtml += '</div></td>';
             bHtml += '</tr>';
         });
         elBody.innerHTML = bHtml;
     }
 
-    function summaryText(arr) {
+    function getMonthIndex(monthName) {
+        var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        var idx = months.indexOf(monthName);
+        return idx >= 0 ? idx : 0;
+    }
+
+    function summaryPct(arr) {
         var c = {P:0,A:0,L:0,T:0,H:0,V:0};
         arr.forEach(function(v){ if (c[v] !== undefined) c[v]++; });
-        return '<span style="color:var(--att-p)">P:' + c.P + '</span> '
-             + '<span style="color:var(--att-a)">A:' + c.A + '</span> '
-             + '<span style="color:var(--att-l)">L:' + c.L + '</span>';
+        var working = state.daysInMonth - c.H - c.V;
+        return { counts: c, pct: working > 0 ? Math.round((c.P + c.T) / working * 100) : 0 };
     }
 
     function updateCell(sid, d) {
-        var cell = elBody.querySelector('.att-cell[data-sid="' + CSS.escape(sid) + '"][data-d="' + d + '"]');
+        var cell = elBody.querySelector('.sa-cell[data-sid="' + CSS.escape(sid) + '"][data-d="' + d + '"]');
         if (!cell) return;
         var v = state.attendance[sid][d];
         cell.setAttribute('data-v', v);
         var isDirty = v !== state.original[sid].charAt(d);
-        cell.classList.toggle('att-dirty', isDirty);
-        cell.innerHTML = v + (v === 'T' ? '<span class="att-clock"><i class="fa fa-clock-o"></i></span>' : '');
+        cell.classList.toggle('sa-dirty', isDirty);
+        cell.innerHTML = v + (v === 'T' ? '<span class="sa-late-dot"></span>' : '');
 
-        /* Update summary */
+        /* Update percentage bar */
         var row = cell.closest('tr');
         if (row) {
-            var sumTd = row.querySelector('.att-td-summary');
-            if (sumTd) sumTd.innerHTML = summaryText(state.attendance[sid]);
+            var pctTd = row.querySelector('.sa-td-pct');
+            if (pctTd) {
+                var s = summaryPct(state.attendance[sid]);
+                var barColor = s.pct >= 75 ? 'var(--sa-p)' : (s.pct >= 50 ? 'var(--sa-l)' : 'var(--sa-a)');
+                var fill = pctTd.querySelector('.sa-pct-bar-fill');
+                var num = pctTd.querySelector('.sa-pct-num');
+                var counts = pctTd.querySelector('.sa-pct-counts');
+                if (fill) { fill.style.width = s.pct + '%'; fill.style.background = barColor; }
+                if (num) { num.textContent = s.pct + '%'; num.style.color = barColor; }
+                if (counts) {
+                    counts.innerHTML = '<span style="color:var(--sa-p)">P:' + (s.counts.P+s.counts.T) + '</span>'
+                        + '<span style="color:var(--sa-a)">A:' + s.counts.A + '</span>'
+                        + '<span style="color:var(--sa-l)">L:' + s.counts.L + '</span>';
+                }
+            }
         }
     }
 
     function updateSaveBtn() {
         elSaveBtn.disabled = state.dirty.size === 0;
+        if (state.dirty.size > 0) {
+            elDirtyNum.textContent = state.dirty.size;
+            elDirtyCount.style.display = 'inline';
+        } else {
+            elDirtyCount.style.display = 'none';
+        }
     }
 
     function markDirty(sid) {
@@ -620,11 +906,12 @@
             state.dirty.delete(sid);
         }
         updateSaveBtn();
+        updateStats();
     }
 
     /* ── Cell Click ── */
     elBody.addEventListener('click', function(e) {
-        var cell = e.target.closest('.att-cell');
+        var cell = e.target.closest('.sa-cell');
         if (!cell) return;
         var sid = cell.getAttribute('data-sid');
         var d = parseInt(cell.getAttribute('data-d'), 10);
@@ -654,29 +941,29 @@
         var working = state.daysInMonth - c.H - c.V;
         var pct = working > 0 ? Math.round((c.P + c.T) / working * 100) : 0;
 
-        elModalTitle.textContent = student.name + ' - Attendance Summary';
+        elModalTitle.textContent = student.name;
 
         var html = '';
-        html += '<div class="att-modal-stat"><span>Total Days</span><span>' + state.daysInMonth + '</span></div>';
-        html += '<div class="att-modal-stat"><span>Present</span><span style="color:var(--att-p)">' + c.P + '</span></div>';
-        html += '<div class="att-modal-stat"><span>Absent</span><span style="color:var(--att-a)">' + c.A + '</span></div>';
-        html += '<div class="att-modal-stat"><span>Leave</span><span style="color:var(--att-l)">' + c.L + '</span></div>';
-        html += '<div class="att-modal-stat"><span>Late</span><span style="color:var(--att-t)">' + c.T + '</span></div>';
-        html += '<div class="att-modal-stat"><span>Holiday</span><span style="color:var(--att-h)">' + c.H + '</span></div>';
-        html += '<div class="att-modal-stat"><span>Vacant</span><span style="color:var(--att-v)">' + c.V + '</span></div>';
-        html += '<div class="att-modal-stat" style="font-weight:700;border-bottom:none;"><span>Attendance %</span><span>' + pct + '%</span></div>';
+        html += '<div class="sa-modal-stat"><span><span class="sa-stat-dot" style="background:var(--sa-t2)"></span>Total Days</span><span>' + state.daysInMonth + '</span></div>';
+        html += '<div class="sa-modal-stat"><span><span class="sa-stat-dot" style="background:var(--sa-p)"></span>Present</span><span style="color:var(--sa-p)">' + c.P + '</span></div>';
+        html += '<div class="sa-modal-stat"><span><span class="sa-stat-dot" style="background:var(--sa-a)"></span>Absent</span><span style="color:var(--sa-a)">' + c.A + '</span></div>';
+        html += '<div class="sa-modal-stat"><span><span class="sa-stat-dot" style="background:var(--sa-l)"></span>Leave</span><span style="color:var(--sa-l)">' + c.L + '</span></div>';
+        html += '<div class="sa-modal-stat"><span><span class="sa-stat-dot" style="background:var(--sa-t)"></span>Late</span><span style="color:var(--sa-t)">' + c.T + '</span></div>';
+        html += '<div class="sa-modal-stat"><span><span class="sa-stat-dot" style="background:var(--sa-h)"></span>Holiday</span><span style="color:var(--sa-h)">' + c.H + '</span></div>';
+        html += '<div class="sa-modal-stat"><span><span class="sa-stat-dot" style="background:var(--sa-v)"></span>Vacant</span><span style="color:var(--sa-v)">' + c.V + '</span></div>';
+        html += '<div class="sa-modal-stat" style="font-weight:700;border-bottom:none;padding-top:14px;"><span>Attendance %</span><span style="font-size:18px;color:' + (pct >= 75 ? 'var(--sa-p)' : pct >= 50 ? 'var(--sa-l)' : 'var(--sa-a)') + '">' + pct + '%</span></div>';
 
         var total = c.P + c.A + c.L + c.T + c.H + c.V;
-        html += '<div class="att-modal-bar-wrap">';
+        html += '<div class="sa-modal-bar-wrap">';
         if (total > 0) {
             var segments = [
-                {v:c.P, color:'var(--att-p)'}, {v:c.T, color:'var(--att-t)'},
-                {v:c.L, color:'var(--att-l)'}, {v:c.A, color:'var(--att-a)'},
-                {v:c.H, color:'var(--att-h)'}, {v:c.V, color:'var(--att-v)'}
+                {v:c.P, color:'var(--sa-p)'}, {v:c.T, color:'var(--sa-t)'},
+                {v:c.L, color:'var(--sa-l)'}, {v:c.A, color:'var(--sa-a)'},
+                {v:c.H, color:'var(--sa-h)'}, {v:c.V, color:'var(--sa-v)'}
             ];
             segments.forEach(function(seg){
                 if (seg.v > 0) {
-                    html += '<div class="att-modal-bar-seg" style="width:' + (seg.v/total*100) + '%;background:' + seg.color + ';"></div>';
+                    html += '<div class="sa-modal-bar-seg" style="width:' + (seg.v/total*100) + '%;background:' + seg.color + ';"></div>';
                 }
             });
         }
@@ -724,7 +1011,6 @@
         state.dirty.forEach(function(sid) {
             var str = state.attendance[sid].join('');
             attObj[sid] = str;
-            /* Build late data: array of day numbers (1-based) */
             var lateDays = [];
             state.attendance[sid].forEach(function(v, i) {
                 if (v === 'T') lateDays.push(i + 1);
@@ -745,14 +1031,12 @@
         .then(function(res) {
             elSaveBtn.innerHTML = '<i class="fa fa-save"></i> Save Changes';
             if (res && res.status === 'success') {
-                /* Update originals */
                 state.dirty.forEach(function(sid) {
                     state.original[sid] = state.attendance[sid].join('');
                 });
                 state.dirty = new Set();
                 updateSaveBtn();
-                /* Remove dirty highlights */
-                elBody.querySelectorAll('.att-dirty').forEach(function(c){ c.classList.remove('att-dirty'); });
+                elBody.querySelectorAll('.sa-dirty').forEach(function(c){ c.classList.remove('sa-dirty'); });
                 showToast('Attendance saved successfully!', 'success');
             } else {
                 showToast(res && res.message ? res.message : 'Failed to save attendance.', 'error');

@@ -30,6 +30,18 @@ class Backup_cron extends CI_Controller
     // GET /backup_cron/{cron_key}
     public function run($cron_key = '')
     {
+        // ── C-06 FIX: IP whitelist — only allow trusted IPs to trigger cron ──
+        $allowedIps = getenv('BACKUP_CRON_ALLOWED_IPS');
+        if ($allowedIps) {
+            $whitelist = array_map('trim', explode(',', $allowedIps));
+            $clientIp  = $_SERVER['REMOTE_ADDR'] ?? '';
+            if (!in_array($clientIp, $whitelist, true)) {
+                $this->_out('error', 'Access denied: IP not whitelisted.', 403);
+                log_message('error', "Backup cron blocked IP: {$clientIp}");
+                return;
+            }
+        }
+
         if (empty(trim($cron_key))) {
             $this->_out('error', 'Cron key is required.', 400); return;
         }
@@ -45,30 +57,8 @@ class Backup_cron extends CI_Controller
                 $this->_out('error', 'Invalid or expired cron key.', 403); return;
             }
 
-            if (empty($schedule['enabled'])) {
-                $this->_out('skipped', 'Scheduled backups are disabled.'); return;
-            }
-
-            // Check if it's time to run (basic frequency check)
-            $frequency   = $schedule['frequency']   ?? 'daily';
-            $day_of_week = (int)($schedule['day_of_week'] ?? 0);
-            $backup_time = $schedule['backup_time']  ?? '02:00';
-            $last_run    = $schedule['last_run']     ?? '';
-
-            if ($frequency === 'weekly' && (int)date('w') !== $day_of_week) {
-                $this->_out('skipped', 'Not the scheduled day of week (' . date('l') . ').'); return;
-            }
-
-            // Prevent double-run within same hour
-            if ($last_run && substr($last_run, 0, 13) === date('Y-m-d H')) {
-                $this->_out('skipped', 'Already ran this hour.'); return;
-            }
-
             set_time_limit(300);
             ini_set('memory_limit', '256M');
-
-            $backup_type = $schedule['backup_type'] ?? 'firebase';
-            $retention   = max(1, (int)($schedule['retention'] ?? 7));
 
             $raw     = $this->firebase->get('System/Schools') ?? [];
             $schools = array_keys(array_filter($raw, 'is_array'));
@@ -78,25 +68,46 @@ class Backup_cron extends CI_Controller
             }
 
             $succeeded = 0; $failed = 0; $results = [];
+            $global_enabled = !empty($schedule['enabled']);
 
-            foreach ($schools as $school_uid) {
-                try {
-                    $r = $this->_do_backup($school_uid, $backup_type);
-                    $this->_apply_retention($school_uid, $retention);
-                    $succeeded++;
-                    $results[] = ['school' => $school_uid, 'status' => 'ok', 'backup_id' => $r['backup_id'], 'size' => $r['size_human']];
-                } catch (Exception $e) {
-                    $failed++;
-                    $results[] = ['school' => $school_uid, 'status' => 'error', 'message' => $e->getMessage()];
-                    log_message('error', "Cron backup failed for {$school_uid}: " . $e->getMessage());
+            // ── Phase 1: Global schedule (SA-configured) ─────────────────
+            if ($global_enabled) {
+                $frequency   = $schedule['frequency']   ?? 'daily';
+                $day_of_week = (int)($schedule['day_of_week'] ?? 0);
+                $last_run    = $schedule['last_run']     ?? '';
+
+                $skip_global = false;
+                if ($frequency === 'weekly' && (int)date('w') !== $day_of_week) {
+                    $skip_global = true; // Not the scheduled day
+                }
+                if ($last_run && substr($last_run, 0, 13) === date('Y-m-d H')) {
+                    $skip_global = true; // Already ran this hour
+                }
+
+                if (!$skip_global) {
+                    $backup_type = $schedule['backup_type'] ?? 'firebase';
+                    $retention   = max(1, (int)($schedule['retention'] ?? 7));
+
+                    foreach ($schools as $school_uid) {
+                        try {
+                            $r = $this->_do_backup($school_uid, $backup_type);
+                            $this->_apply_retention($school_uid, $retention);
+                            $succeeded++;
+                            $results[] = ['school' => $school_uid, 'status' => 'ok', 'backup_id' => $r['backup_id'], 'size' => $r['size_human']];
+                        } catch (Exception $e) {
+                            $failed++;
+                            $results[] = ['school' => $school_uid, 'status' => 'error', 'message' => $e->getMessage()];
+                            log_message('error', "Cron backup failed for {$school_uid}: " . $e->getMessage());
+                        }
+                    }
+
+                    $this->firebase->update('System/BackupSchedule', [
+                        'last_run'       => date('Y-m-d H:i:s'),
+                        'last_run_count' => $succeeded,
+                        'last_run_by'    => 'cron',
+                    ]);
                 }
             }
-
-            $this->firebase->update('System/BackupSchedule', [
-                'last_run'       => date('Y-m-d H:i:s'),
-                'last_run_count' => $succeeded,
-                'last_run_by'    => 'cron',
-            ]);
 
             // Log to Firebase activity
             try {
@@ -107,15 +118,24 @@ class Backup_cron extends CI_Controller
                         'school_uid' => '',
                         'sa_name'    => 'cron',
                         'ip'         => $_SERVER['REMOTE_ADDR'] ?? 'cli',
-                        'meta'       => ['succeeded' => $succeeded, 'failed' => $failed],
+                        'meta'       => ['global_enabled' => $global_enabled, 'succeeded' => $succeeded, 'failed' => $failed],
                         'timestamp'  => date('Y-m-d H:i:s'),
                     ],
                 ]);
             } catch (Exception $e) {}
 
+            // ── Phase 2: Per-school schedules ────────────────────────────
+            //    Schools that enabled their own daily backup in school panel.
+            //    Only runs for schools NOT already covered by Phase 1.
+            $phase2 = $this->_run_per_school_schedules($schools, $results, $succeeded, $failed);
+            $succeeded = $phase2['succeeded'];
+            $failed    = $phase2['failed'];
+            $results   = $phase2['results'];
+
             echo json_encode([
                 'status'    => 'success',
                 'ran_at'    => date('Y-m-d H:i:s'),
+                'global_enabled' => $global_enabled,
                 'succeeded' => $succeeded,
                 'failed'    => $failed,
                 'results'   => $results,
@@ -129,20 +149,102 @@ class Backup_cron extends CI_Controller
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    //  Phase 2 — Per-school schedules (set by school admins)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Run backups for schools that have their own daily schedule enabled.
+     * Skips schools already backed up in Phase 1 (global schedule).
+     */
+    private function _run_per_school_schedules(array $all_schools, array $results, int $succeeded, int $failed): array
+    {
+        $today          = date('Y-m-d');
+        $already_backed = array_column($results, 'school');
+
+        foreach ($all_schools as $school_uid) {
+            // Skip if already handled by global schedule
+            if (in_array($school_uid, $already_backed, true)) continue;
+
+            try {
+                $sched = $this->firebase->get("Schools/{$school_uid}/Config/BackupSchedule");
+                if (!is_array($sched) || empty($sched['enabled'])) continue;
+
+                // Check if already ran today
+                $last_run = $sched['last_run'] ?? '';
+                if ($last_run && strpos($last_run, $today) === 0) continue;
+
+                $retention = max(1, (int) ($sched['retention'] ?? 7));
+
+                $r = $this->_do_backup($school_uid, 'firebase');
+                $this->_apply_retention($school_uid, $retention);
+                $succeeded++;
+                $results[] = [
+                    'school'    => $school_uid,
+                    'status'    => 'ok',
+                    'backup_id' => $r['backup_id'],
+                    'size'      => $r['size_human'],
+                    'source'    => 'school_schedule',
+                ];
+
+                // Update per-school last_run
+                $this->firebase->update("Schools/{$school_uid}/Config/BackupSchedule", [
+                    'last_run'       => date('Y-m-d H:i:s'),
+                    'last_run_count' => (int) ($sched['last_run_count'] ?? 0) + 1,
+                    'last_backup_id' => $r['backup_id'],
+                ]);
+            } catch (Exception $e) {
+                $failed++;
+                $results[] = [
+                    'school'  => $school_uid,
+                    'status'  => 'error',
+                    'message' => $e->getMessage(),
+                    'source'  => 'school_schedule',
+                ];
+                log_message('error', "Cron per-school backup failed for {$school_uid}: " . $e->getMessage());
+            }
+        }
+
+        return ['succeeded' => $succeeded, 'failed' => $failed, 'results' => $results];
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     private function _do_backup(string $school_uid, string $backup_type = 'firebase'): array
     {
         $backup_data = $this->firebase->get("Schools/{$school_uid}");
         if (empty($backup_data)) throw new Exception("No data found for school '{$school_uid}'.");
 
+        // ── Resolve keys for Users/Admin and Users/Parents ──────────────
+        $school_node = $this->firebase->get("System/Schools/{$school_uid}");
+        if (!is_array($school_node)) $school_node = [];
+        $profile     = is_array($school_node['profile'] ?? null) ? $school_node['profile'] : [];
+        $school_code = $profile['school_code'] ?? ($school_node['School Id'] ?? '');
+        $isSCH       = strpos($school_uid, 'SCH_') === 0;
+        $admin_key   = $school_code;
+        $parent_key  = $isSCH ? $school_uid : ($school_code ?: $school_uid);
+
+        $admin_data  = [];
+        $parent_data = [];
+        if (!empty($admin_key)) {
+            try { $admin_data = $this->firebase->get("Users/Admin/{$admin_key}") ?? []; } catch (Exception $e) {}
+        }
+        if (!empty($parent_key)) {
+            try { $parent_data = $this->firebase->get("Users/Parents/{$parent_key}") ?? []; } catch (Exception $e) {}
+        }
+
         $export = [
-            'backup_format' => '1.2',
+            'backup_format' => '1.3',
             'backup_type'   => $backup_type,
             'school_name'   => $school_uid,
             'firebase_key'  => $school_uid,
+            'school_code'   => $school_code,
+            'admin_key'     => $admin_key,
+            'parent_key'    => $parent_key,
             'backed_up_at'  => date('Y-m-d H:i:s'),
             'backed_up_by'  => 'cron',
             'Schools'       => $backup_data,
+            'UsersAdmin'    => $admin_data,
+            'UsersParents'  => $parent_data,
         ];
 
         if ($backup_type === 'full') {

@@ -3,13 +3,13 @@
 <style>
 /* ── Accounting Module — Production Styles ─────────────────────────── */
 .ac-wrap {
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-b, 'Plus Jakarta Sans'), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     max-width: 1440px; margin: 0 auto; padding: 24px 20px;
     color: var(--t1, #1a2e2a); line-height: 1.5; font-size: 14px;
     min-height: calc(100vh - 120px);
 }
 .ac-wrap *, .ac-wrap *::before, .ac-wrap *::after { box-sizing: border-box; }
-.ac-mono { font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; }
+.ac-mono { font-family: var(--font-m, 'JetBrains Mono'), 'Fira Code', 'Consolas', monospace; }
 
 /* ── Theme vars with solid fallbacks ── */
 .ac-wrap {
@@ -98,14 +98,15 @@ a.ac-tab.active { color: var(--ac-primary); }
     border-radius: 8px; border: none; cursor: pointer; transition: all .2s ease;
     text-decoration: none; line-height: 1.4;
 }
-.ac-btn-primary { background: var(--ac-primary); color: #fff; }
+.ac-btn-primary { background: var(--ac-primary, #0f766e); color: #fff; }
 .ac-btn-primary:hover { background: #0d6b63; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(15,118,110,.3); }
-.ac-btn-danger { background: var(--ac-red); color: #fff; }
+.ac-btn-danger { background: var(--ac-red, #dc2626); color: #fff; }
 .ac-btn-danger:hover { background: #b91c1c; }
-.ac-btn-ghost { background: transparent; color: var(--ac-primary); border: 1.5px solid var(--ac-primary); }
-.ac-btn-ghost:hover { background: var(--ac-primary); color: #fff; }
+.ac-btn-ghost { background: transparent; color: var(--ac-primary, #0f766e); border: 1.5px solid var(--ac-primary, #0f766e); }
+.ac-btn-ghost:hover { background: var(--ac-primary, #0f766e); color: #fff; }
 .ac-btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 6px; }
 .ac-btn[disabled] { opacity: .45; cursor: not-allowed; pointer-events: none; }
+.ac-btn i.fa, .ac-btn .fa { font-family: FontAwesome !important; }
 
 /* ── Toolbar / Filters ── */
 .ac-toolbar {
@@ -164,24 +165,159 @@ a.ac-tab.active { color: var(--ac-primary); }
 .ac-badge-matched { background: #dcfce7; color: #166534; }
 .ac-badge-unmatched { background: #fee2e2; color: #991b1b; }
 
+/* Voucher type display */
+.ac-vtype-badge { display:inline-block; font-size:11px; padding:2px 8px; border-radius:4px; background:var(--ac-bg3); color:var(--ac-text2); font-weight:600; vertical-align:middle; }
+.ac-vtype-sub { display:inline-block; font-size:10px; padding:1px 6px; border-radius:3px; margin-left:4px; background:rgba(15,118,110,.1); color:#0f766e; font-weight:500; vertical-align:middle; }
+
 /* ── Modal ── */
 .ac-modal-overlay {
     display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,.5); z-index: 9000;
+    background: rgba(0,0,0,.45); z-index: 10000;
     align-items: center; justify-content: center;
-    backdrop-filter: blur(2px);
+    /* Inherit theme vars — modals sit outside .ac-wrap in the DOM */
+    --ac-primary: var(--gold, #0f766e);
+    --ac-bg: var(--bg, #f0f7f5);
+    --ac-bg2: var(--bg2, #ffffff);
+    --ac-bg3: var(--bg3, #e6f4f1);
+    --ac-border: var(--border, #d1ddd8);
+    --ac-text: var(--t1, #1a2e2a);
+    --ac-text2: var(--t2, #4a6a60);
+    --ac-text3: var(--t3, #7a9a8e);
+    --ac-card: var(--card, #ffffff);
+    --ac-r: 10px;
+    --ac-green: #16a34a;
+    --ac-red: #dc2626;
+    --ac-blue: #2563eb;
+    --ac-amber: #d97706;
+    font-family: var(--font-b, 'Plus Jakarta Sans'), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
-.ac-modal-overlay.show { display: flex; }
+.ac-modal-overlay.show { display: flex !important; }
 .ac-modal {
-    background: var(--ac-bg2); border-radius: 14px; width: 95%; max-width: 720px;
-    max-height: 90vh; overflow-y: auto; padding: 28px;
-    box-shadow: 0 12px 40px rgba(0,0,0,.25);
+    background: #fff; border-radius: 16px; width: 94%; max-width: 720px;
+    max-height: 88vh; overflow-y: auto; padding: 0;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.05);
+    position: relative;
+}
+[data-theme="dark"] .ac-modal,
+.night .ac-modal { background: #1a2332; }
+.ac-modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px 16px; border-bottom: 1px solid var(--ac-border);
+    position: sticky; top: 0; background: inherit; border-radius: 16px 16px 0 0; z-index: 1;
 }
 .ac-modal-title {
-    font-size: 18px; font-weight: 800; margin-bottom: 20px;
+    font-size: 18px; font-weight: 800; margin: 0;
     color: var(--ac-text); letter-spacing: -.2px;
+    display: flex; align-items: center; gap: 10px;
 }
-.ac-modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--ac-border); }
+.ac-modal-title i { color: var(--ac-primary); font-size: 16px; }
+.ac-modal-close {
+    width: 34px; height: 34px; border-radius: 8px; border: none;
+    background: var(--ac-bg3, #f1f5f9); color: var(--ac-text2, #64748b);
+    font-size: 18px; cursor: pointer; display: flex; align-items: center;
+    justify-content: center; transition: all .15s; flex-shrink: 0;
+}
+.ac-modal-close:hover { background: var(--ac-red, #ef4444); color: #fff; }
+.ac-modal-body { padding: 20px 24px; }
+.ac-modal-actions {
+    display: flex; gap: 10px; justify-content: flex-end;
+    padding: 16px 24px 20px; border-top: 1px solid var(--ac-border);
+    position: sticky; bottom: 0; background: inherit; border-radius: 0 0 16px 16px;
+}
+/* ── Form in modal ── */
+.ac-modal .ac-fg label {
+    font-size: 12px; font-weight: 600; text-transform: none;
+    letter-spacing: 0; color: var(--ac-text2, #475569);
+}
+.ac-modal .ac-fg input,
+.ac-modal .ac-fg select,
+.ac-modal .ac-fg textarea {
+    background: var(--ac-bg, #f8fafc); border: 1.5px solid #b8cec6;
+    font-size: 14px; padding: 10px 12px; border-radius: 8px;
+    color: var(--ac-text); transition: border-color .15s, box-shadow .15s;
+}
+.ac-modal .ac-fg input:focus,
+.ac-modal .ac-fg select:focus,
+.ac-modal .ac-fg textarea:focus {
+    border-color: var(--ac-primary);
+    box-shadow: 0 0 0 3px rgba(15,118,110,.12);
+    outline: none;
+}
+.ac-modal .ac-fg input::placeholder { color: var(--ac-text3, #94a3b8); }
+[data-theme="dark"] .ac-modal .ac-fg input,
+[data-theme="dark"] .ac-modal .ac-fg select,
+[data-theme="dark"] .ac-modal .ac-fg textarea,
+.night .ac-modal .ac-fg input,
+.night .ac-modal .ac-fg select,
+.night .ac-modal .ac-fg textarea {
+    background: #1a2a3a; border-color: #2a3a4a; color: #e0e8f0;
+}
+
+/* ── Journal modal table inputs ── */
+#journalModal .ac-table { border: 1px solid var(--ac-border); border-radius: 8px; overflow: hidden; }
+#journalModal .ac-table th { background: var(--ac-bg3, #e6f4f1); }
+#journalModal .ac-table td { padding: 8px 10px; background: var(--ac-bg, #f8fafc); }
+#journalModal .ac-table select,
+#journalModal .ac-table input[type="number"] {
+    width: 100%; padding: 8px 10px; font-size: 13px;
+    border: 1.5px solid #b8cec6; border-radius: 6px;
+    background: var(--ac-bg2, #fff); color: var(--ac-text);
+    font-family: inherit; transition: border-color .15s, box-shadow .15s;
+}
+#journalModal .ac-table input[type="number"] {
+    text-align: right; font-family: 'JetBrains Mono', var(--font-m), monospace;
+}
+#journalModal .ac-table select:focus,
+#journalModal .ac-table input[type="number"]:focus {
+    outline: none; border-color: var(--ac-primary);
+    box-shadow: 0 0 0 3px rgba(15,118,110,.12);
+}
+#journalModal .ac-table tfoot td { background: var(--ac-bg3, #e6f4f1); }
+#journalModal .ac-table tfoot .ac-num { font-size: 14px; }
+
+/* ── Add Line button ── */
+.ac-btn-ghost.ac-btn-sm {
+    font-size: 12px; padding: 7px 14px; border-radius: 6px;
+    border: 1.5px dashed var(--ac-primary); color: var(--ac-primary);
+    background: transparent; cursor: pointer; transition: all .15s;
+    font-weight: 600; margin-top: 8px;
+}
+.ac-btn-ghost.ac-btn-sm:hover {
+    background: var(--ac-primary); color: #fff; border-style: solid;
+}
+
+/* ── Journal modal dark mode ── */
+[data-theme="dark"] #journalModal .ac-table td,
+.night #journalModal .ac-table td { background: #0f1a2a; }
+[data-theme="dark"] #journalModal .ac-table select,
+[data-theme="dark"] #journalModal .ac-table input[type="number"],
+.night #journalModal .ac-table select,
+.night #journalModal .ac-table input[type="number"] {
+    background: #1a2a3a; border-color: #2a3a4a; color: #e0e8f0;
+}
+
+/* ── Checkbox styling ── */
+.ac-check-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; border-radius: 8px; border: 1.5px solid var(--ac-border);
+    background: var(--ac-bg, #f8fafc); cursor: pointer; transition: all .15s;
+    font-size: 13px; font-weight: 600; color: var(--ac-text2);
+}
+.ac-check-row:hover { border-color: var(--ac-primary); background: rgba(15,118,110,.04); }
+.ac-check-row input[type="checkbox"] {
+    width: 18px; height: 18px; accent-color: var(--ac-primary);
+    cursor: pointer; margin: 0; flex-shrink: 0;
+}
+/* ── Form grid ── */
+.ac-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.ac-form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.ac-form-full { grid-column: 1 / -1; }
+.ac-form-section {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .6px; color: var(--ac-primary); margin: 16px 0 8px;
+    padding-bottom: 6px; border-bottom: 1px dashed var(--ac-border);
+    grid-column: 1 / -1;
+}
 
 /* ── Stats Row ── */
 .ac-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
@@ -262,14 +398,14 @@ a.ac-tab.active { color: var(--ac-primary); }
                 <span>Chart of Accounts</span>
                 <span style="flex:1"></span>
                 <button class="ac-btn ac-btn-primary ac-btn-sm" onclick="AC.showAccountModal()"><i class="fa fa-plus"></i> Add Account</button>
-                <button class="ac-btn ac-btn-ghost ac-btn-sm ac-role-admin" onclick="AC.seedChart()" style="display:none"><i class="fa fa-magic"></i> Seed Defaults</button>
+                <button class="ac-btn ac-btn-ghost ac-btn-sm ac-role-admin" onclick="AC.seedChart()" style="display:none" id="btnSeedChart"><i class="fa fa-magic"></i> Seed Defaults</button>
             </div>
             <div class="ac-table-wrap">
                 <table class="ac-table" id="coaTable">
                     <thead><tr>
-                        <th>Code</th><th>Account Name</th><th>Category</th><th>Type</th><th>Opening Bal</th><th>Actions</th>
+                        <th>Code</th><th>Account Name</th><th>Category</th><th>Type</th><th>Opening Bal</th><th>Current Bal</th><th>Actions</th>
                     </tr></thead>
-                    <tbody id="coaBody"></tbody>
+                    <tbody id="coaBody"><tr><td colspan="7" class="ac-empty"><i class="fa fa-spinner fa-spin" style="font-size:18px;opacity:.4;"></i><br><small>Loading chart...</small></td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -296,7 +432,7 @@ a.ac-tab.active { color: var(--ac-primary); }
                     <thead><tr>
                         <th>Date</th><th>Voucher #</th><th>Type</th><th>Narration</th><th class="ac-num">Debit</th><th class="ac-num">Credit</th><th>Status</th><th>Actions</th>
                     </tr></thead>
-                    <tbody id="ledgerBody"></tbody>
+                    <tbody id="ledgerBody"><tr><td colspan="8" class="ac-empty"><i class="fa fa-spinner fa-spin" style="font-size:18px;opacity:.4;"></i><br><small>Loading entries...</small></td></tr></tbody>
                 </table>
             </div>
             <div id="ledgerPagination" style="text-align:center;margin-top:12px;display:none;">
@@ -323,7 +459,7 @@ a.ac-tab.active { color: var(--ac-primary); }
             <div class="ac-table-wrap">
                 <table class="ac-table">
                     <thead><tr><th>Date</th><th>Type</th><th>Account</th><th>Description</th><th>Mode</th><th class="ac-num">Amount</th><th>Actions</th></tr></thead>
-                    <tbody id="ieBody"></tbody>
+                    <tbody id="ieBody"><tr><td colspan="7" class="ac-empty"><i class="fa fa-spinner fa-spin" style="font-size:18px;opacity:.4;"></i><br><small>Loading records...</small></td></tr></tbody>
                 </table>
             </div>
             <div id="iePagination" style="text-align:center;margin-top:12px;display:none;">
@@ -342,11 +478,24 @@ a.ac-tab.active { color: var(--ac-primary); }
             <button class="ac-btn ac-btn-primary" onclick="AC.loadCashBook()"><i class="fa fa-search"></i> Load</button>
         </div>
         <div class="ac-stats" id="cbStats"></div>
+        <div id="cbAccountHeader" style="display:none;padding:12px 18px;background:var(--ac-bg3);border:1px solid var(--ac-border);border-radius:var(--ac-r);margin-bottom:14px;display:flex;align-items:center;gap:12px;">
+            <div style="width:38px;height:38px;border-radius:8px;background:var(--ac-primary,#0f766e);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0"><i class="fa fa-book"></i></div>
+            <div>
+                <div id="cbAcctName" style="font:700 15px/1.3 var(--font-b);color:var(--ac-text)"></div>
+                <div id="cbAcctCode" style="font:400 12px/1.3 var(--font-m);color:var(--ac-text3)"></div>
+            </div>
+        </div>
         <div class="ac-card">
             <div class="ac-table-wrap">
-                <table class="ac-table">
-                    <thead><tr><th>Date</th><th>Voucher #</th><th>Narration</th><th class="ac-num">Received (Dr)</th><th class="ac-num">Paid (Cr)</th><th class="ac-num">Balance</th></tr></thead>
-                    <tbody id="cbBody"></tbody>
+                <table class="ac-table" id="cbTable">
+                    <thead><tr><th>Date</th><th>Voucher</th><th>Type</th><th>Contra Account</th><th>Narration</th><th class="ac-num">Received (Dr)</th><th class="ac-num">Paid (Cr)</th><th class="ac-num">Balance</th></tr></thead>
+                    <tbody id="cbBody"><tr><td colspan="8" class="ac-empty">Select an account and click Load.</td></tr></tbody>
+                    <tfoot id="cbFoot" style="display:none"><tr>
+                        <td colspan="5" style="text-align:right;font-weight:700">Totals:</td>
+                        <td class="ac-num ac-dr" id="cbTotalDr" style="font-weight:700"></td>
+                        <td class="ac-num ac-cr" id="cbTotalCr" style="font-weight:700"></td>
+                        <td class="ac-num" id="cbClosingBal" style="font-weight:700"></td>
+                    </tr></tfoot>
                 </table>
             </div>
         </div>
@@ -367,7 +516,7 @@ a.ac-tab.active { color: var(--ac-primary); }
             <div class="ac-table-wrap">
                 <table class="ac-table">
                     <thead><tr><th>Date</th><th>Description</th><th>Reference</th><th class="ac-num">Debit</th><th class="ac-num">Credit</th><th>Status</th><th>Actions</th></tr></thead>
-                    <tbody id="brBody"></tbody>
+                    <tbody id="brBody"><tr><td colspan="7" class="ac-empty">Select a bank account and click Load.</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -378,6 +527,7 @@ a.ac-tab.active { color: var(--ac-primary); }
         <div class="ac-toolbar">
             <div class="ac-fg"><label>Report</label>
                 <select id="rptType">
+                    <option value="day_book">Day Book</option>
                     <option value="trial_balance">Trial Balance</option>
                     <option value="profit_loss">Profit & Loss</option>
                     <option value="balance_sheet">Balance Sheet</option>
@@ -387,6 +537,8 @@ a.ac-tab.active { color: var(--ac-primary); }
             <div class="ac-fg"><label>As of / From</label><input type="date" id="rptFrom"></div>
             <div class="ac-fg"><label>To</label><input type="date" id="rptTo"></div>
             <button class="ac-btn ac-btn-primary" onclick="AC.generateReport()"><i class="fa fa-file-text-o"></i> Generate</button>
+            <button class="ac-btn ac-btn-ghost" onclick="AC.exportReport('excel')" id="btnExportXl" style="display:none"><i class="fa fa-file-excel-o"></i> Excel</button>
+            <button class="ac-btn ac-btn-ghost" onclick="AC.exportReport('pdf')" id="btnExportPdf" style="display:none"><i class="fa fa-file-pdf-o"></i> PDF</button>
         </div>
         <div class="ac-card" id="rptOutput"></div>
     </div>
@@ -427,7 +579,7 @@ a.ac-tab.active { color: var(--ac-primary); }
             <div class="ac-table-wrap">
                 <table class="ac-table">
                     <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead>
-                    <tbody id="auditBody"></tbody>
+                    <tbody id="auditBody"><tr><td colspan="5" class="ac-empty">Click Refresh to load audit trail.</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -441,36 +593,46 @@ a.ac-tab.active { color: var(--ac-primary); }
 <!-- Account Modal -->
 <div class="ac-modal-overlay" id="accountModal">
     <div class="ac-modal">
-        <div class="ac-modal-title" id="accountModalTitle">Add Account</div>
-        <input type="hidden" id="amIsEdit" value="false">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div class="ac-fg"><label>Code *</label><input type="text" id="amCode" placeholder="e.g. 1021"></div>
-            <div class="ac-fg"><label>Name *</label><input type="text" id="amName" placeholder="Account name"></div>
-            <div class="ac-fg"><label>Category *</label>
-                <select id="amCategory">
-                    <option value="">Select</option>
-                    <option>Asset</option><option>Liability</option><option>Equity</option>
-                    <option>Income</option><option>Expense</option>
-                </select>
-            </div>
-            <div class="ac-fg"><label>Sub-Category</label><input type="text" id="amSubCat" placeholder="e.g. Current Assets"></div>
-            <div class="ac-fg"><label>Parent Code</label><input type="text" id="amParent" placeholder="e.g. 1000"></div>
-            <div class="ac-fg"><label>Opening Balance</label><input type="number" id="amOpenBal" step="0.01" value="0"></div>
-            <div class="ac-fg" style="grid-column:1/-1"><label>Description</label><input type="text" id="amDesc"></div>
-            <div class="ac-fg"><label><input type="checkbox" id="amIsGroup"> Group Account (not postable)</label></div>
-            <div class="ac-fg"><label><input type="checkbox" id="amIsBank"> Bank Account</label></div>
+        <div class="ac-modal-header">
+            <div class="ac-modal-title"><i class="fa fa-sitemap"></i> <span id="accountModalTitle">Add Account</span></div>
+            <button class="ac-modal-close" onclick="AC.closeModal('accountModal')">&times;</button>
         </div>
-        <div id="amBankFields" style="display:none;margin-top:12px;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                <div class="ac-fg"><label>Bank Name</label><input type="text" id="amBankName"></div>
-                <div class="ac-fg"><label>Branch</label><input type="text" id="amBranch"></div>
-                <div class="ac-fg"><label>Account No</label><input type="text" id="amAccNo"></div>
-                <div class="ac-fg"><label>IFSC</label><input type="text" id="amIfsc"></div>
+        <div class="ac-modal-body">
+            <input type="hidden" id="amIsEdit" value="false">
+            <div class="ac-form-grid">
+                <div class="ac-fg"><label>Code *</label><input type="text" id="amCode" placeholder="e.g. 1021"></div>
+                <div class="ac-fg"><label>Name *</label><input type="text" id="amName" placeholder="Account name"></div>
+                <div class="ac-fg"><label>Category *</label>
+                    <select id="amCategory">
+                        <option value="">Select</option>
+                        <option>Asset</option><option>Liability</option><option>Equity</option>
+                        <option>Income</option><option>Expense</option>
+                    </select>
+                </div>
+                <div class="ac-fg"><label>Sub-Category</label><input type="text" id="amSubCat" placeholder="e.g. Current Assets"></div>
+                <div class="ac-fg"><label>Parent Code</label><input type="text" id="amParent" placeholder="e.g. 1000"></div>
+                <div class="ac-fg"><label>Opening Balance</label><input type="number" id="amOpenBal" step="0.01" value="0"></div>
+                <div class="ac-fg ac-form-full"><label>Description</label><input type="text" id="amDesc" placeholder="Optional description"></div>
+                <div>
+                    <label class="ac-check-row"><input type="checkbox" id="amIsGroup"> Group Account (not postable)</label>
+                </div>
+                <div>
+                    <label class="ac-check-row"><input type="checkbox" id="amIsBank"> Bank Account</label>
+                </div>
+            </div>
+            <div id="amBankFields" style="display:none;">
+                <div class="ac-form-section"><i class="fa fa-bank"></i> Bank Details</div>
+                <div class="ac-form-grid">
+                    <div class="ac-fg"><label>Bank Name</label><input type="text" id="amBankName"></div>
+                    <div class="ac-fg"><label>Branch</label><input type="text" id="amBranch"></div>
+                    <div class="ac-fg"><label>Account No</label><input type="text" id="amAccNo"></div>
+                    <div class="ac-fg"><label>IFSC</label><input type="text" id="amIfsc"></div>
+                </div>
             </div>
         </div>
         <div class="ac-modal-actions">
             <button class="ac-btn ac-btn-ghost" onclick="AC.closeModal('accountModal')">Cancel</button>
-            <button class="ac-btn ac-btn-primary" onclick="AC.saveAccount()"><i class="fa fa-check"></i> Save</button>
+            <button class="ac-btn ac-btn-primary" id="btnSaveAccount" onclick="AC.saveAccount()"><i class="fa fa-check"></i> Save</button>
         </div>
     </div>
 </div>
@@ -478,35 +640,39 @@ a.ac-tab.active { color: var(--ac-primary); }
 <!-- Journal Entry Modal -->
 <div class="ac-modal-overlay" id="journalModal">
     <div class="ac-modal" style="max-width:860px;">
-        <div class="ac-modal-title">New Journal Entry</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
-            <div class="ac-fg"><label>Date *</label><input type="date" id="jeDate"></div>
-            <div class="ac-fg"><label>Voucher Type</label>
-                <select id="jeVType"><option>Journal</option><option>Receipt</option><option>Payment</option><option>Contra</option></select>
-            </div>
-            <div class="ac-fg"><label>Voucher #</label><input type="text" id="jeVNo" readonly></div>
+        <div class="ac-modal-header">
+            <div class="ac-modal-title"><i class="fa fa-book"></i> New Journal Entry</div>
+            <button class="ac-modal-close" onclick="AC.closeModal('journalModal')">&times;</button>
         </div>
-        <div class="ac-fg" style="margin-bottom:14px;"><label>Narration</label><input type="text" id="jeNarration" placeholder="Description of the entry" style="width:100%"></div>
+        <div class="ac-modal-body">
+            <div class="ac-form-grid-3" style="margin-bottom:16px;">
+                <div class="ac-fg"><label>Date *</label><input type="date" id="jeDate"></div>
+                <div class="ac-fg"><label>Voucher Type</label>
+                    <select id="jeVType"><option>Journal</option><option>Receipt</option><option>Payment</option><option>Contra</option></select>
+                </div>
+                <div class="ac-fg"><label>Voucher #</label><input type="text" id="jeVNo" readonly></div>
+            </div>
+            <div class="ac-fg" style="margin-bottom:14px;"><label>Narration</label><input type="text" id="jeNarration" placeholder="Description of the entry" style="width:100%"></div>
 
-        <div style="font-size:12px;font-weight:600;text-transform:uppercase;color:var(--ac-text3);margin-bottom:6px;">Line Items</div>
-        <table class="ac-table" style="margin-bottom:8px;">
-            <thead><tr><th>Account</th><th style="width:140px">Debit</th><th style="width:140px">Credit</th><th style="width:40px"></th></tr></thead>
-            <tbody id="jeLines"></tbody>
-            <tfoot>
-                <tr>
-                    <td style="text-align:right;font-weight:700;">Totals:</td>
-                    <td class="ac-num" id="jeTotalDr" style="font-weight:700;">0.00</td>
-                    <td class="ac-num" id="jeTotalCr" style="font-weight:700;">0.00</td>
-                    <td></td>
-                </tr>
-            </tfoot>
-        </table>
-        <button class="ac-btn ac-btn-ghost ac-btn-sm" onclick="AC.addJELine()"><i class="fa fa-plus"></i> Add Line</button>
-        <div id="jeError" style="color:var(--ac-red);font-size:13px;margin-top:8px;display:none;"></div>
-
+            <div class="ac-form-section"><i class="fa fa-list"></i> Line Items</div>
+            <table class="ac-table" style="margin-bottom:8px;">
+                <thead><tr><th>Account</th><th style="width:140px">Debit</th><th style="width:140px">Credit</th><th style="width:40px"></th></tr></thead>
+                <tbody id="jeLines"></tbody>
+                <tfoot>
+                    <tr>
+                        <td style="text-align:right;font-weight:700;">Totals:</td>
+                        <td class="ac-num" id="jeTotalDr" style="font-weight:700;">0.00</td>
+                        <td class="ac-num" id="jeTotalCr" style="font-weight:700;">0.00</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+            <button class="ac-btn ac-btn-ghost ac-btn-sm" onclick="AC.addJELine()"><i class="fa fa-plus"></i> Add Line</button>
+            <div id="jeError" style="color:var(--ac-red);font-size:13px;margin-top:8px;display:none;"></div>
+        </div>
         <div class="ac-modal-actions">
             <button class="ac-btn ac-btn-ghost" onclick="AC.closeModal('journalModal')">Cancel</button>
-            <button class="ac-btn ac-btn-primary" onclick="AC.saveJournalEntry()"><i class="fa fa-check"></i> Save Entry</button>
+            <button class="ac-btn ac-btn-primary" id="btnSaveJournal" onclick="AC.saveJournalEntry()"><i class="fa fa-check"></i> Save Entry</button>
         </div>
     </div>
 </div>
@@ -514,24 +680,29 @@ a.ac-tab.active { color: var(--ac-primary); }
 <!-- Income/Expense Modal -->
 <div class="ac-modal-overlay" id="ieModal">
     <div class="ac-modal">
-        <div class="ac-modal-title" id="ieModalTitle">Record Income</div>
-        <input type="hidden" id="ieFormType" value="income">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div class="ac-fg"><label>Date *</label><input type="date" id="ieFormDate"></div>
-            <div class="ac-fg"><label>Amount *</label><input type="number" id="ieFormAmt" step="0.01" min="0"></div>
-            <div class="ac-fg"><label>Account *</label><select id="ieFormAcct"></select></div>
-            <div class="ac-fg"><label>Payment Mode</label>
-                <select id="ieFormMode"><option>Cash</option><option>Bank</option><option>UPI</option><option>Cheque</option></select>
+        <div class="ac-modal-header">
+            <div class="ac-modal-title"><i class="fa fa-exchange"></i> <span id="ieModalTitle">Record Income</span></div>
+            <button class="ac-modal-close" onclick="AC.closeModal('ieModal')">&times;</button>
+        </div>
+        <div class="ac-modal-body">
+            <input type="hidden" id="ieFormType" value="income">
+            <div class="ac-form-grid">
+                <div class="ac-fg"><label>Date *</label><input type="date" id="ieFormDate"></div>
+                <div class="ac-fg"><label>Amount *</label><input type="number" id="ieFormAmt" step="0.01" min="0"></div>
+                <div class="ac-fg"><label>Account *</label><select id="ieFormAcct"></select></div>
+                <div class="ac-fg"><label>Payment Mode</label>
+                    <select id="ieFormMode"><option>Cash</option><option>Bank</option><option>UPI</option><option>Cheque</option></select>
+                </div>
+                <div class="ac-fg"><label>Category</label><input type="text" id="ieFormCat" placeholder="e.g. Staff Salary"></div>
+                <div class="ac-fg"><label>Receipt/Ref No</label><input type="text" id="ieFormRef"></div>
+                <div class="ac-fg ac-form-full"><label>Description</label><input type="text" id="ieFormDesc" style="width:100%"></div>
+                <div class="ac-fg"><label>Vendor / Payee</label><input type="text" id="ieFormVendor" placeholder="Vendor/Payee name"></div>
+                <div class="ac-fg"><label>Pay via Bank Account</label><select id="ieFormBank"><option value="">Cash (1010)</option></select></div>
             </div>
-            <div class="ac-fg"><label>Category</label><input type="text" id="ieFormCat" placeholder="e.g. Staff Salary"></div>
-            <div class="ac-fg"><label>Receipt/Ref No</label><input type="text" id="ieFormRef"></div>
-            <div class="ac-fg" style="grid-column:1/-1"><label>Description</label><input type="text" id="ieFormDesc" style="width:100%"></div>
-            <div class="ac-fg"><label>Vendor</label><input type="text" id="ieFormVendor" placeholder="Vendor/Payee name"></div>
-            <div class="ac-fg"><label>Pay via Bank Account</label><select id="ieFormBank"><option value="">Cash (1010)</option></select></div>
         </div>
         <div class="ac-modal-actions">
             <button class="ac-btn ac-btn-ghost" onclick="AC.closeModal('ieModal')">Cancel</button>
-            <button class="ac-btn ac-btn-primary" onclick="AC.saveIE()"><i class="fa fa-check"></i> Save</button>
+            <button class="ac-btn ac-btn-primary" id="btnSaveIE" onclick="AC.saveIE()"><i class="fa fa-check"></i> Save</button>
         </div>
     </div>
 </div>
@@ -539,22 +710,27 @@ a.ac-tab.active { color: var(--ac-primary); }
 <!-- Bank Match Modal -->
 <div class="ac-modal-overlay" id="matchModal">
     <div class="ac-modal" style="max-width:700px;">
-        <div class="ac-modal-title">Match Transaction</div>
-        <div style="margin-bottom:14px;padding:12px;background:var(--ac-bg3);border-radius:var(--ac-r);font-size:13px;">
-            <div id="matchStmtInfo"></div>
+        <div class="ac-modal-header">
+            <div class="ac-modal-title"><i class="fa fa-link"></i> Match Transaction</div>
+            <button class="ac-modal-close" onclick="AC.closeModal('matchModal')">&times;</button>
         </div>
-        <div style="font-size:12px;font-weight:600;text-transform:uppercase;color:var(--ac-text3);margin-bottom:6px;">Suggested Matches</div>
-        <div class="ac-table-wrap">
-            <table class="ac-table">
-                <thead><tr><th>Date</th><th>Voucher</th><th>Narration</th><th class="ac-num">Dr</th><th class="ac-num">Cr</th><th>Score</th><th></th></tr></thead>
-                <tbody id="matchSuggestions"></tbody>
-            </table>
-        </div>
-        <div style="margin-top:12px;">
-            <div class="ac-fg"><label>Or enter Ledger Entry ID manually</label>
-                <div style="display:flex;gap:8px;">
-                    <input type="text" id="matchManualId" placeholder="e.g. JE_20260312..." style="flex:1;">
-                    <button class="ac-btn ac-btn-primary ac-btn-sm" onclick="AC.doMatch(document.getElementById('matchManualId').value)">Match</button>
+        <div class="ac-modal-body">
+            <div style="margin-bottom:14px;padding:12px;background:var(--ac-bg3);border-radius:var(--ac-r);font-size:13px;">
+                <div id="matchStmtInfo"></div>
+            </div>
+            <div class="ac-form-section"><i class="fa fa-lightbulb-o"></i> Suggested Matches</div>
+            <div class="ac-table-wrap">
+                <table class="ac-table">
+                    <thead><tr><th>Date</th><th>Voucher</th><th>Narration</th><th class="ac-num">Dr</th><th class="ac-num">Cr</th><th>Score</th><th></th></tr></thead>
+                    <tbody id="matchSuggestions"></tbody>
+                </table>
+            </div>
+            <div style="margin-top:12px;">
+                <div class="ac-fg"><label>Or enter Ledger Entry ID manually</label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" id="matchManualId" placeholder="e.g. JE_20260312..." style="flex:1;">
+                        <button class="ac-btn ac-btn-primary ac-btn-sm" onclick="AC.doMatch(document.getElementById('matchManualId').value)">Match</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -573,17 +749,23 @@ a.ac-tab.active { color: var(--ac-primary); }
     var CSRF_HASH = '<?= $this->security->get_csrf_hash() ?>';
     var ADMIN_ROLE = '<?= $admin_role ?>';
     var IS_ADMIN = ['Admin','Super Admin','Our Panel'].indexOf(ADMIN_ROLE) >= 0;
-    var IS_FINANCE = IS_ADMIN || ['Accountant','Finance'].indexOf(ADMIN_ROLE) >= 0;
+    var IS_FINANCE = IS_ADMIN || <?= json_encode(has_permission('Accounting')) ?>;
 
     var coaCache = {}; // code → account object
 
     // ── Helpers ──
+    function _readCsrfCookie() {
+        var m = document.cookie.match('(?:^|; )' + CSRF_NAME + '=([^;]+)');
+        return m ? decodeURIComponent(m[1]) : CSRF_HASH;
+    }
+
     function post(url, data) {
         var fd = new FormData();
-        fd.append(CSRF_NAME, CSRF_HASH);
+        fd.append(CSRF_NAME, _readCsrfCookie());
         if (data) Object.keys(data).forEach(function(k){ fd.append(k, data[k]); });
         return fetch(BASE + url, { method: 'POST', body: fd })
             .then(function(r){
+                if (r.status === 403) return { status: 'error', message: 'Session expired or permission denied. Please refresh the page.' };
                 if (!r.ok) return { status: 'error', message: 'Server error (' + r.status + ')' };
                 return r.json();
             })
@@ -594,6 +776,7 @@ a.ac-tab.active { color: var(--ac-primary); }
     function getJSON(url) {
         return fetch(BASE + url)
             .then(function(r){
+                if (r.status === 403) return { status: 'error', message: 'Session expired or permission denied. Please refresh the page.' };
                 if (!r.ok) return { status: 'error', message: 'Server error (' + r.status + ')' };
                 return r.json();
             })
@@ -612,6 +795,13 @@ a.ac-tab.active { color: var(--ac-primary); }
     function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
     function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+    // Close modal when clicking backdrop (outside the modal box)
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('ac-modal-overlay') && e.target.classList.contains('show')) {
+            e.target.classList.remove('show');
+        }
+    });
 
     function catBadge(cat) {
         return '<span class="ac-badge ac-badge-' + (cat || '').toLowerCase() + '">' + esc(cat) + '</span>';
@@ -646,7 +836,17 @@ a.ac-tab.active { color: var(--ac-primary); }
         var codes = Object.keys(accounts).sort(function(a,b){ return a.localeCompare(b, undefined, {numeric:true}); });
 
         if (!codes.length) {
-            body.innerHTML = '<tr><td colspan="6" class="ac-empty">No accounts yet. Click "Seed Defaults" to create a standard chart.</td></tr>';
+            body.innerHTML = '<tr><td colspan="7" class="ac-empty">'
+                + '<div style="padding:20px 0">'
+                + '<i class="fa fa-sitemap" style="font-size:36px;color:var(--ac-text3);display:block;margin-bottom:12px"></i>'
+                + '<div style="font-size:15px;font-weight:600;color:var(--ac-text);margin-bottom:6px">No Chart of Accounts</div>'
+                + '<div style="font-size:13px;color:var(--ac-text2);margin-bottom:16px;max-width:400px;margin-left:auto;margin-right:auto">'
+                + 'Set up your chart of accounts to start tracking finances. Seed the standard Indian school template with 50+ accounts across Assets, Liabilities, Equity, Income, and Expenses.'
+                + '</div>'
+                + (IS_ADMIN ? '<button class="ac-btn ac-btn-primary" onclick="AC.seedChart()" style="margin-right:8px"><i class="fa fa-magic"></i> Seed Default Chart</button>' : '')
+                + '<button class="ac-btn ac-btn-ghost" onclick="AC.showAccountModal()"><i class="fa fa-plus"></i> Add Manually</button>'
+                + '</div>'
+                + '</td></tr>';
             return;
         }
 
@@ -656,12 +856,16 @@ a.ac-tab.active { color: var(--ac-primary); }
             var indent = a.parent_code ? (accounts[a.parent_code] && accounts[a.parent_code].parent_code ? 'ac-indent-2' : 'ac-indent-1') : '';
             var rowCls = a.is_group ? 'ac-group-row' : '';
 
+            var curBal = Number(a.current_balance || 0);
+            var curBalCls = curBal > 0 ? 'color:var(--ac-green)' : (curBal < 0 ? 'color:var(--ac-red)' : '');
+
             html += '<tr class="' + rowCls + '">'
                 + '<td><code>' + esc(code) + '</code></td>'
                 + '<td class="' + indent + '">' + (a.is_group ? '<i class="fa fa-folder-o" style="margin-right:6px;color:var(--ac-text3)"></i>' : '') + esc(a.name) + (a.is_bank ? ' <i class="fa fa-bank" style="color:var(--ac-blue);font-size:12px;margin-left:4px;" title="Bank Account"></i>' : '') + '</td>'
                 + '<td>' + catBadge(a.category) + '</td>'
                 + '<td style="font-size:12px;color:var(--ac-text2);">' + esc(a.sub_category || '') + '</td>'
                 + '<td class="ac-num">' + fmt(a.opening_balance) + '</td>'
+                + '<td class="ac-num" style="font-weight:600;' + curBalCls + '">' + fmt(curBal) + '</td>'
                 + '<td>'
                 + (a.is_system ? '<span style="font-size:11px;color:var(--ac-text3)">System</span>'
                     : '<button class="ac-btn ac-btn-ghost ac-btn-sm" onclick="AC.editAccount(\'' + code + '\')"><i class="fa fa-pencil"></i></button> '
@@ -742,6 +946,8 @@ a.ac-tab.active { color: var(--ac-primary); }
     });
 
     function saveAccount() {
+        var btn = document.getElementById('btnSaveAccount');
+        btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving...';
         post('accounting/save_account', {
             code: document.getElementById('amCode').value,
             name: document.getElementById('amName').value,
@@ -758,9 +964,10 @@ a.ac-tab.active { color: var(--ac-primary); }
             account_no: document.getElementById('amAccNo').value,
             ifsc: document.getElementById('amIfsc').value,
         }).then(function(r){
+            btn.disabled = false; btn.innerHTML = '<i class="fa fa-check"></i> Save';
             if (r.status !== 'success') return toast(r.message, 'error');
             toast(r.message); closeModal('accountModal'); loadCoA();
-        });
+        }).catch(function(){ btn.disabled = false; btn.innerHTML = '<i class="fa fa-check"></i> Save'; });
     }
 
     function editAccount(code) { showAccountModal(code); }
@@ -774,11 +981,53 @@ a.ac-tab.active { color: var(--ac-primary); }
     }
 
     function seedChart() {
-        if (!confirm('Seed default Indian school chart of accounts?')) return;
+        if (!confirm('Seed the standard Indian school chart of accounts?\n\nThis will add ~55 default accounts across 5 categories:\n• Assets (Cash, Bank, Receivables, Fixed Assets)\n• Liabilities (Payables, Statutory, Loans)\n• Equity (Capital, Retained Surplus)\n• Income (Fees, Donations, Other)\n• Expenses (Staff, Admin, Educational, Utilities)\n\nExisting accounts will NOT be changed or overwritten.')) return;
+        var btn = document.getElementById('btnSeedChart');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Seeding...'; }
         post('accounting/seed_default_chart').then(function(r){
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa fa-magic"></i> Seed Defaults'; }
             if (r.status !== 'success') return toast(r.message, 'error');
-            toast(r.message); loadCoA();
+            var msg = r.message;
+            if (r.added && r.added.length) msg += '\nCreated: ' + r.added.join(', ');
+            toast(msg, 'success'); loadCoA();
+        }).catch(function(){
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa fa-magic"></i> Seed Defaults'; }
+            toast('Failed to seed chart', 'error');
         });
+    }
+
+    // ══════════════════════════════════════════════
+    //  VOUCHER TYPE DISPLAY HELPER
+    // ══════════════════════════════════════════════
+    function formatVoucherType(type, source, narration) {
+        var t = type || 'Journal';
+        var badge = '<span class="ac-vtype-badge">' + esc(t) + '</span>';
+        if (t === 'Journal') {
+            var src = (source || '').toLowerCase();
+            var nar = (narration || '').toLowerCase();
+            if (src === 'hr_payroll' || src === 'payroll') {
+                if (nar.indexOf('payment') >= 0 || nar.indexOf('disbursement') >= 0) {
+                    badge += '<span class="ac-vtype-sub">Salary Payment</span>';
+                } else if (nar.indexOf('accrual') >= 0) {
+                    badge += '<span class="ac-vtype-sub">Salary Accrual</span>';
+                } else {
+                    badge += '<span class="ac-vtype-sub">Payroll</span>';
+                }
+            } else if (nar.indexOf('salary') >= 0) {
+                if (nar.indexOf('payment') >= 0) {
+                    badge += '<span class="ac-vtype-sub">Salary Payment</span>';
+                } else {
+                    badge += '<span class="ac-vtype-sub">Payroll</span>';
+                }
+            } else if (src === 'income') {
+                badge += '<span class="ac-vtype-sub">Income</span>';
+            } else if (src === 'expense') {
+                badge += '<span class="ac-vtype-sub">Expense</span>';
+            } else if (nar.indexOf('fee') >= 0) {
+                badge += '<span class="ac-vtype-sub">Fee Collection</span>';
+            }
+        }
+        return badge;
     }
 
     // ══════════════════════════════════════════════
@@ -812,7 +1061,7 @@ a.ac-tab.active { color: var(--ac-primary); }
                 html += '<tr>'
                     + '<td>' + esc(e.date) + '</td>'
                     + '<td><code>' + esc(e.voucher_no) + '</code></td>'
-                    + '<td>' + esc(e.voucher_type) + '</td>'
+                    + '<td>' + formatVoucherType(e.voucher_type, e.source, e.narration) + '</td>'
                     + '<td>' + esc(e.narration) + '</td>'
                     + '<td class="ac-num ac-dr">' + fmt(e.total_dr) + '</td>'
                     + '<td class="ac-num ac-cr">' + fmt(e.total_cr) + '</td>'
@@ -876,10 +1125,10 @@ a.ac-tab.active { color: var(--ac-primary); }
         });
 
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td><select class="je-acct" style="width:100%;padding:6px;font-size:13px;border:1px solid var(--ac-border);border-radius:4px;">' + opts + '</select></td>'
-            + '<td><input type="number" class="je-dr" step="0.01" min="0" value="" style="width:100%;padding:6px;font-size:13px;border:1px solid var(--ac-border);border-radius:4px;text-align:right;"></td>'
-            + '<td><input type="number" class="je-cr" step="0.01" min="0" value="" style="width:100%;padding:6px;font-size:13px;border:1px solid var(--ac-border);border-radius:4px;text-align:right;"></td>'
-            + '<td><button class="ac-btn ac-btn-danger ac-btn-sm" onclick="this.closest(\'tr\').remove();AC.updateJETotals();"><i class="fa fa-times"></i></button></td>';
+        tr.innerHTML = '<td><select class="je-acct">' + opts + '</select></td>'
+            + '<td><input type="number" class="je-dr" step="0.01" min="0" value="" placeholder="0.00"></td>'
+            + '<td><input type="number" class="je-cr" step="0.01" min="0" value="" placeholder="0.00"></td>'
+            + '<td><button class="ac-btn ac-btn-danger ac-btn-sm" onclick="this.closest(\'tr\').remove();AC.updateJETotals();" style="padding:5px 8px;"><i class="fa fa-times"></i></button></td>';
         document.getElementById('jeLines').appendChild(tr);
 
         // Auto-clear other field on input
@@ -918,15 +1167,18 @@ a.ac-tab.active { color: var(--ac-primary); }
             });
         });
 
+        var btn = document.getElementById('btnSaveJournal');
+        btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving...';
         post('accounting/save_journal_entry', {
             date: document.getElementById('jeDate').value,
             voucher_type: document.getElementById('jeVType').value,
             narration: document.getElementById('jeNarration').value,
             lines: JSON.stringify(lines),
         }).then(function(r){
+            btn.disabled = false; btn.innerHTML = '<i class="fa fa-check"></i> Save Entry';
             if (r.status !== 'success') return toast(r.message, 'error');
             toast(r.message); closeModal('journalModal'); loadLedger();
-        });
+        }).catch(function(){ btn.disabled = false; btn.innerHTML = '<i class="fa fa-check"></i> Save Entry'; });
     }
 
     function deleteJE(id) {
@@ -1052,6 +1304,8 @@ a.ac-tab.active { color: var(--ac-primary); }
     }
 
     function saveIE() {
+        var btn = document.getElementById('btnSaveIE');
+        btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving...';
         post('accounting/save_income_expense', {
             type: document.getElementById('ieFormType').value,
             date: document.getElementById('ieFormDate').value,
@@ -1064,9 +1318,10 @@ a.ac-tab.active { color: var(--ac-primary); }
             description: document.getElementById('ieFormDesc').value,
             vendor: document.getElementById('ieFormVendor').value,
         }).then(function(r){
+            btn.disabled = false; btn.innerHTML = '<i class="fa fa-check"></i> Save';
             if (r.status !== 'success') return toast(r.message, 'error');
             toast(r.message); closeModal('ieModal'); loadIE();
-        });
+        }).catch(function(){ btn.disabled = false; btn.innerHTML = '<i class="fa fa-check"></i> Save'; });
     }
 
     function deleteIE(id) {
@@ -1101,32 +1356,62 @@ a.ac-tab.active { color: var(--ac-primary); }
     }
 
     function loadCashBook() {
+        var selCode = document.getElementById('cbAccount').value;
+        if (!selCode) return toast('Select an account first.', 'error');
         post('accounting/get_cash_book', {
-            account_code: document.getElementById('cbAccount').value,
+            account_code: selCode,
             date_from: document.getElementById('cbFrom').value,
             date_to: document.getElementById('cbTo').value,
         }).then(function(r){
             if (r.status !== 'success') return toast(r.message, 'error');
 
+            // Show account header
+            var acct = r.account || {};
+            var hdr = document.getElementById('cbAccountHeader');
+            if (hdr) {
+                hdr.style.display = 'flex';
+                document.getElementById('cbAcctName').textContent = (acct.name || selCode);
+                document.getElementById('cbAcctCode').textContent = 'Account ' + (r.account_code || selCode)
+                    + ' | ' + (acct.category || '') + ' | Normal side: ' + (acct.normal_side || 'Dr');
+            }
+
+            // Stats
             document.getElementById('cbStats').innerHTML =
                 '<div class="ac-stat"><div class="ac-stat-label">Opening Balance</div><div class="ac-stat-value">' + fmt(r.opening_balance) + '</div></div>'
+                + '<div class="ac-stat"><div class="ac-stat-label">Total Received (Dr)</div><div class="ac-stat-value" style="color:var(--ac-green)">' + fmt(r.total_dr) + '</div></div>'
+                + '<div class="ac-stat"><div class="ac-stat-label">Total Paid (Cr)</div><div class="ac-stat-value" style="color:var(--ac-red)">' + fmt(r.total_cr) + '</div></div>'
                 + '<div class="ac-stat"><div class="ac-stat-label">Closing Balance</div><div class="ac-stat-value">' + fmt(r.closing_balance) + '</div></div>';
 
             var body = document.getElementById('cbBody');
-            if (!r.transactions.length) { body.innerHTML = '<tr><td colspan="6" class="ac-empty">No transactions.</td></tr>'; return; }
+            var foot = document.getElementById('cbFoot');
+            if (!r.transactions.length) {
+                body.innerHTML = '<tr><td colspan="8" class="ac-empty">No transactions found for this account in the selected period.</td></tr>';
+                if (foot) foot.style.display = 'none';
+                return;
+            }
 
             var html = '';
             r.transactions.forEach(function(t){
                 html += '<tr>'
                     + '<td>' + esc(t.date) + '</td>'
-                    + '<td><code>' + esc(t.voucher_no) + '</code></td>'
+                    + '<td><code style="font-size:11px">' + esc(t.voucher_no) + '</code></td>'
+                    + '<td>' + formatVoucherType(t.type, t.source, t.narration) + '</td>'
+                    + '<td style="font-size:12px;color:var(--ac-text2)">' + esc(t.contra || '-') + '</td>'
                     + '<td>' + esc(t.narration) + '</td>'
                     + '<td class="ac-num ac-dr">' + (t.dr > 0 ? fmt(t.dr) : '') + '</td>'
                     + '<td class="ac-num ac-cr">' + (t.cr > 0 ? fmt(t.cr) : '') + '</td>'
-                    + '<td class="ac-num">' + fmt(t.balance) + '</td>'
+                    + '<td class="ac-num" style="font-weight:600">' + fmt(t.balance) + '</td>'
                     + '</tr>';
             });
             body.innerHTML = html;
+
+            // Footer totals
+            if (foot) {
+                foot.style.display = '';
+                document.getElementById('cbTotalDr').textContent = fmt(r.total_dr);
+                document.getElementById('cbTotalCr').textContent = fmt(r.total_cr);
+                document.getElementById('cbClosingBal').textContent = fmt(r.closing_balance);
+            }
         });
     }
 
@@ -1274,6 +1559,8 @@ a.ac-tab.active { color: var(--ac-primary); }
         var type = document.getElementById('rptType').value;
         var container = document.getElementById('rptOutput');
         container.innerHTML = '<p class="ac-empty">Generating...</p>';
+        document.getElementById('btnExportXl').style.display = 'none';
+        document.getElementById('btnExportPdf').style.display = 'none';
 
         post('accounting/' + type, {
             as_of_date: document.getElementById('rptFrom').value,
@@ -1282,15 +1569,136 @@ a.ac-tab.active { color: var(--ac-primary); }
         }).then(function(r){
             if (r.status !== 'success') return container.innerHTML = '<p style="color:var(--ac-red);">' + esc(r.message) + '</p>';
 
-            if (type === 'trial_balance') renderTrialBalance(r, container);
+            if (type === 'day_book') renderDayBook(r, container);
+            else if (type === 'trial_balance') renderTrialBalance(r, container);
             else if (type === 'profit_loss') renderProfitLoss(r, container);
             else if (type === 'balance_sheet') renderBalanceSheet(r, container);
             else if (type === 'cash_flow') renderCashFlow(r, container);
+
+            // Show export buttons after successful generation
+            document.getElementById('btnExportXl').style.display = '';
+            document.getElementById('btnExportPdf').style.display = '';
+        });
+    }
+
+    function exportReport(format) {
+        var type = document.getElementById('rptType').value;
+        var from = document.getElementById('rptFrom').value;
+        var to   = document.getElementById('rptTo').value;
+        var endpoint = (format === 'pdf') ? 'accounting/export_pdf' : 'accounting/export_excel';
+        var url = BASE + endpoint + '?type=' + encodeURIComponent(type)
+            + '&date_from=' + encodeURIComponent(from)
+            + '&date_to=' + encodeURIComponent(to);
+        window.open(url, '_blank');
+    }
+
+    function _dateSub(r) {
+        var parts = [];
+        if (r.date_from) parts.push('From: ' + r.date_from);
+        if (r.date_to) parts.push('To: ' + r.date_to);
+        if (!parts.length) parts.push('All transactions (no date filter)');
+        return '<p style="font-size:12px;color:var(--ac-text3);margin:-8px 0 14px;"><i class="fa fa-calendar-o" style="margin-right:4px"></i>' + parts.join(' &nbsp;|&nbsp; ') + '</p>';
+    }
+
+    function renderDayBook(r, el) {
+        var entries = r.entries || [];
+        var html = '<h3 style="margin:0 0 4px;">Day Book</h3>' + _dateSub(r);
+        html += '<div style="font:400 12px/1.4 var(--font-m);color:var(--ac-text3);margin-bottom:14px">'
+            + entries.length + ' entries | Total Dr: <strong style="color:var(--ac-green)">' + fmt(r.total_dr) + '</strong>'
+            + ' | Total Cr: <strong style="color:var(--ac-red)">' + fmt(r.total_cr) + '</strong></div>';
+
+        if (!entries.length) {
+            el.innerHTML = html + '<div style="padding:30px;text-align:center;color:var(--ac-text3)"><i class="fa fa-inbox" style="font-size:24px;display:block;margin-bottom:8px"></i>No entries in this period.</div>';
+            return;
+        }
+
+        // Source badge helper
+        function _src(s, sys) {
+            var labels = {income:'Receipt',expense:'Payment',HR_Payroll:'Payroll',manual:'Manual',fees:'Fees'};
+            var label = labels[s]||s||'Manual';
+            var bg = sys ? 'rgba(15,118,110,.1)' : 'var(--ac-bg3)';
+            var fg = sys ? 'var(--ac-primary)' : 'var(--ac-text3)';
+            return '<span style="font-size:9px;padding:2px 6px;border-radius:3px;background:'+bg+';color:'+fg+';font-weight:600">'+label+'</span>';
+        }
+
+        // Voucher type badge
+        function _vtype(t) {
+            var colors = {Journal:'var(--ac-primary)',Receipt:'var(--ac-green)',Payment:'var(--ac-red)',Contra:'var(--ac-amber)'};
+            var c = colors[t] || 'var(--ac-text3)';
+            return '<span style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid '+c+';color:'+c+';font-weight:600">'+esc(t)+'</span>';
+        }
+
+        html += '<table class="ac-table" id="dayBookTable">'
+            + '<thead><tr><th>Date</th><th>Voucher</th><th>Type</th><th>Source</th><th>Narration</th>'
+            + '<th class="ac-num">Debit</th><th class="ac-num">Credit</th><th></th></tr></thead><tbody>';
+
+        entries.forEach(function(e, idx) {
+            var finBadge = e.is_finalized ? ' <i class="fa fa-lock" style="font-size:9px;color:var(--ac-text3)" title="Finalized"></i>' : '';
+            html += '<tr class="db-row" data-idx="'+idx+'" style="cursor:pointer">'
+                + '<td>' + esc(e.date) + '</td>'
+                + '<td><code style="font-size:11px">' + esc(e.voucher_no) + '</code>' + finBadge + '</td>'
+                + '<td>' + _vtype(e.voucher_type) + '</td>'
+                + '<td>' + _src(e.source, e.is_system) + '</td>'
+                + '<td style="max-width:280px">' + esc(e.narration) + '</td>'
+                + '<td class="ac-num ac-dr" style="font-weight:600">' + fmt(e.total_dr) + '</td>'
+                + '<td class="ac-num ac-cr" style="font-weight:600">' + fmt(e.total_cr) + '</td>'
+                + '<td><i class="fa fa-chevron-down" style="color:var(--ac-text3);font-size:11px;transition:transform .2s"></i></td>'
+                + '</tr>';
+
+            // Expandable line items row (hidden by default)
+            html += '<tr class="db-detail" data-idx="'+idx+'" style="display:none">'
+                + '<td colspan="8" style="padding:0 14px 12px 40px;background:var(--ac-bg3)">'
+                + '<table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:6px">'
+                + '<thead><tr style="border-bottom:1px solid var(--ac-border)">'
+                + '<th style="text-align:left;padding:4px 8px;font-size:11px;color:var(--ac-text3);font-weight:600">Account</th>'
+                + '<th style="text-align:right;padding:4px 8px;font-size:11px;color:var(--ac-text3);font-weight:600;width:120px">Debit</th>'
+                + '<th style="text-align:right;padding:4px 8px;font-size:11px;color:var(--ac-text3);font-weight:600;width:120px">Credit</th>'
+                + '</tr></thead><tbody>';
+
+            (e.lines || []).forEach(function(ln) {
+                html += '<tr style="border-bottom:1px solid var(--ac-border)">'
+                    + '<td style="padding:5px 8px"><code style="font-size:11px;margin-right:6px;color:var(--ac-text3)">' + esc(ln.account_code) + '</code>' + esc(ln.account_name) + '</td>'
+                    + '<td style="text-align:right;padding:5px 8px;font-family:var(--font-m);color:var(--ac-green)">' + (ln.dr > 0 ? fmt(ln.dr) : '') + '</td>'
+                    + '<td style="text-align:right;padding:5px 8px;font-family:var(--font-m);color:var(--ac-red)">' + (ln.cr > 0 ? fmt(ln.cr) : '') + '</td>'
+                    + '</tr>';
+            });
+
+            html += '</tbody></table></td></tr>';
+        });
+
+        html += '</tbody><tfoot><tr>'
+            + '<td colspan="5" style="text-align:right;font-weight:700">Totals</td>'
+            + '<td class="ac-num ac-dr" style="font-weight:700">' + fmt(r.total_dr) + '</td>'
+            + '<td class="ac-num ac-cr" style="font-weight:700">' + fmt(r.total_cr) + '</td>'
+            + '<td></td></tr></tfoot></table>';
+
+        // Balance check
+        var diff = Math.abs(r.total_dr - r.total_cr);
+        if (diff > 0.01) {
+            html += '<p style="color:var(--ac-red);margin-top:8px;font-size:12px"><i class="fa fa-exclamation-triangle"></i> Imbalance detected: ' + fmt(diff) + '</p>';
+        }
+
+        el.innerHTML = html;
+
+        // Toggle detail rows on click
+        el.querySelectorAll('.db-row').forEach(function(row) {
+            row.addEventListener('click', function() {
+                var idx = this.getAttribute('data-idx');
+                var detail = el.querySelector('.db-detail[data-idx="'+idx+'"]');
+                var icon = this.querySelector('.fa-chevron-down,.fa-chevron-up');
+                if (detail.style.display === 'none') {
+                    detail.style.display = '';
+                    if (icon) { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-up'); }
+                } else {
+                    detail.style.display = 'none';
+                    if (icon) { icon.classList.remove('fa-chevron-up'); icon.classList.add('fa-chevron-down'); }
+                }
+            });
         });
     }
 
     function renderTrialBalance(r, el) {
-        var html = '<h3 style="margin:0 0 14px;">Trial Balance</h3><table class="ac-table"><thead><tr><th>Code</th><th>Account</th><th>Category</th><th class="ac-num">Debit</th><th class="ac-num">Credit</th></tr></thead><tbody>';
+        var html = '<h3 style="margin:0 0 14px;">Trial Balance</h3>' + _dateSub(r) + '<table class="ac-table"><thead><tr><th>Code</th><th>Account</th><th>Category</th><th class="ac-num">Debit</th><th class="ac-num">Credit</th></tr></thead><tbody>';
         (r.rows || []).forEach(function(row){
             html += '<tr><td><code>' + esc(row.code) + '</code></td><td>' + esc(row.name) + '</td><td>' + catBadge(row.category) + '</td>'
                 + '<td class="ac-num ac-dr">' + (row.dr > 0 ? fmt(row.dr) : '') + '</td>'
@@ -1305,7 +1713,7 @@ a.ac-tab.active { color: var(--ac-primary); }
     }
 
     function renderProfitLoss(r, el) {
-        var html = '<h3 style="margin:0 0 14px;">Profit & Loss Statement</h3>';
+        var html = '<h3 style="margin:0 0 14px;">Profit & Loss Statement</h3>' + _dateSub(r);
 
         html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">';
         // Income
@@ -1326,7 +1734,7 @@ a.ac-tab.active { color: var(--ac-primary); }
     }
 
     function renderBalanceSheet(r, el) {
-        var html = '<h3 style="margin:0 0 14px;">Balance Sheet</h3>';
+        var html = '<h3 style="margin:0 0 14px;">Balance Sheet</h3>' + _dateSub(r);
         html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">';
 
         // Assets
@@ -1348,13 +1756,70 @@ a.ac-tab.active { color: var(--ac-primary); }
     }
 
     function renderCashFlow(r, el) {
-        el.innerHTML = '<h3 style="margin:0 0 14px;">Cash Flow Statement</h3>'
-            + '<div class="ac-stats">'
-            + '<div class="ac-stat"><div class="ac-stat-label">Operating</div><div class="ac-stat-value">' + fmt(r.operating) + '</div></div>'
-            + '<div class="ac-stat"><div class="ac-stat-label">Investing</div><div class="ac-stat-value">' + fmt(r.investing) + '</div></div>'
-            + '<div class="ac-stat"><div class="ac-stat-label">Financing</div><div class="ac-stat-value">' + fmt(r.financing) + '</div></div>'
-            + '<div class="ac-stat"><div class="ac-stat-label">Net Change</div><div class="ac-stat-value" style="color:' + (r.net_change >= 0 ? 'var(--ac-green)' : 'var(--ac-red)') + '">' + fmt(r.net_change) + '</div></div>'
+        var html = '<h3 style="margin:0 0 14px;">Cash Flow Statement</h3>' + _dateSub(r);
+
+        // Entry count + suspect warning
+        var metaParts = [];
+        if (r.entry_count !== undefined) metaParts.push('<i class="fa fa-database" style="margin-right:3px"></i>' + r.entry_count + ' entries processed');
+        if (r.suspect_duplicates) metaParts.push('<span style="color:#d97706"><i class="fa fa-exclamation-triangle" style="margin-right:3px"></i>' + r.suspect_duplicates + ' possible duplicate pair(s) detected — flagged below</span>');
+        if (metaParts.length) html += '<div style="font:400 11px/1.4 var(--font-m);color:var(--ac-text3);margin-bottom:10px">' + metaParts.join(' &nbsp;|&nbsp; ') + '</div>';
+
+        // Opening → Net → Closing summary
+        var ncColor = r.net_change >= 0 ? 'var(--ac-green)' : 'var(--ac-red)';
+        html += '<div class="ac-stats">'
+            + '<div class="ac-stat"><div class="ac-stat-label">Opening Balance</div><div class="ac-stat-value">' + fmt(r.opening_balance) + '</div></div>'
+            + '<div class="ac-stat"><div class="ac-stat-label">Operating</div><div class="ac-stat-value" style="color:' + (r.operating_total >= 0 ? 'var(--ac-green)' : 'var(--ac-red)') + '">' + fmt(r.operating_total) + '</div></div>'
+            + '<div class="ac-stat"><div class="ac-stat-label">Investing</div><div class="ac-stat-value" style="color:' + (r.investing_total >= 0 ? 'var(--ac-green)' : 'var(--ac-red)') + '">' + fmt(r.investing_total) + '</div></div>'
+            + '<div class="ac-stat"><div class="ac-stat-label">Financing</div><div class="ac-stat-value" style="color:' + (r.financing_total >= 0 ? 'var(--ac-green)' : 'var(--ac-red)') + '">' + fmt(r.financing_total) + '</div></div>'
+            + '<div class="ac-stat"><div class="ac-stat-label">Net Cash Change</div><div class="ac-stat-value" style="color:' + ncColor + '">' + fmt(r.net_change) + '</div></div>'
+            + '<div class="ac-stat" style="border:2px solid var(--ac-primary)"><div class="ac-stat-label">Closing Balance</div><div class="ac-stat-value" style="color:var(--ac-primary);font-size:22px">' + fmt(r.closing_balance) + '</div></div>'
             + '</div>';
+
+        // Verification line
+        html += '<div style="text-align:center;font:400 12px/1.5 var(--font-m);color:var(--ac-text3);margin:8px 0 16px">'
+            + 'Opening (' + fmt(r.opening_balance) + ') + Net Change (' + fmt(r.net_change) + ') = Closing (' + fmt(r.closing_balance) + ')</div>';
+
+        // Itemized sections
+        function _srcBadge(src, isSystem) {
+            var labels = {income:'Receipt',expense:'Payment',HR_Payroll:'Payroll',manual:'Manual',fees:'Fees'};
+            var label = labels[src]||src||'Manual';
+            var bg = isSystem ? 'rgba(15,118,110,.1)' : 'var(--ac-bg3)';
+            var fg = isSystem ? 'var(--ac-primary)' : 'var(--ac-text3)';
+            return '<span style="font-size:9px;padding:2px 6px;border-radius:3px;background:'+bg+';color:'+fg+';font-weight:600">' + label + '</span>';
+        }
+
+        function _cfSection(title, icon, color, items, total) {
+            var s = '<div style="margin-bottom:18px">';
+            s += '<div style="font:700 14px/1.3 var(--font-b);color:' + color + ';margin-bottom:8px;display:flex;align-items:center;gap:6px">'
+                + '<i class="fa ' + icon + '"></i> ' + title
+                + ' <span style="margin-left:auto;font-family:var(--font-m)">' + fmt(total) + '</span></div>';
+            if (!items || !items.length) {
+                s += '<div style="padding:12px;font:400 12px/1.5 var(--font-m);color:var(--ac-text3);background:var(--ac-bg3);border-radius:6px">No ' + title.toLowerCase() + ' transactions.</div>';
+            } else {
+                s += '<table class="ac-table"><thead><tr><th>Date</th><th>Voucher</th><th>Source</th><th>Description</th><th class="ac-num">Inflow</th><th class="ac-num">Outflow</th><th class="ac-num">Net</th></tr></thead><tbody>';
+                items.forEach(function(t) {
+                    var netC = t.net >= 0 ? 'var(--ac-green)' : 'var(--ac-red)';
+                    var dupStyle = t.possible_duplicate ? 'background:rgba(217,119,6,.06);' : '';
+                    var dupTag = t.possible_duplicate ? ' <i class="fa fa-exclamation-triangle" style="color:#d97706;font-size:10px" title="Possible duplicate — same date, amount, and similar narration as another entry"></i>' : '';
+                    s += '<tr style="' + dupStyle + '"><td>' + esc(t.date) + '</td>'
+                        + '<td><code style="font-size:11px">' + esc(t.voucher_no) + '</code></td>'
+                        + '<td>' + _srcBadge(t.source, t.is_system) + '</td>'
+                        + '<td>' + esc(t.narration) + dupTag + '</td>'
+                        + '<td class="ac-num ac-dr">' + (t.inflow > 0 ? fmt(t.inflow) : '') + '</td>'
+                        + '<td class="ac-num ac-cr">' + (t.outflow > 0 ? fmt(t.outflow) : '') + '</td>'
+                        + '<td class="ac-num" style="font-weight:600;color:' + netC + '">' + fmt(t.net) + '</td></tr>';
+                });
+                s += '</tbody><tfoot><tr><td colspan="6" style="text-align:right;font-weight:700">Subtotal</td><td class="ac-num" style="font-weight:700;color:' + color + '">' + fmt(total) + '</td></tr></tfoot></table>';
+            }
+            s += '</div>';
+            return s;
+        }
+
+        html += _cfSection('Operating Activities', 'fa-cogs', 'var(--ac-primary)', r.operating, r.operating_total);
+        html += _cfSection('Investing Activities', 'fa-building', 'var(--ac-blue)', r.investing, r.investing_total);
+        html += _cfSection('Financing Activities', 'fa-university', 'var(--ac-amber)', r.financing, r.financing_total);
+
+        el.innerHTML = html;
     }
 
     // ══════════════════════════════════════════════
@@ -1448,7 +1913,7 @@ a.ac-tab.active { color: var(--ac-primary); }
         loadBankAccounts: loadBankAccounts, loadBankRecon: loadBankRecon,
         showImportCSV: showImportCSV, matchPrompt: matchPrompt, doMatch: doMatch,
         unmatchTxn: unmatchTxn,
-        generateReport: generateReport, loadSettings: loadSettings,
+        generateReport: generateReport, exportReport: exportReport, loadSettings: loadSettings,
         lockPeriod: lockPeriod, migrateAccounts: migrateAccounts,
         recomputeBalances: recomputeBalances, carryForward: carryForward,
         loadAuditLog: loadAuditLog, closeModal: closeModal,
@@ -1458,7 +1923,9 @@ a.ac-tab.active { color: var(--ac-primary); }
     applyRoleVisibility();
     var activeTab = '<?= $at ?>';
     loadCoA(); // always load CoA (needed for account dropdowns)
-    if (activeTab === 'settings') { loadSettings(); loadAuditLog(); }
+    if (activeTab === 'ledger') { loadLedger(); }
+    else if (activeTab === 'income-expense') { loadIE(); }
+    else if (activeTab === 'settings') { loadSettings(); loadAuditLog(); }
     else if (activeTab === 'bank-recon') { loadBankAccounts(); }
     else if (activeTab === 'cash-book') { populateCashBookAccounts(); }
 })();

@@ -248,6 +248,13 @@
     .ana-bar-label { min-width: 80px; font-size: 11px; }
     .ana-individual { flex-direction: column; align-items: stretch; }
 }
+/* Person info banner */
+.ana-person-info{display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:16px;
+    background:var(--ana-gold-dim);border:1px solid var(--ana-gold-ring);border-radius:8px}
+.ana-person-info i.fa-user-circle{font-size:32px;color:var(--ana-gold);flex-shrink:0}
+.ana-person-name{font-family:var(--ana-font-b);font-size:15px;font-weight:700;color:var(--ana-t1);line-height:1.3}
+.ana-person-meta{font-family:var(--ana-font-m);font-size:11.5px;color:var(--ana-t3);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap}
+.ana-person-meta span{display:inline-flex;align-items:center;gap:4px}
 @media (max-width: 479px) {
     .ana-panel-body { padding: 12px; }
     .ana-bar-label { min-width: 60px; font-size: 10px; }
@@ -426,6 +433,16 @@
             </div>
             <div class="ana-loading" id="anaIndLoading">
                 <i class="fa fa-spinner fa-spin"></i> Loading report...
+            </div>
+            <div id="anaIndPersonInfo" class="ana-person-info" style="display:none;">
+                <i class="fa fa-user-circle"></i>
+                <div>
+                    <div class="ana-person-name" id="anaIndPersonName"></div>
+                    <div class="ana-person-meta">
+                        <span><i class="fa fa-id-badge"></i> <em id="anaIndPersonId2"></em></span>
+                        <span id="anaIndPersonClassWrap"><i class="fa fa-graduation-cap"></i> <em id="anaIndPersonClass"></em></span>
+                    </div>
+                </div>
             </div>
             <div id="anaIndResult" style="display:none;">
                 <div style="overflow-x:auto;">
@@ -736,6 +753,7 @@
 
         elIndResult.style.display = 'none';
         elIndEmpty.style.display = 'none';
+        document.getElementById('anaIndPersonInfo').style.display = 'none';
         elIndLoading.style.display = 'block';
         elIndBtn.disabled = true;
 
@@ -757,6 +775,25 @@
 
                 var months = res.months || [];
                 var totals = res.totals || {};
+
+                // Show person info banner
+                var elInfo = document.getElementById('anaIndPersonInfo');
+                var pName = res.person_name || '';
+                if (pName) {
+                    document.getElementById('anaIndPersonName').textContent = pName;
+                    document.getElementById('anaIndPersonId2').textContent = res.person_id || pid;
+                    var classWrap = document.getElementById('anaIndPersonClassWrap');
+                    var classEl = document.getElementById('anaIndPersonClass');
+                    if (res.person_type === 'student' && (res.person_class || res.person_section)) {
+                        classEl.textContent = 'Class ' + (res.person_class || '') + (res.person_section ? ' — Section ' + res.person_section : '');
+                        classWrap.style.display = '';
+                    } else {
+                        classWrap.style.display = 'none';
+                    }
+                    elInfo.style.display = 'flex';
+                } else {
+                    elInfo.style.display = 'none';
+                }
 
                 if (months.length === 0) {
                     elIndEmpty.style.display = 'block';

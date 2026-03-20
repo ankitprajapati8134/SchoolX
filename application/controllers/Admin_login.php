@@ -112,7 +112,7 @@ class Admin_login extends CI_Controller
         // ── [S-02] Read + length-validate inputs ──────────────────────────
         $rawAdminId  = (string) $this->input->post('admin_id');
         $rawSchoolId = (string) $this->input->post('school_id');
-        $rawPassword = (string) $this->input->post('password');
+        $rawPassword = (string) $this->input->post('password', FALSE);  // R5-SEC-1: bypass XSS filter for passwords
 
         if ($rawAdminId === '' || $rawSchoolId === '' || $rawPassword === '') {
             $this->session->set_flashdata('error', 'All fields are required.');

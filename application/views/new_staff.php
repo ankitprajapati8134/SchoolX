@@ -116,10 +116,32 @@
                                 </select>
                             </div>
 
+                            <!-- Staff roles are auto-assigned from Designation via backend -->
+                            <input type="hidden" name="staff_roles" id="staffRolesHidden" value="">
+                            <input type="hidden" name="primary_role" id="primaryRoleHidden" value="">
+
                             <div class="nsa-field">
-                                <label>Staff Position <span class="req">*</span></label>
-                                <input type="text" id="staff_position" name="staff_position"
-                                       class="nsa-input" placeholder="e.g. Senior Teacher" required>
+                                <label>Designation / Title <span class="req">*</span></label>
+                                <select id="staff_position" name="staff_position" class="nsa-input" required>
+                                    <option value="">-- Select Designation --</option>
+                                    <option value="Teacher">Teacher</option>
+                                    <option value="Senior Teacher">Senior Teacher</option>
+                                    <option value="Head of Department">Head of Department</option>
+                                    <option value="Vice Principal">Vice Principal</option>
+                                    <option value="Principal">Principal</option>
+                                    <option value="Accountant">Accountant</option>
+                                    <option value="Librarian">Librarian</option>
+                                    <option value="Lab Assistant">Lab Assistant</option>
+                                    <option value="Clerk">Clerk</option>
+                                    <option value="Receptionist">Receptionist</option>
+                                    <option value="IT Administrator">IT Administrator</option>
+                                    <option value="Sports Coach">Sports Coach</option>
+                                    <option value="Counselor">Counselor</option>
+                                    <option value="Driver">Driver</option>
+                                    <option value="Security Guard">Security Guard</option>
+                                    <option value="Peon / Attendant">Peon / Attendant</option>
+                                    <option value="Other">Other</option>
+                                </select>
                             </div>
 
                             <div class="nsa-field">
@@ -250,8 +272,9 @@
 
                             <div class="nsa-field">
                                 <label>Department <span class="req">*</span></label>
-                                <input type="text" id="teacher_department" name="department"
-                                       class="nsa-input" placeholder="e.g. Science" required>
+                                <select id="teacher_department" name="department" class="nsa-input" required>
+                                    <option value="">-- Select Department --</option>
+                                </select>
                             </div>
 
                         </div>
@@ -626,7 +649,7 @@ function validateStaffForm() {
     /* Required text fields */
     if (!getValue('name'))                   showError('name',                   'Staff name is required');
     if (!getValue('dob'))                    showError('dob',                    'Date of birth is required');
-    if (!getValue('staff_position'))         showError('staff_position',         'Staff position is required');
+    if (!getValue('staffRolesHidden'))        showError('staffRoleSelect',        'At least one staff role is required');
     if (!getValue('father_name'))            showError('father_name',            'Father name is required');
     if (!getValue('street'))                 showError('street',                 'Street address is required');
     if (!getValue('city'))                   showError('city',                   'City is required');
@@ -709,7 +732,7 @@ function fillStaffPreviewData() {
     /* Hero */
     setText('previewStaffName',   getValue('name'));
     setText('previewStaffId',     getValue('user_id'));
-    setText('previewPosition',    getValue('staff_position'));
+    setText('previewPosition',    getValue('staff_position') || getValue('staffRolesHidden').split(',').join(', '));
     setText('previewDepartment',  getValue('teacher_department'));
     setText('previewJoiningDate', getValue('date_of_joining'));
 
@@ -805,6 +828,37 @@ function submitStaffFinalForm() {
             }
             if (res.status === 'success') {
                 closeStaffPreviewModal();
+
+                // ATS integration: finalize hire if this was a convert-to-staff flow
+                var atsAppId = document.getElementById('ats_application_id');
+                if (atsAppId && atsAppId.value && res.staff_id) {
+                    var csrfName = '<?= $this->security->get_csrf_token_name() ?>';
+                    var csrfHash = res.csrf_hash || $('meta[name="csrf-token"]').attr('content');
+                    var atsData = {};
+                    atsData[csrfName] = csrfHash;
+                    atsData['application_id'] = atsAppId.value;
+                    atsData['staff_id'] = res.staff_id;
+                    $.ajax({
+                        url: '<?= base_url("ats/finalize_hire") ?>',
+                        type: 'POST',
+                        data: atsData,
+                        dataType: 'json',
+                        success: function(atsRes) {
+                            if (atsRes && atsRes.status === 'success') {
+                                nsaShowAlert('success', 'Staff created & hire finalized!');
+                            } else {
+                                nsaShowAlert('warning', 'Staff created but ATS update returned: ' + (atsRes.message || 'unknown error'));
+                            }
+                            setTimeout(function() { window.location.href = '<?= base_url("ats") ?>'; }, 1600);
+                        },
+                        error: function() {
+                            nsaShowAlert('warning', 'Staff created but hire finalization failed. Please update ATS manually.');
+                            setTimeout(function() { window.location.href = '<?= base_url("ats") ?>'; }, 2500);
+                        }
+                    });
+                    return;
+                }
+
                 nsaShowAlert('success', 'Staff saved successfully!');
                 setTimeout(function() { location.reload(); }, 1600);
             } else {
@@ -824,6 +878,89 @@ function submitStaffFinalForm() {
 ═══════════════════════════ */
 document.addEventListener('DOMContentLoaded', function() {
 
+    /* ── Load departments from HR module into dropdown ── */
+    var _deptLoaded = false;
+    var _pendingDeptValue = null;
+    (function(){
+        var sel = document.getElementById('teacher_department');
+        if (!sel) return;
+        fetch('<?= base_url("hr/get_departments") ?>')
+            .then(function(r){ return r.json(); })
+            .then(function(r){
+                if (r.status !== 'success') return;
+                var depts = r.departments || [];
+                depts.forEach(function(d){
+                    if ((d.status||'Active') !== 'Active') return;
+                    var opt = document.createElement('option');
+                    opt.value = d.name;
+                    opt.textContent = d.name;
+                    sel.appendChild(opt);
+                });
+                _deptLoaded = true;
+                // Apply deferred ATS prefill value if any
+                if (_pendingDeptValue) {
+                    sel.value = _pendingDeptValue;
+                    if (!sel.value) {
+                        var opt = document.createElement('option');
+                        opt.value = _pendingDeptValue; opt.textContent = _pendingDeptValue;
+                        opt.selected = true; sel.appendChild(opt);
+                    }
+                }
+            })
+            .catch(function(){ _deptLoaded = true; });
+    })();
+
+    /* ── ATS Prefill: auto-fill form from applicant tracking data ── */
+    var _atsPrefill = null;
+    try {
+        var raw = sessionStorage.getItem('ats_prefill');
+        if (raw) {
+            _atsPrefill = JSON.parse(raw);
+            sessionStorage.removeItem('ats_prefill');
+            if (_atsPrefill && _atsPrefill.prefill) {
+                var pf = _atsPrefill.prefill;
+                var fieldMap = {
+                    'Name': 'name',
+                    'email': 'email_user',
+                    'phone_number': 'phone_number',
+                    'staff_position': 'staff_position',
+                    'qualification': 'qualification',
+                    'experience': 'teacher_experience'
+                };
+                for (var key in fieldMap) {
+                    if (pf[key]) {
+                        var el = document.getElementById(fieldMap[key]);
+                        if (el) el.value = pf[key];
+                    }
+                }
+                // Department is a select that loads async — defer the value
+                if (pf['department']) {
+                    if (_deptLoaded) {
+                        var dSel = document.getElementById('teacher_department');
+                        if (dSel) dSel.value = pf['department'];
+                    } else {
+                        _pendingDeptValue = pf['department'];
+                    }
+                }
+                // Store application_id for finalize_hire after submission
+                var atsHidden = document.createElement('input');
+                atsHidden.type = 'hidden';
+                atsHidden.name = 'ats_application_id';
+                atsHidden.id = 'ats_application_id';
+                atsHidden.value = _atsPrefill.application_id || '';
+                var form = document.getElementById('add_staff_form');
+                if (form) form.appendChild(atsHidden);
+
+                // Show banner
+                var banner = document.createElement('div');
+                banner.className = 'nsa-ats-banner';
+                banner.innerHTML = '<i class="fa fa-info-circle"></i> Pre-filled from ATS applicant: <strong>' + (pf.Name || '') + '</strong>. Complete the remaining fields and submit.';
+                var wrap = document.querySelector('.nsa-main');
+                if (wrap) wrap.insertBefore(banner, wrap.firstChild);
+            }
+        }
+    } catch(e) { /* ignore parse errors */ }
+
     /* Net salary live calculator */
     var basicInput = document.getElementById('basicSalary');
     var allowInput = document.getElementById('allowances');
@@ -839,6 +976,72 @@ document.addEventListener('DOMContentLoaded', function() {
             fillStaffPreviewData();
             openStaffPreviewModal();
         });
+    }
+
+    /* ── Staff Role Picker (multi-select chips) ── */
+    var _roleData = {};
+    var _selectedRoles = [];
+    var _primaryRole = '';
+
+    function loadStaffRoles() {
+        $.getJSON('<?= base_url("staff/get_staff_roles") ?>', function(d) {
+            if (d.status !== 'success' || !d.roles) return;
+            _roleData = d.roles;
+            var sel = document.getElementById('staffRoleSelect');
+            sel.innerHTML = '<option value="">+ Add role...</option>';
+            Object.keys(_roleData).forEach(function(rid) {
+                var r = _roleData[rid];
+                var opt = document.createElement('option');
+                opt.value = rid;
+                opt.textContent = r.label + ' (' + r.category + ')';
+                sel.appendChild(opt);
+            });
+        });
+    }
+    loadStaffRoles();
+
+    document.getElementById('staffRoleSelect').addEventListener('change', function() {
+        var rid = this.value;
+        if (!rid || _selectedRoles.indexOf(rid) !== -1) { this.value = ''; return; }
+        _selectedRoles.push(rid);
+        if (_selectedRoles.length === 1) _primaryRole = rid;
+        renderRoleChips();
+        this.value = '';
+    });
+
+    function renderRoleChips() {
+        var container = document.getElementById('selectedRolesChips');
+        container.innerHTML = '';
+        _selectedRoles.forEach(function(rid) {
+            var r = _roleData[rid] || { label: rid, category: '?' };
+            var isPrimary = rid === _primaryRole;
+            var chip = document.createElement('span');
+            chip.className = 'nsa-role-chip' + (isPrimary ? ' nsa-role-primary' : '');
+            chip.innerHTML = (isPrimary ? '<i class="fa fa-star" style="font-size:10px;margin-right:3px;"></i>' : '')
+                + r.label
+                + '<button type="button" class="nsa-role-remove" data-rid="' + rid + '">&times;</button>';
+            chip.title = isPrimary ? 'Primary role — click to change' : 'Click to set as primary';
+            chip.setAttribute('data-rid', rid);
+            chip.addEventListener('click', function(e) {
+                if (e.target.classList.contains('nsa-role-remove')) return;
+                _primaryRole = rid;
+                renderRoleChips();
+            });
+            container.appendChild(chip);
+        });
+        // Remove buttons
+        container.querySelectorAll('.nsa-role-remove').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var rid = this.getAttribute('data-rid');
+                _selectedRoles = _selectedRoles.filter(function(r) { return r !== rid; });
+                if (_primaryRole === rid) _primaryRole = _selectedRoles[0] || '';
+                renderRoleChips();
+            });
+        });
+        // Sync hidden fields
+        document.getElementById('staffRolesHidden').value = _selectedRoles.join(',');
+        document.getElementById('primaryRoleHidden').value = _primaryRole;
     }
 
     /* Sidebar active highlight on scroll */
@@ -1249,4 +1452,42 @@ document.addEventListener('DOMContentLoaded', function() {
 .nsa-toast.success { background: var(--nsa-dark); }
 .nsa-toast.error   { background: var(--nsa-red);  }
 .nsa-toast.warning { background: var(--nsa-amber); }
+
+/* ── ATS Prefill Banner ── */
+.nsa-ats-banner {
+    background: linear-gradient(135deg, rgba(15,118,110,.10), rgba(21,128,61,.10));
+    border: 1.5px solid rgba(15,118,110,.25);
+    border-radius: 10px;
+    padding: 12px 18px;
+    margin-bottom: 16px;
+    font: 500 13px/1.5 var(--nsa-font, 'Plus Jakarta Sans', sans-serif);
+    color: var(--nsa-dark, #0c1e38);
+    display: flex; align-items: center; gap: 8px;
+}
+.nsa-ats-banner i { color: #0f766e; font-size: 16px; }
+
+/* ── Staff Role Picker ── */
+.nsa-field-full { grid-column: 1 / -1; }
+.nsa-roles-picker {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 8px 10px; border: 1.5px solid var(--nsa-border, #d1d5db); border-radius: 8px;
+    background: var(--nsa-white, #fff); min-height: 44px;
+}
+.nsa-roles-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.nsa-role-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 16px; font-size: 12px; font-weight: 600;
+    background: var(--nsa-sky, #e6f4f1); color: var(--nsa-teal, #0f766e);
+    border: 1px solid rgba(15,118,110,.2); cursor: pointer; transition: all .15s;
+}
+.nsa-role-chip:hover { background: rgba(15,118,110,.15); }
+.nsa-role-chip.nsa-role-primary {
+    background: var(--nsa-teal, #0f766e); color: #fff;
+    border-color: var(--nsa-teal, #0f766e);
+}
+.nsa-role-remove {
+    background: none; border: none; color: inherit; font-size: 14px; font-weight: 700;
+    cursor: pointer; padding: 0 2px; line-height: 1; opacity: .7;
+}
+.nsa-role-remove:hover { opacity: 1; }
 </style>

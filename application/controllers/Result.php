@@ -33,13 +33,13 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Result extends MY_Controller
 {
     /** Roles allowed to design templates, compute results, configure cumulative. */
-    private const ADMIN_ROLES = ['Super Admin', 'Admin'];
+    private const ADMIN_ROLES = ['Super Admin', 'Admin', 'Principal', 'Academic Coordinator'];
 
     /** Roles allowed to enter/save marks (Teachers limited to own classes via _teacher_can_access). */
-    private const MARKS_ENTRY_ROLES = ['Super Admin', 'Admin', 'Teacher'];
+    private const MARKS_ENTRY_ROLES = ['Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
 
     /** Roles allowed to view results, marks, report cards. */
-    private const VIEW_ROLES = ['Admin', 'Principal', 'Teacher'];
+    private const VIEW_ROLES = ['Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
 
     public function __construct()
     {
@@ -173,6 +173,11 @@ class Result extends MY_Controller
             redirect('result/marks_entry');
         }
 
+        // RBAC: Teachers can only view marks sheets for their assigned classes/subjects
+        if (!$this->_teacher_can_access($classKey, $sectionKey, $subject)) {
+            show_error('You do not have permission to access this marks sheet.', 403, 'Access Denied');
+        }
+
         // Load exam metadata
         $exam = $this->firebase->get("Schools/{$school}/{$year}/Exams/{$examId}");
         if (!$exam || !is_array($exam)) {
@@ -273,6 +278,11 @@ class Result extends MY_Controller
         $section     = $profile['Section'] ?? '';
         $classKey    = $className ? "Class {$className}" : '';
         $sectionKey  = $section   ? "Section {$section}" : '';
+
+        // RBAC: Teachers can only view results for their assigned classes
+        if ($classKey && $sectionKey && !$this->_teacher_can_access($classKey, $sectionKey)) {
+            show_error('You do not have permission to view this student\'s results.', 403, 'Access Denied');
+        }
 
         // Load all active exams
         $exams = $this->exam_engine->get_active_exams();
@@ -388,108 +398,15 @@ class Result extends MY_Controller
     public function report_card($userId = null, $examId = null)
     {
         $this->_require_role(self::VIEW_ROLES, 'view_report_card');
-        $school = $this->school_name;
-        $year   = $this->session_year;
 
         if (!$userId || !$examId) {
             redirect('result');
         }
 
-        // ─────────────────────────────
-        // Load exam
-        // ─────────────────────────────
-        $exam = $this->firebase->get("Schools/{$school}/{$year}/Exams/{$examId}");
-        if (!$exam || !is_array($exam)) {
+        $data = $this->_load_report_card_data($userId, $examId);
+        if ($data === null) {
             redirect('result');
         }
-
-        $exam = array_merge(['id' => $examId], $exam);
-
-        // ─────────────────────────────
-        // Load student profile
-        // ─────────────────────────────
-        $school_id  = $this->parent_db_key;
-        $profile    = $this->firebase->get("Users/Parents/{$school_id}/{$userId}") ?? [];
-        if (!is_array($profile)) $profile = [];
-
-        $className  = trim($profile['Class']   ?? '');
-        $section    = trim($profile['Section'] ?? '');
-
-        $classKey   = $className ? "Class {$className}"   : '';
-        $sectionKey = $section   ? "Section {$section}"   : '';
-
-        // ─────────────────────────────
-        // Load computed result
-        // ─────────────────────────────
-        $computed = [];
-        if ($classKey && $sectionKey) {
-            $c = $this->firebase->get(
-                "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}/{$userId}"
-            );
-            if (is_array($c)) $computed = $c;
-        }
-
-        if (!is_array($computed) || empty($computed)) {
-            $computed = [
-                'TotalMarks' => 0,
-                'MaxMarks'   => 0,
-                'Percentage' => 0,
-                'Grade'      => '',
-                'PassFail'   => '',
-                'Rank'       => '',
-                'Subjects'   => [],
-            ];
-        }
-
-        // ─────────────────────────────
-        // Load templates
-        // ─────────────────────────────
-        $templates = [];
-        if ($classKey && $sectionKey) {
-            $t = $this->firebase->get(
-                "Schools/{$school}/{$year}/Results/Templates/{$examId}/{$classKey}/{$sectionKey}"
-            );
-            if (is_array($t)) $templates = $t;
-        }
-
-        // ─────────────────────────────
-        // Load marks for student
-        // ─────────────────────────────
-        $marks = [];
-        if ($classKey && $sectionKey) {
-            foreach ($templates as $subject => $tmp) {
-                $m = $this->firebase->get(
-                    "Schools/{$school}/{$year}/Results/Marks/{$examId}/{$classKey}/{$sectionKey}/{$subject}/{$userId}"
-                );
-                if (is_array($m)) {
-                    $marks[$subject] = $m;
-                }
-            }
-        }
-
-        // ─────────────────────────────
-        // Load school info
-        // ─────────────────────────────
-        $schoolInfo = $this->firebase->get("Schools/{$school}/Info") ?? [];
-        if (!is_array($schoolInfo)) $schoolInfo = [];
-
-        // ─────────────────────────────
-        // Send to view
-        // ─────────────────────────────
-        $data = [
-            'userId'      => $userId,
-            'examId'      => $examId,
-            'exam'        => $exam,
-            'profile'     => $profile,
-            'classKey'    => $classKey,
-            'sectionKey'  => $sectionKey,
-            'computed'    => $computed,
-            'templates'   => $templates,
-            'marks'       => $marks,
-            'schoolInfo'  => $schoolInfo,
-            'schoolName'  => $school,
-            'sessionYear' => $year,
-        ];
 
         $this->load->view('result/report_card', $data);
     }
@@ -553,11 +470,15 @@ class Result extends MY_Controller
         $userIds   = array_unique(array_merge(array_keys($computed), array_keys($roster)));
         sort($userIds);
 
+        // Single Firebase read for all profiles (fixes N+1 query pattern)
+        $allProfiles = $this->firebase->get("Users/Parents/{$school_id}") ?? [];
+        if (!is_array($allProfiles)) $allProfiles = [];
+
         foreach ($userIds as $userId) {
             if (!isset($computed[$userId])) continue; // Only students with computed results
 
-            $profile = $this->firebase->get("Users/Parents/{$school_id}/{$userId}") ?? [];
-            if (!is_array($profile)) $profile = [];
+            $profile = (isset($allProfiles[$userId]) && is_array($allProfiles[$userId]))
+                ? $allProfiles[$userId] : [];
 
             // Per-student marks
             $stuMarks = [];
@@ -581,6 +502,11 @@ class Result extends MY_Controller
             ];
         }
 
+        // Load selected report card template
+        $rcTemplate = $this->firebase->get("Schools/{$school}/Config/ReportCardTemplate");
+        $rcAllowed  = ['classic', 'cbse', 'minimal', 'modern', 'elegant'];
+        if (!$rcTemplate || !is_string($rcTemplate) || !in_array($rcTemplate, $rcAllowed, true)) $rcTemplate = 'classic';
+
         // Render batch view — reuses report_card view in a loop
         $data = [
             'students'    => $students,
@@ -589,6 +515,7 @@ class Result extends MY_Controller
             'classKey'    => $classKey,
             'sectionKey'  => $sectionKey,
             'sessionYear' => $year,
+            'rc_template' => $rcTemplate,
         ];
 
         $this->load->view('result/batch_report_cards', $data);
@@ -703,6 +630,13 @@ class Result extends MY_Controller
             echo json_encode(['template' => null]);
             return;
         }
+
+        // RBAC: Teachers can only view templates for their assigned classes/subjects
+        if (!$this->_teacher_can_access($classKey, $sectionKey, $subject)) {
+            echo json_encode(['template' => null]);
+            return;
+        }
+
         extract($this->_safe_result_params(compact('examId', 'classKey', 'sectionKey', 'subject')));
 
         $path     = "Schools/{$school}/{$year}/Results/Templates/{$examId}/{$classKey}/{$sectionKey}/{$subject}";
@@ -1395,6 +1329,306 @@ class Result extends MY_Controller
                 'stale'     => $stale,
             ],
         ]);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // PDF DOWNLOAD
+    // ══════════════════════════════════════════════════════════════════
+
+    /**
+     * Download a single student's report card as PDF.
+     *
+     * URL: result/download_pdf/{userId}/{examId}
+     * Reuses the same data-loading logic as report_card(), but captures
+     * the view output as a string and passes it through Dompdf.
+     */
+    public function download_pdf($userId = null, $examId = null)
+    {
+        $this->_require_role(self::VIEW_ROLES, 'download_pdf');
+        $school = $this->school_name;
+        $year   = $this->session_year;
+
+        if (!$userId || !$examId) {
+            redirect('result');
+        }
+
+        // ── Load all data (same as report_card()) ──
+        $data = $this->_load_report_card_data($userId, $examId);
+        if ($data === null) {
+            redirect('result');
+        }
+
+        // ── Render the template view to a string ──
+        $html = $this->load->view('result/report_card', $data, true);
+
+        // ── Build filename: StudentName_Class_Section.pdf ──
+        $profile  = $data['profile'];
+        $name     = trim($profile['Name'] ?? 'Student');
+        $class    = trim(str_replace('Class ', '', $data['classKey']));
+        $section  = trim(str_replace('Section ', '', $data['sectionKey']));
+        $filename = "{$name}_{$class}_{$section}.pdf";
+
+        // ── Generate and download PDF ──
+        $this->load->library('pdf_generator');
+        $this->pdf_generator->download($html, $filename);
+    }
+
+    /**
+     * Download batch report cards as a ZIP of individual PDFs.
+     *
+     * URL: result/download_batch_pdf/{examId}/{classKey}/{sectionKey}
+     *
+     * Architecture: Generates one PDF per student, writes each to temp dir,
+     * then zips and streams. This keeps peak memory to ~1 student's PDF at
+     * a time instead of holding all 500 in memory simultaneously.
+     */
+    public function download_batch_pdf($examId = null, $classKey = null, $sectionKey = null)
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'download_batch_pdf');
+
+        $school = $this->school_name;
+        $year   = $this->session_year;
+
+        if (!$examId || !$classKey || !$sectionKey) {
+            redirect('result/class_result');
+        }
+        $examId     = urldecode($examId);
+        $classKey   = urldecode($classKey);
+        $sectionKey = urldecode($sectionKey);
+
+        // ── Bump limits for large batches ──
+        set_time_limit(600);  // 10 minutes
+        ini_set('memory_limit', '512M');
+
+        // ── Load shared data (one Firebase read each) ──
+        $exam = $this->firebase->get("Schools/{$school}/{$year}/Exams/{$examId}");
+        if (!$exam || !is_array($exam)) {
+            redirect('result/class_result');
+        }
+        $exam = array_merge(['id' => $examId], $exam);
+
+        $templates = $this->firebase->get(
+            "Schools/{$school}/{$year}/Results/Templates/{$examId}/{$classKey}/{$sectionKey}"
+        ) ?? [];
+        if (!is_array($templates)) $templates = [];
+
+        $computed = $this->firebase->get(
+            "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}"
+        ) ?? [];
+        if (!is_array($computed)) $computed = [];
+        unset($computed['_stale']);
+
+        $allMarks = $this->firebase->get(
+            "Schools/{$school}/{$year}/Results/Marks/{$examId}/{$classKey}/{$sectionKey}"
+        ) ?? [];
+        if (!is_array($allMarks)) $allMarks = [];
+
+        $schoolInfo = $this->firebase->get("Schools/{$school}/Info") ?? [];
+        if (!is_array($schoolInfo)) $schoolInfo = [];
+
+        $school_id   = $this->parent_db_key;
+        $allProfiles = $this->firebase->get("Users/Parents/{$school_id}") ?? [];
+        if (!is_array($allProfiles)) $allProfiles = [];
+
+        $rcTemplate = $this->firebase->get("Schools/{$school}/Config/ReportCardTemplate");
+        $rcAllowed  = ['classic', 'cbse', 'minimal', 'modern', 'elegant'];
+        if (!$rcTemplate || !is_string($rcTemplate) || !in_array($rcTemplate, $rcAllowed, true)) {
+            $rcTemplate = 'classic';
+        }
+
+        // ── Build student list ──
+        $roster  = $this->exam_engine->get_student_names($classKey, $sectionKey);
+        $userIds = array_unique(array_merge(array_keys($computed), array_keys($roster)));
+        sort($userIds);
+
+        // ── Generate PDFs one at a time ──
+        $this->load->library('pdf_generator');
+        $items = [];
+        $classShort   = trim(str_replace('Class ', '', $classKey));
+        $sectionShort = trim(str_replace('Section ', '', $sectionKey));
+
+        foreach ($userIds as $userId) {
+            if (!isset($computed[$userId])) continue;
+
+            $profile = (isset($allProfiles[$userId]) && is_array($allProfiles[$userId]))
+                ? $allProfiles[$userId] : [];
+
+            // Per-student marks
+            $stuMarks = [];
+            foreach ($templates as $subject => $tmp) {
+                $stuMarks[$subject] = $allMarks[$subject][$userId] ?? [];
+            }
+
+            $data = [
+                'userId'      => $userId,
+                'examId'      => $examId,
+                'exam'        => $exam,
+                'profile'     => $profile,
+                'classKey'    => $classKey,
+                'sectionKey'  => $sectionKey,
+                'computed'    => $computed[$userId],
+                'templates'   => $templates,
+                'marks'       => $stuMarks,
+                'schoolInfo'  => $schoolInfo,
+                'schoolName'  => $school,
+                'sessionYear' => $year,
+                'rc_template' => $rcTemplate,
+            ];
+
+            // Render to HTML string
+            $html = $this->load->view('result/report_card', $data, true);
+
+            // Filename: StudentName_Class_Section.pdf
+            $name = trim($profile['Name'] ?? $userId);
+            $items[] = [
+                'html'     => $html,
+                'filename' => "{$name}_{$classShort}_{$sectionShort}.pdf",
+            ];
+
+            // Free the HTML string immediately
+            unset($html, $data, $stuMarks, $profile);
+        }
+
+        if (empty($items)) {
+            redirect('result/class_result');
+        }
+
+        // ── ZIP and download ──
+        $examSafe = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $exam['Name'] ?? 'Exam');
+        $zipName  = "Report_Cards_{$examSafe}_{$classShort}_{$sectionShort}.zip";
+        $this->pdf_generator->batch_download($items, $zipName);
+    }
+
+    /**
+     * AJAX endpoint: check batch PDF generation progress.
+     * Returns estimated count so UI can show progress.
+     *
+     * POST: {examId, classKey, sectionKey}
+     */
+    public function batch_pdf_count()
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'batch_pdf_count');
+        header('Content-Type: application/json');
+
+        $school = $this->school_name;
+        $year   = $this->session_year;
+
+        $examId     = trim((string) $this->input->post('examId'));
+        $classKey   = trim((string) $this->input->post('classKey'));
+        $sectionKey = trim((string) $this->input->post('sectionKey'));
+
+        if (!$examId || !$classKey || !$sectionKey) {
+            echo json_encode(['count' => 0]);
+            return;
+        }
+
+        $computed = $this->firebase->get(
+            "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}"
+        ) ?? [];
+        if (!is_array($computed)) $computed = [];
+        unset($computed['_stale']);
+
+        echo json_encode(['count' => count($computed)]);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // PRIVATE HELPERS
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Load all data needed for a single student's report card.
+     * Shared by report_card() and download_pdf().
+     *
+     * @return array|null  View data array, or null if invalid
+     */
+    private function _load_report_card_data(string $userId, string $examId): ?array
+    {
+        $school = $this->school_name;
+        $year   = $this->session_year;
+
+        $exam = $this->firebase->get("Schools/{$school}/{$year}/Exams/{$examId}");
+        if (!$exam || !is_array($exam)) return null;
+        $exam = array_merge(['id' => $examId], $exam);
+
+        $school_id = $this->parent_db_key;
+        $profile   = $this->firebase->get("Users/Parents/{$school_id}/{$userId}") ?? [];
+        if (!is_array($profile)) $profile = [];
+
+        $className  = trim($profile['Class']   ?? '');
+        $section    = trim($profile['Section'] ?? '');
+        $classKey   = $className ? "Class {$className}"   : '';
+        $sectionKey = $section   ? "Section {$section}"   : '';
+
+        // RBAC
+        if ($classKey && $sectionKey && !$this->_teacher_can_access($classKey, $sectionKey)) {
+            show_error('You do not have permission to view this report card.', 403, 'Access Denied');
+        }
+
+        // Computed result
+        $computed = [];
+        if ($classKey && $sectionKey) {
+            $c = $this->firebase->get(
+                "Schools/{$school}/{$year}/Results/Computed/{$examId}/{$classKey}/{$sectionKey}/{$userId}"
+            );
+            if (is_array($c)) $computed = $c;
+        }
+        if (empty($computed)) {
+            $computed = [
+                'TotalMarks' => 0, 'MaxMarks' => 0, 'Percentage' => 0,
+                'Grade' => '', 'PassFail' => '', 'Rank' => '', 'Subjects' => [],
+            ];
+        }
+
+        // Templates
+        $templates = [];
+        if ($classKey && $sectionKey) {
+            $t = $this->firebase->get(
+                "Schools/{$school}/{$year}/Results/Templates/{$examId}/{$classKey}/{$sectionKey}"
+            );
+            if (is_array($t)) $templates = $t;
+        }
+
+        // Marks (single read)
+        $marks = [];
+        if ($classKey && $sectionKey) {
+            $allMarks = $this->firebase->get(
+                "Schools/{$school}/{$year}/Results/Marks/{$examId}/{$classKey}/{$sectionKey}"
+            );
+            if (is_array($allMarks)) {
+                foreach ($templates as $subject => $tmp) {
+                    if (isset($allMarks[$subject][$userId]) && is_array($allMarks[$subject][$userId])) {
+                        $marks[$subject] = $allMarks[$subject][$userId];
+                    }
+                }
+            }
+        }
+
+        // School info
+        $schoolInfo = $this->firebase->get("Schools/{$school}/Info") ?? [];
+        if (!is_array($schoolInfo)) $schoolInfo = [];
+
+        // Template style
+        $rcTemplate = $this->firebase->get("Schools/{$school}/Config/ReportCardTemplate");
+        $rcAllowed  = ['classic', 'cbse', 'minimal', 'modern', 'elegant'];
+        if (!$rcTemplate || !is_string($rcTemplate) || !in_array($rcTemplate, $rcAllowed, true)) {
+            $rcTemplate = 'classic';
+        }
+
+        return [
+            'userId'      => $userId,
+            'examId'      => $examId,
+            'exam'        => $exam,
+            'profile'     => $profile,
+            'classKey'    => $classKey,
+            'sectionKey'  => $sectionKey,
+            'computed'    => $computed,
+            'templates'   => $templates,
+            'marks'       => $marks,
+            'schoolInfo'  => $schoolInfo,
+            'schoolName'  => $school,
+            'sessionYear' => $year,
+            'rc_template' => $rcTemplate,
+        ];
     }
 
 }

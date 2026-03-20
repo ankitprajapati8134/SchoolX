@@ -128,14 +128,27 @@ class MY_Controller extends CI_Controller
             }
 
             // ── Session year whitelist check ─────────────────────────────
+            // If session_year is not in the cached whitelist, refresh from
+            // Firebase before forcing logout — another admin may have added
+            // a new session since this user logged in.
             $available = $this->available_sessions;
             if (!empty($available) && is_array($available)
                 && !in_array($this->session_year, $available, true)) {
-                log_message('error',
-                    'MY_Controller: session_year [' . $this->session_year
-                    . '] not in whitelist — forcing logout.'
-                );
-                $this->_force_logout('Invalid academic session. Please log in again.');
+                // Refresh from Firebase
+                $freshSessions = $this->firebase->get("Schools/{$this->school_name}/Sessions");
+                if (is_array($freshSessions)) {
+                    $freshSessions = array_values(array_filter($freshSessions, 'is_string'));
+                    $this->session->set_userdata('available_sessions', $freshSessions);
+                    $this->available_sessions = $freshSessions;
+                }
+                // Re-check after refresh
+                if (!empty($freshSessions) && !in_array($this->session_year, $freshSessions, true)) {
+                    log_message('error',
+                        'MY_Controller: session_year [' . $this->session_year
+                        . '] not in whitelist even after refresh — forcing logout.'
+                    );
+                    $this->_force_logout('Invalid academic session. Please log in again.');
+                }
             }
 
             $now = time();
@@ -148,9 +161,10 @@ class MY_Controller extends CI_Controller
             //
             $lastCheck = (int) $this->session->userdata('sub_check_ts');
 
-            // M-06 FIX: Reduced subscription re-check interval from 300s (5 min) to 60s (1 min)
-            // to minimize the window where a revoked subscription still grants access.
-            if ($now - $lastCheck >= 60) {
+            // Subscription re-check every 5 minutes.
+            // Previously 60s — too aggressive, causes excessive Firebase reads and
+            // contributes to "unreachable" errors under rate-limit pressure.
+            if ($now - $lastCheck >= 300) {
                 // Subscription status check — try new path, then legacy fallback
                 $liveStatus = $this->firebase->get("System/Schools/{$this->school_id}/subscription/status");
                 if ($liveStatus === null || $liveStatus === false || $liveStatus === '') {
@@ -162,7 +176,8 @@ class MY_Controller extends CI_Controller
                     $liveStatus = (string) $liveStatus;
                     $this->session->set_userdata('sub_check_ts', $now);
 
-                    if (! in_array($liveStatus, ['Active', 'Grace_Period'], true)) {
+                    // Case-insensitive comparison — onboarding may write 'active'/'Active'
+                    if (! in_array(strtolower($liveStatus), ['active', 'grace_period'], true)) {
                         log_message('info',
                             "Sub status=[{$liveStatus}] school=[{$this->school_name}] — forcing logout."
                         );
@@ -170,6 +185,32 @@ class MY_Controller extends CI_Controller
                             'Your school subscription is no longer active. Please contact support.'
                         );
                     }
+
+                    // ── Admin account status re-check (piggyback on same interval) ──
+                    // If another admin disables this account mid-session, force logout.
+                    if (!empty($this->admin_id) && !empty($this->parent_db_key)) {
+                        $adminStatus = $this->firebase->get(
+                            "Users/Admin/{$this->parent_db_key}/{$this->admin_id}/Status"
+                        );
+                        if (is_string($adminStatus) && strtolower($adminStatus) !== 'active') {
+                            log_message('info',
+                                "Admin status=[{$adminStatus}] admin=[{$this->admin_id}]"
+                                . " school=[{$this->school_name}] — forcing logout."
+                            );
+                            $this->_force_logout(
+                                'Your account has been deactivated. Please contact your administrator.'
+                            );
+                        }
+                    }
+
+                    // ── RBAC permission refresh (piggyback on same interval) ──
+                    // If another admin changes this role's permissions, pick it up.
+                    $freshPerms = load_role_permissions(
+                        $this->firebase,
+                        $this->school_name,
+                        $this->admin_role ?? ''
+                    );
+                    $this->session->set_userdata('rbac_permissions', $freshPerms);
                 } else {
                     // Firebase unreachable — update timestamp to avoid hammering
                     // Firebase on every request, but don't kick the user out.
@@ -293,7 +334,7 @@ class MY_Controller extends CI_Controller
             . "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.datatables.net https://api.fontshare.com; "
             . "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.fontshare.com; "
             . "img-src 'self' data: blob: https://*.googleapis.com https://*.firebasestorage.googleapis.com; "
-            . "connect-src 'self' https://*.firebaseio.com https://*.firebasedatabase.app https://cdnjs.cloudflare.com; "
+            . "connect-src 'self' https://*.firebaseio.com https://*.firebasedatabase.app https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
             . "frame-ancestors 'none'; "
             . "base-uri 'self'; "
             . "form-action 'self';";

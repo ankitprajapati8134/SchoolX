@@ -58,6 +58,28 @@
         </div>
     </div>
 
+    <!-- ── STORAGE QUOTA BAR ── -->
+    <div class="sg-card" id="sgQuotaCard" style="margin-bottom:16px;display:none;">
+        <div class="sg-card-body" style="padding:14px 20px;">
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:200px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+                        <span style="font-size:12px;font-weight:600;color:var(--sg-text);">Storage Usage</span>
+                        <span style="font-size:11px;color:var(--sg-muted);" id="sgQuotaText">—</span>
+                    </div>
+                    <div style="height:6px;background:rgba(15,118,110,.1);border-radius:3px;overflow:hidden;">
+                        <div id="sgQuotaBar" style="height:100%;width:0%;border-radius:3px;background:var(--sg-teal);transition:width .5s;"></div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:14px;font-size:11.5px;color:var(--sg-muted);">
+                    <span><i class="fa fa-picture-o" style="color:var(--sg-teal);margin-right:3px;"></i> <span id="sgQuotaImg">0</span> / <span id="sgQuotaImgMax">200</span> images</span>
+                    <span><i class="fa fa-video-camera" style="color:#d97706;margin-right:3px;"></i> <span id="sgQuotaVid">0</span> / <span id="sgQuotaVidMax">30</span> videos</span>
+                    <span style="font-size:10px;color:var(--sg-muted);opacity:.7;">Max <span id="sgQuotaFileSize">3</span>MB/img &middot; <span id="sgQuotaVidSize">25</span>MB/vid</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ══════════════════════════════════════════════════════════════════ -->
     <!--  VIEW 1: ALBUMS GRID                                             -->
     <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -279,20 +301,44 @@ function toggleSection(gridId, arrowId) {
    VIEW 1: ALBUMS
    ══════════════════════════════════════════════════════════════════════ */
 
+var SG_LIMITS = {}; // storage limits from server
+
 function fetchAlbums() {
     showLoading(true);
     fetch(BASE + '/schools/fetchGalleryAlbums')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             SG.albums = data.albums || [];
+            SG_LIMITS = data.limits || {};
             renderAlbums();
             updateStats();
+            updateQuotaBar(data.total_images || 0, data.total_videos || 0);
         })
         .catch(function(e) {
             console.error('fetchAlbums:', e);
             showToast('Failed to load albums.', 'error');
         })
         .finally(function() { showLoading(false); });
+}
+
+function updateQuotaBar(totalImg, totalVid) {
+    var L = SG_LIMITS;
+    if (!L.max_images_per_school) return;
+    document.getElementById('sgQuotaCard').style.display = '';
+    document.getElementById('sgQuotaImg').textContent = totalImg;
+    document.getElementById('sgQuotaVid').textContent = totalVid;
+    document.getElementById('sgQuotaImgMax').textContent = L.max_images_per_school;
+    document.getElementById('sgQuotaVidMax').textContent = L.max_videos_per_school;
+    document.getElementById('sgQuotaFileSize').textContent = L.max_image_size_mb;
+    document.getElementById('sgQuotaVidSize').textContent = L.max_video_size_mb;
+
+    var totalFiles = totalImg + totalVid;
+    var maxFiles = L.max_images_per_school + L.max_videos_per_school;
+    var pct = maxFiles > 0 ? Math.min(100, Math.round(totalFiles / maxFiles * 100)) : 0;
+    var bar = document.getElementById('sgQuotaBar');
+    bar.style.width = pct + '%';
+    bar.style.background = pct > 90 ? '#ef4444' : (pct > 70 ? '#f97316' : 'var(--sg-teal)');
+    document.getElementById('sgQuotaText').textContent = totalFiles + ' / ' + maxFiles + ' files (' + pct + '%)';
 }
 
 function renderAlbums() {
@@ -307,22 +353,41 @@ function renderAlbums() {
     empty.style.display = 'none';
 
     grid.innerHTML = SG.albums.map(function(album) {
-        var cover = album.cover
-            ? '<img src="' + album.cover + '" alt="' + album.title + '">'
-            : '<div class="sg-album-placeholder"><i class="fa fa-picture-o"></i></div>';
+        var isDef = album.is_default;
+        var isPhotos = album.event_id === '__photos__';
+        var isVideos = album.event_id === '__videos__';
 
-        var badge = album.category === 'general'
-            ? '<span class="sg-badge sg-badge-muted">Legacy</span>'
-            : (album.status === 'completed'
-                ? '<span class="sg-badge sg-badge-green">Completed</span>'
-                : '<span class="sg-badge sg-badge-teal">' + (album.status || 'Event') + '</span>');
+        var cover;
+        if (isDef && !album.cover) {
+            // Stylized placeholder for default albums
+            var defIcon = album.icon || (isPhotos ? 'fa-camera' : 'fa-video-camera');
+            var defColor = isPhotos ? 'linear-gradient(135deg,#0f766e,#14b8a6)' : 'linear-gradient(135deg,#d97706,#f59e0b)';
+            cover = '<div class="sg-album-placeholder" style="background:' + defColor + ';"><i class="fa ' + defIcon + '" style="font-size:36px;color:#fff;"></i></div>';
+        } else if (album.cover) {
+            cover = '<img src="' + album.cover + '" alt="' + album.title + '">';
+        } else {
+            cover = '<div class="sg-album-placeholder"><i class="fa fa-picture-o"></i></div>';
+        }
 
-        var dateStr = album.start_date ? formatDate(album.start_date) : '';
+        var badge;
+        if (isDef) {
+            badge = '<span class="sg-badge sg-badge-teal" style="background:' + (isPhotos ? 'rgba(15,118,110,.12)' : 'rgba(217,119,6,.12)') + ';color:' + (isPhotos ? '#0f766e' : '#d97706') + ';">' + (isPhotos ? 'Photos' : 'Videos') + '</span>';
+        } else if (album.category === 'general') {
+            badge = '<span class="sg-badge sg-badge-muted">Legacy</span>';
+        } else if (album.status === 'completed') {
+            badge = '<span class="sg-badge sg-badge-green">Completed</span>';
+        } else {
+            badge = '<span class="sg-badge sg-badge-teal">' + (album.status || 'Event') + '</span>';
+        }
 
-        return '<div class="sg-album-card" data-id="' + album.event_id + '" data-title="' + album.title.toLowerCase() + '" onclick="openAlbum(\'' + album.event_id + '\')">'
+        var dateStr = (album.start_date && album.start_date !== '9999-99-99') ? formatDate(album.start_date) : '';
+
+        var cardStyle = isDef ? 'border:2px solid ' + (isPhotos ? 'rgba(15,118,110,.3)' : 'rgba(217,119,6,.3)') + ';' : '';
+
+        return '<div class="sg-album-card" style="' + cardStyle + '" data-id="' + album.event_id + '" data-title="' + album.title.toLowerCase() + '" onclick="openAlbum(\'' + album.event_id + '\')">'
             + '<div class="sg-album-cover">' + cover + '</div>'
             + '<div class="sg-album-info">'
-            +   '<div class="sg-album-name">' + album.title + '</div>'
+            +   '<div class="sg-album-name">' + (isDef ? '<i class="fa ' + (album.icon||'fa-folder') + '" style="margin-right:5px;color:' + (isPhotos?'#0f766e':'#d97706') + ';"></i>' : '') + album.title + '</div>'
             +   '<div class="sg-album-counts">'
             +       '<span><i class="fa fa-picture-o"></i> ' + album.image_count + '</span>'
             +       '<span><i class="fa fa-film"></i> ' + album.video_count + '</span>'
@@ -383,10 +448,11 @@ function openAlbum(eventId) {
     metaParts.push('<i class="fa fa-film"></i> ' + album.video_count + ' videos');
     document.getElementById('sgAlbumMeta').innerHTML = metaParts.join(' &nbsp;&middot;&nbsp; ');
 
-    // Hide upload for legacy albums
+    // Show upload for event albums and default albums; hide for legacy
     var isLegacy = eventId === '__legacy__';
-    document.getElementById('sgUploadCard').style.display = isLegacy ? 'none' : '';
-    document.getElementById('sgUploadBtn').style.display = isLegacy ? 'none' : '';
+    var allowUpload = !isLegacy; // default albums (__photos__, __videos__) + event albums can upload
+    document.getElementById('sgUploadCard').style.display = allowUpload ? '' : 'none';
+    document.getElementById('sgUploadBtn').style.display = allowUpload ? '' : 'none';
 
     // Switch views
     document.getElementById('sgAlbumsView').style.display = 'none';
@@ -693,18 +759,22 @@ document.getElementById('sgFileInput').addEventListener('change', function(e) {
 function handleFiles(files) {
     if (!files.length) return;
     if (!SG.currentAlbum || SG.currentAlbum.event_id === '__legacy__') {
-        showToast('Please open an event album to upload media.', 'error');
+        showToast('Cannot upload to this album.', 'error');
         return;
     }
+
+    var L = SG_LIMITS;
+    var maxImgMB = L.max_image_size_mb || 3;
+    var maxVidMB = L.max_video_size_mb || 25;
 
     var validFiles = [];
     Array.from(files).forEach(function(f) {
         var ext = f.name.split('.').pop().toLowerCase();
         var isImg = ['jpg','jpeg','png','webp'].includes(ext);
         var isVid = ['mp4','mov','avi','mkv','webm'].includes(ext);
-        if (!isImg && !isVid) { showToast('Skipped ' + f.name + ' — unsupported.', 'error'); return; }
-        if (isImg && f.size > 5*1024*1024) { showToast(f.name + ' exceeds 5MB.', 'error'); return; }
-        if (isVid && f.size > 50*1024*1024) { showToast(f.name + ' exceeds 50MB.', 'error'); return; }
+        if (!isImg && !isVid) { showToast('Skipped ' + f.name + ' — unsupported format.', 'error'); return; }
+        if (isImg && f.size > maxImgMB*1024*1024) { showToast(f.name + ' exceeds ' + maxImgMB + 'MB limit.', 'error'); return; }
+        if (isVid && f.size > maxVidMB*1024*1024) { showToast(f.name + ' exceeds ' + maxVidMB + 'MB limit.', 'error'); return; }
         validFiles.push(f);
     });
 

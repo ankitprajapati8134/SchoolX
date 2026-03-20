@@ -12,6 +12,7 @@ class Schools extends MY_Controller
     public function __construct()
     {
         parent::__construct();
+        require_permission('Configuration');
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -236,12 +237,134 @@ class Schools extends MY_Controller
         }
         $schoolData = (array)$schoolData;
 
+        // ── Flatten onboarding profile sub-node into top-level Title Case keys ──
+        // Onboarding writes to System/Schools/{id}/profile with lowercase keys.
+        // The view (schoolprofile.php) expects Title Case keys at the top level.
+        $onboardProfile = is_array($schoolData['profile'] ?? null) ? $schoolData['profile'] : [];
+        if (!empty($onboardProfile)) {
+            $onboardMap = [
+                'school_name' => 'School Name',
+                'name'        => 'School Name',
+                'city'        => 'City',
+                'street'      => 'Address',
+                'email'       => 'Email',
+                'phone'       => 'Phone Number',
+                'logo_url'    => 'Logo',
+                'state'       => 'State',
+                'pincode'     => 'Pincode',
+                'website'     => 'Website',
+            ];
+            foreach ($onboardMap as $srcKey => $destKey) {
+                if (empty($schoolData[$destKey]) && !empty($onboardProfile[$srcKey])) {
+                    $schoolData[$destKey] = $onboardProfile[$srcKey];
+                }
+            }
+            // Also map title-case keys from save_profile dual-write
+            foreach (['School Name', 'City', 'Address', 'Email', 'Phone Number', 'Logo',
+                       'State', 'Pincode', 'Website', 'School Principal', 'Affiliated To',
+                       'Affiliation Number'] as $tk) {
+                if (empty($schoolData[$tk]) && !empty($onboardProfile[$tk])) {
+                    $schoolData[$tk] = $onboardProfile[$tk];
+                }
+            }
+        }
+
+        // ── Normalize subscription field names ──────────────────────────────
+        // Onboarding writes plan_name (snake_case); view expects planName (camelCase)
+        $sub = is_array($schoolData['subscription'] ?? null) ? $schoolData['subscription'] : [];
+        if (!empty($sub)) {
+            if (empty($sub['planName']) && !empty($sub['plan_name'])) {
+                $schoolData['subscription']['planName'] = $sub['plan_name'];
+            }
+            // Legacy stores plan name at subscription.Plan.Name
+            if (empty($schoolData['subscription']['planName']) && !empty($sub['Plan']['Name'])) {
+                $schoolData['subscription']['planName'] = $sub['Plan']['Name'];
+            }
+
+            // ── Compute periodInMonths from start/end dates if missing ──
+            $subStart = $sub['duration']['startDate'] ?? null;
+            $subEnd   = $sub['duration']['endDate']   ?? null;
+            if (empty($sub['duration']['periodInMonths']) && $subStart && $subEnd) {
+                $d1 = new DateTime($subStart);
+                $d2 = new DateTime($subEnd);
+                $diff = $d1->diff($d2);
+                $schoolData['subscription']['duration']['periodInMonths'] = $diff->y * 12 + $diff->m;
+            }
+
+            // ── Fetch plan pricing if amount fields are missing ──────────
+            if (empty($sub['amount']['totalAmount']) && !empty($sub['plan_id'])) {
+                $planData = $this->firebase->get('System/Plans/' . $sub['plan_id']);
+                if (is_array($planData) && !empty($planData['price'])) {
+                    $price   = (float)$planData['price'];
+                    $billing = $planData['billing_cycle'] ?? 'annual';
+                    $months  = $schoolData['subscription']['duration']['periodInMonths']
+                             ?? ($billing === 'monthly' ? 1 : ($billing === 'quarterly' ? 3 : 12));
+                    $monthly = ($billing === 'monthly') ? $price
+                             : (($billing === 'quarterly') ? round($price / 3, 2)
+                             : round($price / 12, 2));
+                    $schoolData['subscription']['amount'] = [
+                        'totalAmount' => $price,
+                        'monthly'     => $monthly,
+                    ];
+                }
+            }
+
+            // ── Map last_payment fields from subscription to payment node ─
+            // Onboarding/SA syncs last_payment_date & last_payment_amount
+            // onto subscription (snake_case), but the view reads from
+            // payment.lastPaymentAmount / lastPaymentDate (camelCase).
+            if (empty($schoolData['payment']) || !is_array($schoolData['payment'])) {
+                $schoolData['payment'] = [];
+            }
+            if (empty($schoolData['payment']['lastPaymentAmount'])) {
+                $schoolData['payment']['lastPaymentAmount'] = $sub['last_payment_amount'] ?? 0;
+            }
+            if (empty($schoolData['payment']['lastPaymentDate'])) {
+                $lpd = $sub['last_payment_date'] ?? '';
+                $schoolData['payment']['lastPaymentDate'] = $lpd ?: '—';
+            }
+
+            // ── Fetch latest payment record for method & extra details ────
+            if (empty($schoolData['payment']['paymentMethod']) || $schoolData['payment']['paymentMethod'] === '—') {
+                $allPayments = $this->firebase->get('System/Payments') ?? [];
+                if (is_array($allPayments)) {
+                    $latestPay = null;
+                    foreach ($allPayments as $pid => $p) {
+                        if (!is_array($p)) continue;
+                        if (($p['school_uid'] ?? '') !== $school_name) continue;
+                        if ($latestPay === null
+                            || ($p['created_at'] ?? '') > ($latestPay['created_at'] ?? '')) {
+                            $latestPay = $p;
+                        }
+                    }
+                    if ($latestPay) {
+                        if (empty($schoolData['payment']['lastPaymentAmount']) || $schoolData['payment']['lastPaymentAmount'] == 0) {
+                            $schoolData['payment']['lastPaymentAmount'] = $latestPay['amount'] ?? 0;
+                        }
+                        if (empty($schoolData['payment']['lastPaymentDate']) || $schoolData['payment']['lastPaymentDate'] === '—') {
+                            // Try paid_date → invoice_date → created_at as fallbacks
+                            $schoolData['payment']['lastPaymentDate'] = !empty($latestPay['paid_date'])
+                                ? $latestPay['paid_date']
+                                : (!empty($latestPay['invoice_date'])
+                                    ? $latestPay['invoice_date']
+                                    : (!empty($latestPay['created_at'])
+                                        ? substr($latestPay['created_at'], 0, 10)
+                                        : '—'));
+                        }
+                        // Status (paid/pending/overdue) is more useful than billing_cycle as "Method"
+                        $schoolData['payment']['paymentStatus']  = $latestPay['status'] ?? '—';
+                        $schoolData['payment']['billingCycle']    = $latestPay['billing_cycle'] ?? '—';
+                        $schoolData['payment']['paymentMethod']   = ucfirst($latestPay['status'] ?? '—');
+                    }
+                }
+            }
+        }
+
         // Legacy fallback: schools that were not fully migrated to System/Schools
         // still have their data at Users/Schools/{school_name}.
         if (empty($schoolData['School Name'])) {
             $legacy = $this->firebase->get('Users/Schools/' . $school_name);
             if (is_array($legacy) && !empty($legacy)) {
-                // Merge legacy data under schoolData — legacy fields fill gaps
                 foreach ($legacy as $k => $v) {
                     if (!isset($schoolData[$k]) || (is_string($schoolData[$k]) && $schoolData[$k] === '')) {
                         $schoolData[$k] = $v;
@@ -253,10 +376,6 @@ class Schools extends MY_Controller
         // Normalize field name differences between legacy and view expectations
         if (empty($schoolData['School Principal']) && !empty($schoolData['Principal Name'])) {
             $schoolData['School Principal'] = $schoolData['Principal Name'];
-        }
-        // Legacy stores plan name at subscription.Plan.Name; view expects subscription.planName
-        if (empty($schoolData['subscription']['planName']) && !empty($schoolData['subscription']['Plan']['Name'])) {
-            $schoolData['subscription']['planName'] = $schoolData['subscription']['Plan']['Name'];
         }
 
         // ── Merge School Config profile data if present ──────────────────
@@ -291,6 +410,11 @@ class Schools extends MY_Controller
             if (!empty($configProfile['academic_calendar']) && empty($schoolData['Academic calendar'])) {
                 $schoolData['Academic calendar'] = $configProfile['academic_calendar'];
             }
+        }
+
+        // ── Final fallback: use session display name if School Name still empty ─
+        if (empty($schoolData['School Name']) && !empty($this->school_display_name)) {
+            $schoolData['School Name'] = $this->school_display_name;
         }
 
         $startDate = $schoolData['subscription']['duration']['startDate'] ?? null;
@@ -461,6 +585,17 @@ class Schools extends MY_Controller
         $this->load->view('include/footer');
     }
 
+    // ── Storage quota constants ─────────────────────────────────────────
+    // These limits protect storage costs. Adjust per plan tier if needed.
+    const GALLERY_LIMITS = [
+        'max_images_per_school'  => 200,    // total images across all albums
+        'max_videos_per_school'  => 30,     // total videos across all albums
+        'max_image_size_mb'      => 3,      // per-file image size limit
+        'max_video_size_mb'      => 25,     // per-file video size limit
+        'max_files_per_album'    => 50,     // max files in one album
+        'max_total_storage_mb'   => 500,    // approx total storage per school
+    ];
+
     // ── Gallery: fetch event albums ─────────────────────────────────────
     public function fetchGalleryAlbums()
     {
@@ -472,24 +607,58 @@ class Schools extends MY_Controller
         $events = $this->firebase->get("Schools/$school_name/Events/List") ?? [];
         if (!is_array($events)) $events = [];
 
-        // 2. Load all media (shallow keys per event to get counts)
+        // 2. Load all media
         $mediaRoot = $this->firebase->get("Schools/$school_name/Events/Media") ?? [];
         if (!is_array($mediaRoot)) $mediaRoot = [];
 
-        $albums = [];
+        $albums      = [];
+        $totalImages = 0;
+        $totalVideos = 0;
+
+        // ── Default albums: School Photos & School Videos ────────────
+        // These always exist and are shown first.
+        $defaultAlbumIds = ['__photos__', '__videos__'];
+        foreach ($defaultAlbumIds as $defId) {
+            $defMedia = isset($mediaRoot[$defId]) && is_array($mediaRoot[$defId]) ? $mediaRoot[$defId] : [];
+            $imgC = 0; $vidC = 0; $cover = '';
+            foreach ($defMedia as $m) {
+                if (!is_array($m)) continue;
+                if (($m['type'] ?? '') === 'image') { $imgC++; if (!$cover) $cover = $m['url'] ?? ''; }
+                else { $vidC++; if (!$cover && !empty($m['thumbnail'])) $cover = $m['thumbnail']; }
+            }
+            $totalImages += $imgC;
+            $totalVideos += $vidC;
+
+            $isPhotos = ($defId === '__photos__');
+            $albums[] = [
+                'event_id'    => $defId,
+                'title'       => $isPhotos ? 'School Photos' : 'School Videos',
+                'category'    => 'default',
+                'start_date'  => '9999-99-99', // always sort first
+                'status'      => 'permanent',
+                'cover'       => $cover,
+                'image_count' => $imgC,
+                'video_count' => $vidC,
+                'total'       => $imgC + $vidC,
+                'icon'        => $isPhotos ? 'fa-camera' : 'fa-video-camera',
+                'is_default'  => true,
+            ];
+        }
+
+        // ── Event albums ─────────────────────────────────────────────
         foreach ($events as $id => $evt) {
             if (!is_array($evt)) continue;
             $eventMedia = isset($mediaRoot[$id]) && is_array($mediaRoot[$id]) ? $mediaRoot[$id] : [];
-            $imgCount = 0;
-            $vidCount = 0;
-            $cover    = '';
+            $imgCount = 0; $vidCount = 0; $cover = '';
             foreach ($eventMedia as $m) {
                 if (!is_array($m)) continue;
                 if (($m['type'] ?? '') === 'image') { $imgCount++; if (!$cover) $cover = $m['url'] ?? ''; }
                 else { $vidCount++; }
             }
-            // Use explicit cover if set
             if (!empty($evt['cover_image'])) $cover = $evt['cover_image'];
+
+            $totalImages += $imgCount;
+            $totalVideos += $vidCount;
 
             $albums[] = [
                 'event_id'    => $id,
@@ -504,7 +673,7 @@ class Schools extends MY_Controller
             ];
         }
 
-        // 3. Check for legacy gallery and add as "General Gallery"
+        // ── Legacy gallery ───────────────────────────────────────────
         $legacyPath = "Schools/$school_name/{$this->session_year}/Gallery";
         $legacy     = $this->firebase->get($legacyPath) ?? [];
         if (is_array($legacy) && !empty($legacy)) {
@@ -515,6 +684,8 @@ class Schools extends MY_Controller
                 else { $lVid++; }
             }
             if ($lImg + $lVid > 0) {
+                $totalImages += $lImg;
+                $totalVideos += $lVid;
                 $albums[] = [
                     'event_id'    => '__legacy__',
                     'title'       => 'General Gallery',
@@ -529,12 +700,18 @@ class Schools extends MY_Controller
             }
         }
 
-        // Sort: most recent event first
+        // Sort: default albums first (9999-99-99), then by start_date desc
         usort($albums, function ($a, $b) {
             return strcmp($b['start_date'], $a['start_date']);
         });
 
-        echo json_encode(['albums' => $albums]);
+        $limits = self::GALLERY_LIMITS;
+        echo json_encode([
+            'albums'       => $albums,
+            'total_images' => $totalImages,
+            'total_videos' => $totalVideos,
+            'limits'       => $limits,
+        ]);
     }
 
     // ── Gallery: fetch media for a specific event album ─────────────────
@@ -549,7 +726,8 @@ class Schools extends MY_Controller
             echo json_encode(['images' => [], 'videos' => []]);
             return;
         }
-        if ($eventId !== '__legacy__') {
+        $specialIds = ['__legacy__', '__photos__', '__videos__'];
+        if (!in_array($eventId, $specialIds)) {
             $eventId = $this->safe_path_segment($eventId, 'event_id');
         }
 
@@ -619,7 +797,10 @@ class Schools extends MY_Controller
         $eventId     = trim($this->input->get('event_id') ?? '');
         $mediaId     = trim($this->input->get('media_id') ?? '');
 
-        if ($eventId !== '') $eventId = $this->safe_path_segment($eventId, 'event_id');
+        $specialDeleteIds = ['__legacy__', '__photos__', '__videos__'];
+        if ($eventId !== '' && !in_array($eventId, $specialDeleteIds)) {
+            $eventId = $this->safe_path_segment($eventId, 'event_id');
+        }
         if ($mediaId !== '') $mediaId = $this->safe_path_segment($mediaId, 'media_id');
 
         if (!$fileUrl) {
@@ -679,10 +860,13 @@ class Schools extends MY_Controller
         $eventId     = trim($this->input->post('event_id') ?? '');
 
         if (empty($eventId)) {
-            echo json_encode(['status' => 'error', 'message' => 'Event ID is required']);
+            echo json_encode(['status' => 'error', 'message' => 'Event/Album ID is required']);
             return;
         }
-        $eventId = $this->safe_path_segment($eventId, 'event_id');
+        $specialIds = ['__photos__', '__videos__'];
+        if (!in_array($eventId, $specialIds)) {
+            $eventId = $this->safe_path_segment($eventId, 'event_id');
+        }
         if (!isset($_FILES['file'])) {
             echo json_encode(['status' => 'error', 'message' => 'No file uploaded']);
             return;
@@ -695,17 +879,49 @@ class Schools extends MY_Controller
         $fileExtension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
         $fileType      = $this->input->post('type');
 
+        // ── Enforce storage limits ──────────────────────────────────
+        $limits                 = self::GALLERY_LIMITS;
         $allowedImageExtensions = ['jpg', 'jpeg', 'png', 'webp'];
         $allowedVideoExtensions = ['mp4', 'mov', 'avi', 'mkv', 'webm'];
-        $maxImageSize           = 5  * 1024 * 1024;
-        $maxVideoSize           = 50 * 1024 * 1024;
+        $maxImageSize           = $limits['max_image_size_mb'] * 1024 * 1024;
+        $maxVideoSize           = $limits['max_video_size_mb'] * 1024 * 1024;
 
         if ($fileType == '1' && (!in_array($fileExtension, $allowedImageExtensions) || $fileSize > $maxImageSize)) {
-            echo json_encode(['status' => 'error', 'message' => 'Invalid image format or size exceeded (max 5MB)']);
+            echo json_encode(['status' => 'error', 'message' => "Invalid image format or size exceeded (max {$limits['max_image_size_mb']}MB). Allowed: jpg, png, webp."]);
             return;
         }
         if ($fileType == '2' && (!in_array($fileExtension, $allowedVideoExtensions) || $fileSize > $maxVideoSize)) {
-            echo json_encode(['status' => 'error', 'message' => 'Invalid video format or size exceeded (max 50MB)']);
+            echo json_encode(['status' => 'error', 'message' => "Invalid video format or size exceeded (max {$limits['max_video_size_mb']}MB). Allowed: mp4, mov, avi, webm."]);
+            return;
+        }
+
+        // ── Check per-school quota (total images/videos across all albums) ──
+        $mediaRoot = $this->firebase->get("Schools/$school_name/Events/Media") ?? [];
+        $totalImages = 0;
+        $totalVideos = 0;
+        $albumFileCount = 0;
+        if (is_array($mediaRoot)) {
+            foreach ($mediaRoot as $albumId => $albumMedia) {
+                if (!is_array($albumMedia)) continue;
+                foreach ($albumMedia as $m) {
+                    if (!is_array($m)) continue;
+                    if (($m['type'] ?? '') === 'image') $totalImages++;
+                    else $totalVideos++;
+                    if ($albumId === $eventId) $albumFileCount++;
+                }
+            }
+        }
+
+        if ($fileType == '1' && $totalImages >= $limits['max_images_per_school']) {
+            echo json_encode(['status' => 'error', 'message' => "Image limit reached ({$limits['max_images_per_school']} images). Delete some images to upload more."]);
+            return;
+        }
+        if ($fileType == '2' && $totalVideos >= $limits['max_videos_per_school']) {
+            echo json_encode(['status' => 'error', 'message' => "Video limit reached ({$limits['max_videos_per_school']} videos). Delete some videos to upload more."]);
+            return;
+        }
+        if ($albumFileCount >= $limits['max_files_per_album']) {
+            echo json_encode(['status' => 'error', 'message' => "This album has reached its limit ({$limits['max_files_per_album']} files). Use another album or delete files."]);
             return;
         }
 

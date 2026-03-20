@@ -181,29 +181,29 @@
      ──────────────────────────────────────────────────────────────── -->
 <style>
 /* ── Layout ─────────────────────────────────────────────────────── */
-.epa-wrap{max-width:1140px;margin:0 auto;padding:20px 16px 48px;}
-.epa-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:20px;}
-.epa-page-title{font-family:var(--font-b);font-size:1.3rem;font-weight:700;color:var(--t1);}
-.epa-page-title i{color:var(--gold);margin-right:6px;font-size:1.1rem;}
-.epa-breadcrumb{list-style:none;display:flex;gap:6px;padding:0;margin:4px 0 0;font-size:12px;color:var(--t3);}
+.epa-wrap{margin:0;padding:24px 28px 48px;}
+.epa-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px;}
+.epa-page-title{font-family:var(--font-b);font-size:1.55rem;font-weight:700;color:var(--t1);}
+.epa-page-title i{color:var(--gold);margin-right:8px;font-size:1.3rem;}
+.epa-breadcrumb{list-style:none;display:flex;gap:6px;padding:0;margin:4px 0 0;font-size:13px;color:var(--t3);}
 .epa-breadcrumb li+li::before{content:"/ ";color:var(--t3);}
 .epa-breadcrumb a{color:var(--gold);text-decoration:none;}
 .epa-breadcrumb a:hover{text-decoration:underline;}
 
 /* ── Filter Bar ─────────────────────────────────────────────────── */
 .epa-filter-bar,.epa-compare-bar{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;
-  background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;margin-bottom:20px;box-shadow:var(--sh);}
-.epa-filter-group{display:flex;flex-direction:column;gap:4px;min-width:140px;flex:1 1 140px;}
+  background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:24px;}
+.epa-filter-group{display:flex;flex-direction:column;gap:5px;min-width:150px;flex:1 1 150px;}
 .epa-filter-action{flex:0 0 auto;min-width:auto;justify-content:flex-end;}
-.epa-label{font-size:11px;font-weight:600;font-family:var(--font-m);color:var(--t3);text-transform:uppercase;letter-spacing:.4px;}
-.epa-label i{width:13px;text-align:center;margin-right:2px;}
-.epa-select{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg);
-  color:var(--t1);font-size:13px;font-family:var(--font-m);outline:none;transition:border .2s;}
+.epa-label{font-size:12.5px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;}
+.epa-label i{width:14px;text-align:center;margin-right:3px;}
+.epa-select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);
+  color:var(--t1);font-size:14px;outline:none;transition:border .2s;}
 .epa-select:focus{border-color:var(--gold);}
 
 /* ── Buttons ────────────────────────────────────────────────────── */
-.epa-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border:none;border-radius:8px;
-  font-size:13px;font-weight:600;cursor:pointer;transition:background var(--ease),transform .1s;}
+.epa-btn{display:inline-flex;align-items:center;gap:7px;padding:10px 22px;border:none;border-radius:10px;
+  font-size:14px;font-weight:600;cursor:pointer;transition:background var(--ease),transform .1s;}
 .epa-btn:active{transform:scale(.97);}
 .epa-btn-primary{background:var(--gold);color:#fff;}
 .epa-btn-primary:hover{background:var(--gold2);box-shadow:0 4px 14px var(--gold-glow);}
@@ -211,24 +211,24 @@
 .epa-btn-secondary:hover{background:var(--gold-dim);border-color:var(--gold);}
 
 /* ── Spinner ────────────────────────────────────────────────────── */
-.epa-spinner{display:flex;align-items:center;justify-content:center;gap:10px;padding:40px 20px;color:var(--gold);font-size:13px;}
+.epa-spinner{display:flex;align-items:center;justify-content:center;gap:10px;padding:48px 24px;color:var(--gold);font-size:14px;}
 
 /* ── Panel ──────────────────────────────────────────────────────── */
-.epa-panel{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px;margin-bottom:20px;box-shadow:var(--sh);}
-.epa-panel-title{font-family:var(--font-b);font-size:14px;font-weight:700;color:var(--t1);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);}
-.epa-panel-title i{color:var(--gold);margin-right:6px;}
-.epa-sub-title{font-family:var(--font-b);font-size:14px;font-weight:700;color:var(--t1);margin-bottom:10px;}
-.epa-sub-title i{color:var(--gold);margin-right:5px;}
+.epa-panel{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;margin-bottom:24px;}
+.epa-panel-title{font-family:var(--font-b);font-size:16px;font-weight:700;color:var(--t1);margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+.epa-panel-title i{color:var(--gold);margin-right:8px;}
+.epa-sub-title{font-family:var(--font-b);font-size:15px;font-weight:700;color:var(--t1);margin-bottom:12px;}
+.epa-sub-title i{color:var(--gold);margin-right:6px;}
 
 /* ── Summary Cards ──────────────────────────────────────────────── */
-.epa-cards-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
-.epa-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px;text-align:center;
-  box-shadow:var(--sh);position:relative;overflow:hidden;}
+.epa-cards-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
+.epa-card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:20px;text-align:center;
+  position:relative;overflow:hidden;}
 .epa-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--gold);}
-.epa-card-icon{font-size:18px;color:var(--gold);margin-bottom:6px;}
-.epa-card-value{font-family:var(--font-b);font-size:1.5rem;color:var(--t1);line-height:1.2;}
-.epa-card-label{font-size:10.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-top:4px;font-family:var(--font-m);font-weight:600;}
-.epa-card-sub{font-size:11px;color:var(--t2);margin-top:3px;font-family:var(--font-m);}
+.epa-card-icon{font-size:20px;color:var(--gold);margin-bottom:8px;}
+.epa-card-value{font-family:var(--font-b);font-size:1.75rem;color:var(--t1);line-height:1.2;}
+.epa-card-label{font-size:12px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-top:5px;font-weight:600;}
+.epa-card-sub{font-size:12.5px;color:var(--t2);margin-top:4px;}
 
 /* Gauge (simple CSS arc) */
 .epa-gauge{width:64px;height:32px;margin:5px auto 0;border-radius:64px 64px 0 0;background:var(--bg3);position:relative;overflow:hidden;}

@@ -41,6 +41,7 @@
     /* Typography — Inter only */
     --font-b:'Inter',system-ui,-apple-system,sans-serif;
     --font-m:'JetBrains Mono',ui-monospace,monospace;
+    --font-d:'Inter',system-ui,-apple-system,sans-serif;
 }
 
 /* ── NIGHT THEME (default) ── */

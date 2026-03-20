@@ -10,7 +10,7 @@
         </h1>
         <ol class="sa-breadcrumb">
             <li><a href="<?= base_url('dashboard') ?>"><i class="fa fa-home"></i> Dashboard</a></li>
-            <li><a href="<?= base_url('student/all_student') ?>">All Students</a></li>
+            <li><a href="<?= base_url('sis/students') ?>">All Students</a></li>
             <li>Add Student</li>
         </ol>
     </div>
@@ -32,7 +32,7 @@
 
         <!-- Main form -->
         <div class="sa-main">
-            <form action="<?= base_url('student/studentAdmission') ?>"
+            <form action="<?= base_url('sis/save_admission') ?>"
                   method="post"
                   id="add_student_form"
                   enctype="multipart/form-data">
@@ -57,7 +57,7 @@
 
                             <div class="sa-field">
                                 <label>Student Name <span class="req">*</span></label>
-                                <input type="text" name="Name" id="sname"
+                                <input type="text" name="name" id="sname"
                                        class="sa-input" placeholder="Full name" required>
                             </div>
 
@@ -128,13 +128,6 @@
                                     <option>SC</option>
                                     <option>ST</option>
                                 </select>
-                            </div>
-
-                            <div class="sa-field">
-                                <label>Additional Subjects</label>
-                                <div id="subject_checkbox_group" class="sa-check-group">
-                                    <p class="sa-check-muted">Select a class first.</p>
-                                </div>
                             </div>
 
                         </div>
@@ -501,7 +494,6 @@
                 <div class="sa-prev-field"><div class="lbl">Gender</div><div class="val" id="previewGender"></div></div>
                 <div class="sa-prev-field"><div class="lbl">Blood Group</div><div class="val" id="previewBloodGroup"></div></div>
                 <div class="sa-prev-field"><div class="lbl">Category</div><div class="val" id="previewCategory"></div></div>
-                <div class="sa-prev-field" style="grid-column:span 2;"><div class="lbl">Additional Subjects</div><div class="val" id="previewSubjects"></div></div>
             </div>
         </div>
 
@@ -705,18 +697,6 @@ function validateAdmissionForm() {
     if (!marksPattern.test(getValue('pre_marks')))
         showError('pre_marks', 'Enter valid percentage (e.g. 85%)');
 
-    /* subjects */
-    var subjectBox = document.getElementById('subject_checkbox_group');
-    var allSubs = subjectBox ? subjectBox.querySelectorAll('input[type="checkbox"]') : [];
-    var checkedSubs = subjectBox ? subjectBox.querySelectorAll('input[type="checkbox"]:checked').length : 0;
-    if (allSubs.length > 0 && checkedSubs === 0) {
-        var span = document.createElement('span');
-        span.className = 'sa-error-msg';
-        span.innerHTML = '<i class="fa fa-exclamation-circle"></i> Select at least one subject';
-        subjectBox.parentNode.appendChild(span);
-        isValid = false;
-    }
-
     /* files */
     function validateFile(inputId, allowedTypes, maxSizeMB) {
         var input = document.getElementById(inputId);
@@ -807,15 +787,6 @@ function fillPreviewData() {
     setText('previewPreClass',  getValue('pre_class'));
     setText('previewPreSchool', getValue('pre_school'));
     setText('previewPreMarks',  getValue('pre_marks'));
-
-    /* Subjects */
-    var subjectBox = document.getElementById('subject_checkbox_group');
-    var selectedSubs = [];
-    if (subjectBox) {
-        selectedSubs = Array.from(subjectBox.querySelectorAll('input[type="checkbox"]:checked'))
-                            .map(function(cb) { return cb.value; });
-    }
-    setText('previewSubjects', selectedSubs.length ? selectedSubs.join(', ') : 'None');
 
     /* Fees */
     var selectedFees = Array.from(document.querySelectorAll('input[name="exempted_fees_multiple[]"]:checked'))
@@ -910,90 +881,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
     var classSelect   = document.getElementById('class_name');
     var sectionSelect = document.getElementById('section');
-    var subjectBox    = document.getElementById('subject_checkbox_group');
-    if (!classSelect || !sectionSelect || !subjectBox) return;
+    if (!classSelect || !sectionSelect) return;
 
-    /* Load classes */
-    fetch('<?= base_url("student/get_classes") ?>')
-        .then(function(r) { return r.json(); })
-        .then(function(classes) {
-            if (!Array.isArray(classes)) return;
-            classes.forEach(function(cls) {
-                var opt = document.createElement('option');
-                opt.value = opt.textContent = cls;
-                classSelect.appendChild(opt);
-            });
-        })
-        .catch(function(err) { });
-
-    /* Class change → load sections */
-    classSelect.addEventListener('change', function() {
-        sectionSelect.innerHTML = '<option value="" disabled selected>Loading…</option>';
-        subjectBox.innerHTML    = '<p class="sa-check-muted">Select section to view subjects.</p>';
-
-        var fd = new FormData();
-        fd.append('class_name', this.value);
-        fd.append('<?= $this->security->get_csrf_token_name() ?>', '<?= $this->security->get_csrf_hash() ?>');
-        fetch('<?= base_url("student/get_sections_by_class") ?>', {
-            method:  'POST',
-            body:    fd
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(sections) {
-            sectionSelect.innerHTML = '<option value="" disabled selected>Select Section</option>';
-            if (!Array.isArray(sections)) return;
-            sections.forEach(function(sec) {
-                var opt = document.createElement('option');
-                opt.value = opt.textContent = sec;
-                sectionSelect.appendChild(opt);
-            });
-        })
-        .catch(function(err) { });
+    /* Load classes from PHP-provided map */
+    var CLASS_MAP = <?= json_encode($class_map ?? []) ?>;
+    Object.keys(CLASS_MAP).forEach(function(cls) {
+        var opt = document.createElement('option');
+        opt.value = cls;
+        opt.textContent = cls;
+        classSelect.appendChild(opt);
     });
 
-    /* Section change → load subjects */
-    sectionSelect.addEventListener('change', function() {
-        var selectedClass   = classSelect.value;
-        var selectedSection = sectionSelect.value;
-        if (!selectedClass || !selectedSection) {
-            subjectBox.innerHTML = '<p class="sa-check-muted">Select class & section first.</p>';
-            return;
-        }
-        subjectBox.innerHTML = '<p class="sa-check-muted">Loading subjects…</p>';
-
-        var sfd = new FormData();
-        sfd.append('class_name', selectedClass);
-        sfd.append('<?= $this->security->get_csrf_token_name() ?>', '<?= $this->security->get_csrf_hash() ?>');
-        fetch('<?= base_url("student/fetch_subjects") ?>', {
-            method:  'POST',
-            body:    sfd
-        })
-        .then(function(r) { if (!r.ok) throw new Error('Bad response'); return r.json(); })
-        .then(function(subjects) {
-            subjectBox.innerHTML = '';
-            if (!Array.isArray(subjects) || subjects.length === 0) {
-                subjectBox.innerHTML = '<p class="sa-check-muted">No subjects available.</p>';
-                return;
-            }
-            subjects.forEach(function(subject) {
-                var id   = 'sub_' + subject.replace(/[^a-zA-Z0-9]/g, '_');
-                var wrap = document.createElement('label');
-                wrap.className = 'sa-check-item';
-                var inp  = document.createElement('input');
-                inp.type = 'checkbox';
-                inp.name = 'additional_subjects[]';
-                inp.id   = id;
-                inp.value = subject;
-                var lbl  = document.createElement('span');
-                lbl.textContent = subject;
-                wrap.appendChild(inp);
-                wrap.appendChild(lbl);
-                subjectBox.appendChild(wrap);
+    /* Class change → load sections from CLASS_MAP */
+    classSelect.addEventListener('change', function() {
+        sectionSelect.innerHTML = '<option value="" disabled selected>Select Section</option>';
+        var cls = this.value;
+        if (cls && CLASS_MAP[cls]) {
+            CLASS_MAP[cls].forEach(function(sec) {
+                var opt = document.createElement('option');
+                opt.value = sec;
+                opt.textContent = 'Section ' + sec;
+                sectionSelect.appendChild(opt);
             });
-        })
-        .catch(function(err) {
-            subjectBox.innerHTML = '<p style="color:var(--sa-red);font-size:13px;">Failed to load subjects.</p>';
-        });
+        }
     });
 
     /* State → district */
@@ -1056,8 +966,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 :root {
     --sa-navy:   #0c1e38;
-    --sa-blue:   #1847c2;
-    --sa-sky:    #e8effd;
+    --sa-blue:   #0f766e;
+    --sa-sky:    #e6f4f1;
     --sa-green:  #15803d;
     --sa-red:    #dc2626;
     --sa-amber:  #d97706;
@@ -1241,7 +1151,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 .sa-input:focus, .sa-select:focus {
     border-color: var(--sa-blue);
-    box-shadow: 0 0 0 3px rgba(24,71,194,.1);
+    box-shadow: 0 0 0 3px rgba(15,118,110,.1);
     background: #fff;
 }
 .sa-input[readonly] {
@@ -1347,11 +1257,6 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 .sa-check-all input { accent-color: var(--sa-blue); width: 15px; height: 15px; }
 
-/* ── Subject chips ── */
-#subject_checkbox_group .sa-check-group {
-    min-height: 46px;
-}
-
 /* ── Action bar ── */
 .sa-action-bar {
     background: var(--sa-white);
@@ -1373,7 +1278,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 .sa-btn:hover { opacity: .86; transform: translateY(-1px); }
 .sa-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-.sa-btn-primary { background: var(--sa-blue); color: #fff; box-shadow: 0 2px 10px rgba(24,71,194,.25); }
+.sa-btn-primary { background: var(--sa-blue); color: #fff; box-shadow: 0 2px 10px rgba(15,118,110,.25); }
 .sa-btn-ghost   { background: var(--sa-white); color: var(--sa-text); border: 1.5px solid var(--sa-border); }
 .sa-btn-ghost:hover { border-color: var(--sa-blue); color: var(--sa-blue); }
 .sa-btn-success { background: var(--sa-green); color: #fff; }
@@ -1442,7 +1347,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .sa-prev-badge {
     padding: 3px 11px; border-radius: 20px;
     font-size: 12px; font-weight: 600;
-    background: rgba(24,71,194,.1); color: var(--sa-blue);
+    background: rgba(15,118,110,.1); color: var(--sa-blue);
     border: 1px solid rgba(24,71,194,.2);
 }
 

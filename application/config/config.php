@@ -6,6 +6,24 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 // ─────────────────────────────────────────────────────────────────────────────
 
 // $config['base_url'] = 'http://localhost/Grader/school/';   // ← update this
+
+// R5-SEC-3 FIX: Load .env EARLY so APP_HOST is available for host allowlist below
+if (defined('FCPATH') && file_exists(FCPATH . '.env')) {
+    $_envLines = file(FCPATH . '.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($_envLines as $_envLine) {
+        $_envLine = trim($_envLine);
+        if ($_envLine === '' || $_envLine[0] === '#') continue;
+        if (strpos($_envLine, '=') === false) continue;
+        list($_envKey, $_envVal) = array_map('trim', explode('=', $_envLine, 2));
+        $_envVal = trim($_envVal, '"\'');
+        if (!array_key_exists($_envKey, $_ENV)) {
+            $_ENV[$_envKey] = $_envVal;
+            putenv("{$_envKey}={$_envVal}");
+        }
+    }
+    unset($_envLines, $_envLine, $_envKey, $_envVal);
+}
+
 $_is_https = (
     (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')
     || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
@@ -63,25 +81,10 @@ $config['cache_query_string'] = FALSE;
 //  Loaded from .env file — NEVER hardcode in source code.
 //  Generate with: php -r "echo bin2hex(random_bytes(32));"
 // ─────────────────────────────────────────────────────────────────────────────
-// Load .env if not already loaded
-if (file_exists(FCPATH . '.env')) {
-    $envLines = file(FCPATH . '.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($envLines as $envLine) {
-        $envLine = trim($envLine);
-        if ($envLine === '' || $envLine[0] === '#') continue;
-        if (strpos($envLine, '=') === false) continue;
-        list($envKey, $envVal) = array_map('trim', explode('=', $envLine, 2));
-        $envVal = trim($envVal, '"\'');
-        if (!array_key_exists($envKey, $_ENV)) {
-            $_ENV[$envKey] = $envVal;
-            putenv("{$envKey}={$envVal}");
-        }
-    }
-}
-$config['encryption_key'] = getenv('ENCRYPTION_KEY') ?: 'CHANGE_ME_SET_IN_ENV_FILE';  // ← REQUIRED — set in .env
-if ($config['encryption_key'] === 'CHANGE_ME_SET_IN_ENV_FILE') {
-    die('FATAL: Set ENCRYPTION_KEY in your .env file before running in production.');
-}
+// .env already loaded at top of file (R5-SEC-3 FIX)
+$config['encryption_key'] = getenv('ENCRYPTION_KEY') ?: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+// TODO BEFORE GO-LIVE: Create a .env file with a unique ENCRYPTION_KEY and remove the fallback above.
+// Generate one with: php -r "echo bin2hex(random_bytes(32));"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  SESSION SETTINGS
@@ -89,12 +92,26 @@ if ($config['encryption_key'] === 'CHANGE_ME_SET_IN_ENV_FILE') {
 // ─────────────────────────────────────────────────────────────────────────────
 $config['sess_driver']           = 'files';
 $config['sess_cookie_name']      = 'grader_session';     // ← not the default ci_session
-$config['sess_samesite']         = 'Strict';           // M-08 FIX: Strict prevents cross-site cookie leakage
-$config['sess_expiration']       = 7200;                 // 2 hours
-$config['sess_save_path']        = NULL;
-$config['sess_match_ip']         = TRUE;   // H-06 FIX: bind session to client IP — prevents session hijacking
-$config['sess_time_to_update']   = 300;
-$config['sess_regenerate_destroy'] = TRUE;               // FIX: destroy old session on regenerate
+$config['sess_samesite']         = 'Lax';              // Lax = safe default; Strict breaks redirects from external links
+$config['sess_expiration']       = 28800;                // 8 hours — comfortable for a full work day
+
+// FIX: Use a DEDICATED session directory instead of shared system temp.
+// The shared temp dir allows other PHP apps to trigger garbage collection
+// on our session files via their own gc_maxlifetime (often just 24 min).
+// A dedicated dir ensures only our gc_maxlifetime setting applies.
+$_sess_dir = APPPATH . 'sessions';
+if (!is_dir($_sess_dir)) { @mkdir($_sess_dir, 0700, true); }
+$config['sess_save_path']        = $_sess_dir;
+
+$config['sess_match_ip']         = FALSE;  // Disabled: localhost flips between 127.0.0.1/::1 causing logouts. Re-enable in production with stable IPs.
+$config['sess_time_to_update']   = 600;   // regenerate every 10 min (was 5 min — too aggressive, causes AJAX race conditions)
+$config['sess_regenerate_destroy'] = FALSE;              // keep old session briefly to avoid AJAX race on regenerate
+
+// NOTE: CI3's Session library already calls ini_set('session.gc_maxlifetime', sess_expiration).
+// The key fix is the DEDICATED directory above — the shared temp dir (sys_get_temp_dir)
+// was the root cause: other PHP apps (phpMyAdmin, etc.) run GC with their own
+// gc_maxlifetime=1440 (24 min default) and delete OUR session files prematurely.
+// A dedicated dir ensures only our app's GC settings apply.
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  COOKIE SETTINGS

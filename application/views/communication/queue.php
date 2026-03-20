@@ -40,10 +40,12 @@ $at = $active_tab ?? 'queue';
 .cm-badge-gray{background:rgba(156,163,175,.12);color:#9ca3af}
 .cm-empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--font-b)}
 .cm-empty i{font-size:36px;display:block;margin-bottom:12px;opacity:.5}
+.cm-loading{text-align:center;padding:18px 20px;color:var(--t3);font-size:13px;font-family:var(--font-b)}
 .q-filters{display:flex;gap:8px;flex-wrap:wrap}
 .q-filter{padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--t2);font-family:var(--font-b);transition:all .15s}
 .q-filter.active,.q-filter:hover{border-color:var(--gold);background:var(--gold-dim);color:var(--gold)}
 /* Toast base styles inherited from header.php */
+.cm-toast{position:fixed;top:20px;right:20px;z-index:10000;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;font-family:var(--font-b);color:#fff;display:none;max-width:400px;box-shadow:0 8px 24px rgba(0,0,0,.15)}
 .cm-toast.success{background:#22c55e;display:block}.cm-toast.error{background:#ef4444;display:block}
 </style>
 
@@ -75,7 +77,7 @@ $at = $active_tab ?? 'queue';
             <button class="q-filter" onclick="QUE.filter('cancelled')" data-s="cancelled">Cancelled</button>
         </div>
     </div>
-    <table class="cm-table"><thead><tr><th>ID</th><th>Recipient</th><th>Channel</th><th>Title</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="queueTbody"><tr><td colspan="7" class="cm-empty"><i class="fa fa-spinner fa-spin"></i></td></tr></tbody></table>
+    <table class="cm-table"><thead><tr><th>ID</th><th>Recipient</th><th>Channel</th><th>Title</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="queueTbody"><tr><td colspan="7" class="cm-loading">Loading...</td></tr></tbody></table>
 </div>
 
 </div></section></div>
@@ -87,7 +89,7 @@ var CM = CM || {};
 CM.BASE = '<?= base_url() ?>';
 CM.toast = function(msg,type){var t=document.getElementById('cmToast');t.textContent=msg;t.className='cm-toast '+(type||'success');setTimeout(function(){t.className='cm-toast';},3000);};
 CM.esc = function(s){var d=document.createElement('span');d.textContent=s||'';return d.innerHTML;};
-CM.ajax = function(url,data,cb,method){$.ajax({url:CM.BASE+url,type:method||'GET',data:data,dataType:'json',success:function(r){if(r.status==='success'){if(cb)cb(r);}else CM.toast(r.message||'Error','error');},error:function(xhr){var m='Error';try{m=JSON.parse(xhr.responseText).message||m;}catch(e){}CM.toast(m,'error');}});};
+CM.ajax = function(url,data,cb,method,failCb){$.ajax({url:CM.BASE+url,type:method||'GET',data:data,dataType:'json',success:function(r){if(r.status==='success'){if(cb)cb(r);}else{CM.toast(r.message||'Error','error');if(failCb)failCb();}},error:function(xhr){var m='Error';try{m=JSON.parse(xhr.responseText).message||m;}catch(e){}CM.toast(m,'error');if(failCb)failCb();}});};
 
 var QUE = {};
 QUE.currentFilter = '';
@@ -125,6 +127,8 @@ QUE.load = function() {
             });
         }
         $('#queueTbody').html(html);
+    }, null, function() {
+        $('#queueTbody').html('<tr><td colspan="7" class="cm-empty"><i class="fa fa-exclamation-circle"></i> Failed to load queue</td></tr>');
     });
 };
 

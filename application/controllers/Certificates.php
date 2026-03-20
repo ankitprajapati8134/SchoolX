@@ -60,6 +60,7 @@ class Certificates extends MY_Controller
     public function __construct()
     {
         parent::__construct();
+        require_permission('Certificates');
         $this->_certBase = "Schools/{$this->school_name}/{$this->session_year}/Certificates";
     }
 
@@ -329,7 +330,7 @@ class Certificates extends MY_Controller
             // All sections
             $sectionKeys = $this->firebase->shallow_get("Schools/{$school}/{$session}/{$classKey}");
             if (is_array($sectionKeys)) {
-                foreach ($sectionKeys as $sk) {
+                foreach (array_keys($sectionKeys) as $sk) {
                     if (strpos($sk, 'Section ') !== 0) continue;
                     $sec  = str_replace('Section ', '', $sk);
                     $list = $this->firebase->get(
@@ -487,10 +488,7 @@ class Certificates extends MY_Controller
             }
         }
 
-        // Sanitize all placeholder values to prevent stored XSS (single pass)
-        $placeholderData = $this->_sanitizePlaceholderValues($placeholderData);
-
-        // Resolve template content
+        // Resolve template content (XSS protection handled client-side by esc())
         $resolvedTitle = $this->_replacePlaceholders($template['title'] ?? $template['name'] ?? '', $placeholderData);
         $resolvedBody  = $this->_replacePlaceholders($template['body'] ?? '', $placeholderData);
 
@@ -500,7 +498,7 @@ class Certificates extends MY_Controller
             'certificateType'   => $certType,
             'templateId'        => $templateId,
             'studentId'         => $userId,
-            'studentName'       => htmlspecialchars($student['Name'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            'studentName'       => $student['Name'] ?? '',
             'classKey'          => $classKey,
             'sectionKey'        => $sectionKey,
             'issueDate'         => $issueDate,
@@ -668,7 +666,7 @@ class Certificates extends MY_Controller
 
     /**
      * Replace {placeholder} tokens in template text.
-     * Values are already sanitized via _sanitizePlaceholderValues().
+     * XSS protection handled client-side by JavaScript esc() function.
      */
     private function _replacePlaceholders(string $text, array $data): string
     {

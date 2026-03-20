@@ -9,7 +9,13 @@ $total_students  = $summary['total_students']  ?? 0;
 $total_staff     = $summary['total_staff']     ?? 0;
 $total_revenue   = $summary['total_revenue']   ?? 0;
 $recent_regs     = $summary['recent_regs']     ?? 0;
-$last_refreshed  = $summary['last_refreshed']  ?? 'Never';
+$last_refreshed_raw = $summary['last_refreshed'] ?? '';
+// Format for display: parse ISO string from Firebase → human-readable local date/time
+if ($last_refreshed_raw && ($ts = strtotime($last_refreshed_raw)) !== false) {
+    $last_refreshed = date('d/m/Y, H:i:s', $ts);
+} else {
+    $last_refreshed = 'Never';
+}
 
 $active_pct = $total_schools > 0 ? round(($active_schools / $total_schools) * 100) : 0;
 ?>

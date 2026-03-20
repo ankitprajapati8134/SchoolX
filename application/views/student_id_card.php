@@ -150,8 +150,14 @@ ksort($filterSections);
         <?php endif; ?>
       </div>
 
-      <!-- Name & class badges -->
+      <!-- Name & barcode -->
       <div class="ic-student-nm"><?= $name ?></div>
+
+      <!-- Barcode -->
+      <div class="ic-barcode-wrap">
+        <svg class="ic-barcode" data-barcode="<?= $uid ?>"></svg>
+      </div>
+
       <div class="ic-badges">
         <?php if ($class):   ?><span class="ic-badge ic-badge-cls">Class <?= $class ?></span><?php endif; ?>
         <?php if ($section): ?><span class="ic-badge ic-badge-sec">Sec <?= $section ?></span><?php endif; ?>
@@ -221,6 +227,7 @@ ksort($filterSections);
 </div><!-- /.content-wrapper -->
 
 
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
 /* ══════════════════════════════════════════════════════════════════
    Student ID Card — Filter & Print Logic
@@ -313,6 +320,31 @@ ksort($filterSections);
     setTimeout(function () { w.print(); }, 800);
   };
 
+  /* ── Initialize barcodes ─────────────────────────────────────── */
+  function initBarcodes(root) {
+    var svgs = (root || document).querySelectorAll('.ic-barcode[data-barcode]');
+    if (typeof JsBarcode === 'undefined') return;
+    svgs.forEach(function(svg) {
+      var code = svg.getAttribute('data-barcode');
+      if (!code) return;
+      try {
+        JsBarcode(svg, code, {
+          format: 'CODE128',
+          width: 1,
+          height: 24,
+          displayValue: false,
+          margin: 0,
+          background: 'transparent'
+        });
+      } catch(e) { /* silently skip invalid codes */ }
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { initBarcodes(); });
+  } else {
+    initBarcodes();
+  }
+
   /* ── Card CSS (shared between screen hover-print and print window) */
   function getCardCSS(forPrint) {
     return [
@@ -329,8 +361,10 @@ ksort($filterSections);
       '.ic-photo-ring{width:74px;height:74px;border-radius:50%;border:3px solid #0f766e;box-shadow:0 2px 12px rgba(15,118,110,.3);margin-top:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#e6f4f1;flex-shrink:0;}',
       '.ic-photo{width:100%;height:100%;object-fit:cover;}',
       '.ic-photo-fb{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:700;color:#0f766e;background:#e6f4f1;}',
-      /* Name & badges */
+      /* Name & barcode */
       '.ic-student-nm{font-size:.82rem;font-weight:700;color:#111;text-align:center;margin:8px 10px 4px;line-height:1.3;}',
+      '.ic-barcode-wrap{width:85%;text-align:center;margin:2px auto 0;padding:0 4px;}',
+      '.ic-barcode{width:100%;height:24px;}',
       '.ic-badges{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;margin-bottom:6px;padding:0 8px;}',
       '.ic-badge{font-size:.58rem;font-weight:700;padding:2px 7px;border-radius:20px;letter-spacing:.04em;text-transform:uppercase;}',
       '.ic-badge-cls{background:#ccfbf1;color:#0f766e;}',
@@ -635,6 +669,21 @@ ksort($filterSections);
   margin: 9px 10px 4px;
   line-height: 1.3;
 }
+
+/* Barcode */
+.ic-barcode-wrap {
+  width: 85%;
+  text-align: center;
+  margin: 2px auto 0;
+  padding: 0 4px;
+}
+.ic-barcode {
+  width: 100%;
+  height: 24px;
+}
+.ic-barcode > rect { fill: transparent !important; }
+.ic-barcode g rect { fill: #1e293b !important; }
+[data-theme="night"] .ic-barcode g rect { fill: var(--t1) !important; }
 
 /* Badges */
 .ic-badges {

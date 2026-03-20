@@ -317,16 +317,18 @@ class Superadmin_schools extends MY_Superadmin_Controller
         }
 
         // ── 6. Users/Admin/{code}/{admin_id}  (first admin account) ──────────
+        // First admin of a newly onboarded school MUST be Super Admin.
+        // This is enforced server-side — any role sent from the client is ignored.
         try {
             $result = $this->firebase->set("Users/Admin/{$school_code}/{$admin_id}", [
                 'Status'      => 'Active',
-                'Role'        => 'Admin',
+                'Role'        => 'Super Admin',
                 'Name'        => $admin_name,
                 'Credentials' => ['Password' => $hashed_pw],
                 'Profile'     => [
                     'name'        => $admin_name,
                     'email'       => $admin_email,
-                    'role'        => 'Admin',
+                    'role'        => 'Super Admin',
                     'school'      => $name,         // human-readable school name
                     'school_id'   => $school_code,  // login code (Users/Admin path key)
                     'firebase_id' => $school_id,    // SCH_XXXXXX Firebase key

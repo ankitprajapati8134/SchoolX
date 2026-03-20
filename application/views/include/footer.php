@@ -55,7 +55,6 @@ $end   = substr($start + 1, -2);
 <script src="<?= base_url() ?>tools/dist/js/adminlte.min.js"></script>
 <script src="<?= base_url() ?>tools/dist/js/demo.js"></script>
 <script src="<?= base_url() ?>tools/js/custom.js"></script>
-<script type="module" src="<?= base_url() ?>tools/js/datahandler.js"></script>
 
 <!-- Crypto + DataTables -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>

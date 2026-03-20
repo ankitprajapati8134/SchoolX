@@ -52,6 +52,7 @@ $at = $active_tab ?? 'messages';
 .msg-send-btn:hover{background:var(--gold2)}
 .msg-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;color:var(--t3);text-align:center;gap:12px}
 .msg-empty i{font-size:48px;opacity:.3}
+.msg-loading{display:flex;align-items:center;justify-content:center;flex:1;color:var(--t3);font-size:13px;font-family:var(--font-b)}
 
 /* New conversation modal reuses cm-modal from index */
 /* Modal/toast/form styles inherited from header.php global definitions */
@@ -93,7 +94,7 @@ $at = $active_tab ?? 'messages';
             <button class="cm-btn cm-btn-sm cm-btn-primary" onclick="MSG.openNewConv()"><i class="fa fa-plus"></i> New</button>
         </div>
         <div class="msg-conv-list" id="convList">
-            <div class="msg-empty"><i class="fa fa-spinner fa-spin"></i><span>Loading...</span></div>
+            <div class="msg-loading">Loading...</div>
         </div>
     </div>
 
@@ -137,7 +138,7 @@ CM.BASE = '<?= base_url() ?>';
 CM.adminId = '<?= $admin_id ?>';
 CM.toast = function(msg,type){var t=document.getElementById('cmToast');t.textContent=msg;t.className='cm-toast '+(type||'success');setTimeout(function(){t.className='cm-toast';},3000);};
 CM.esc = function(s){var d=document.createElement('span');d.textContent=s||'';return d.innerHTML;};
-CM.ajax = function(url,data,cb,method){$.ajax({url:CM.BASE+url,type:method||'GET',data:data,dataType:'json',success:function(r){if(r.status==='success'){if(cb)cb(r);}else CM.toast(r.message||'Error','error');},error:function(xhr){var m='Request failed';try{m=JSON.parse(xhr.responseText).message||m;}catch(e){}CM.toast(m,'error');}});};
+CM.ajax = function(url,data,cb,method,failCb){$.ajax({url:CM.BASE+url,type:method||'GET',data:data,dataType:'json',success:function(r){if(r.status==='success'){if(cb)cb(r);}else{CM.toast(r.message||'Error','error');if(failCb)failCb();}},error:function(xhr){var m='Request failed';try{m=JSON.parse(xhr.responseText).message||m;}catch(e){}CM.toast(m,'error');if(failCb)failCb();}});};
 
 var MSG = {};
 MSG.activeConv = null;
@@ -168,6 +169,8 @@ MSG.loadConversations = function() {
             });
         }
         $('#convList').html(html);
+    }, null, function() {
+        $('#convList').html('<div class="msg-empty"><i class="fa fa-exclamation-circle"></i><span>Failed to load conversations</span></div>');
     });
 };
 

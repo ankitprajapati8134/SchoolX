@@ -25,6 +25,7 @@ class Academic extends MY_Controller
     public function __construct()
     {
         parent::__construct();
+        require_permission('Academic');
     }
 
     /* ══════════════════════════════════════════════════════════════════════

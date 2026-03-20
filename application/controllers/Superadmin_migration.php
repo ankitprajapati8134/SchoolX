@@ -1,6 +1,6 @@
 <?php
-require_once APPPATH . 'core/MY_Superadmin_Controller.php';
 defined('BASEPATH') or exit('No direct script access allowed');
+require_once APPPATH . 'core/MY_Superadmin_Controller.php';
 
 /**
  * Superadmin_migration — Firebase Structure Migration (Phase 1)
@@ -34,7 +34,6 @@ class Superadmin_migration extends MY_Superadmin_Controller
     public function __construct()
     {
         parent::__construct();
-        $this->load->library('firebase');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -305,6 +304,150 @@ class Superadmin_migration extends MY_Superadmin_Controller
             $this->json_success(['message' => 'Migration map cleared.']);
         } catch (Exception $e) {
             $this->json_error('Failed to clear migration map: ' . $e->getMessage());
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // POST  /superadmin/migration/migrate_phone_index
+    //
+    // Reads the global Exits/ and User_ids_pno/ nodes and copies each entry
+    // into the tenant-scoped Schools/{school_name}/Phone_Index/{phone} path.
+    //
+    // Steps:
+    //   1. Read Exits/ — maps phone → school_id
+    //   2. Read User_ids_pno/ — maps phone → userId
+    //   3. For each phone, resolve school_name from Indexes/School_codes
+    //   4. Write Schools/{school_name}/Phone_Index/{phone} → userId
+    //   5. Report stats (migrated, skipped, errors)
+    //
+    // NON-DESTRUCTIVE: Does NOT delete the old Exits/User_ids_pno nodes.
+    // The old global paths are kept for mobile app backward compatibility.
+    // Controllers now dual-write to both paths.
+    // ─────────────────────────────────────────────────────────────────────────
+    public function migrate_phone_index()
+    {
+        if (!in_array($this->sa_role, ['developer', 'superadmin'], true)) {
+            $this->json_error('Insufficient privileges.', 403);
+            return;
+        }
+
+        $startTime = microtime(true);
+
+        try {
+            // Step 1: Read global phone indexes
+            $exits      = $this->firebase->get('Exits') ?? [];
+            $userIdsPno = $this->firebase->get('User_ids_pno') ?? [];
+            if (!is_array($exits))      $exits      = [];
+            if (!is_array($userIdsPno)) $userIdsPno = [];
+
+            // Step 2: Build school_code → school_name lookup from Indexes/School_codes
+            $schoolCodes = $this->firebase->get('Indexes/School_codes') ?? [];
+            if (!is_array($schoolCodes)) $schoolCodes = [];
+
+            // Build reverse map: school_id_or_code → school_name
+            // School_codes maps code → school_name for legacy, code → SCH_xxx for new
+            $codeToName = [];
+            foreach ($schoolCodes as $code => $val) {
+                if ($code === 'Count' || !is_string($val)) continue;
+                $codeToName[(string)$code] = trim($val);
+            }
+
+            // Also build school_name → school_name (identity) for direct name references
+            // Exits stores: phone → school_id (which may be a code like "10004" or a name like "Demo")
+            // We need to resolve school_id → school_name for the Firebase path
+
+            $migrated = 0;
+            $skipped  = 0;
+            $errors   = [];
+            $batch    = []; // school_name → [phone => userId, ...]
+
+            foreach ($exits as $phone => $schoolRef) {
+                if (!is_string($phone) || $phone === '') continue;
+
+                $userId = $userIdsPno[$phone] ?? null;
+                if ($userId === null) {
+                    $skipped++;
+                    continue;
+                }
+
+                // Resolve schoolRef to school_name
+                // schoolRef could be: a school code (e.g. "10004"), a school name (e.g. "Demo"),
+                // or a SCH_ id. Try resolution in order:
+                $schoolName = null;
+
+                // 1. Direct match in School_codes (schoolRef is a code)
+                if (isset($codeToName[$schoolRef])) {
+                    $schoolName = $codeToName[$schoolRef];
+                }
+
+                // 2. schoolRef IS the school_name (legacy pattern where Exits stores school name)
+                if ($schoolName === null) {
+                    // Check if any school code points to this value
+                    if (in_array($schoolRef, $codeToName, true)) {
+                        $schoolName = $schoolRef;
+                    }
+                }
+
+                // 3. Fallback — use the schoolRef directly as path segment
+                if ($schoolName === null) {
+                    $schoolName = $schoolRef;
+                }
+
+                if (empty($schoolName)) {
+                    $errors[] = "Phone {$phone}: could not resolve school for ref '{$schoolRef}'";
+                    continue;
+                }
+
+                // Batch writes per school
+                if (!isset($batch[$schoolName])) {
+                    $batch[$schoolName] = [];
+                }
+                $batch[$schoolName][$phone] = $userId;
+            }
+
+            // Step 3: Write batched tenant-scoped indexes
+            foreach ($batch as $schoolName => $phoneMap) {
+                try {
+                    $this->firebase->update("Schools/{$schoolName}/Phone_Index", $phoneMap);
+                    $migrated += count($phoneMap);
+                } catch (Exception $e) {
+                    $errors[] = "School '{$schoolName}': " . $e->getMessage();
+                }
+            }
+
+            $elapsed = round((microtime(true) - $startTime) * 1000);
+
+            $stats = [
+                'total_exits_entries'     => count($exits),
+                'total_user_ids_entries'  => count($userIdsPno),
+                'schools_processed'       => count($batch),
+                'phone_entries_migrated'  => $migrated,
+                'skipped_no_user_id'      => $skipped,
+                'errors'                  => $errors,
+                'elapsed_ms'              => $elapsed,
+                'migrated_at'             => date('Y-m-d H:i:s'),
+            ];
+
+            // Write migration log
+            $this->firebase->set('System/Migration/PhoneIndex', $stats);
+
+            $this->sa_log('phone_index_migration', '', [
+                'migrated' => $migrated,
+                'skipped'  => $skipped,
+                'errors'   => count($errors),
+            ]);
+
+            $this->json_success([
+                'stats'   => $stats,
+                'message' => sprintf(
+                    'Phone index migration complete: %d entries migrated across %d schools. %d skipped, %d errors.',
+                    $migrated, count($batch), $skipped, count($errors)
+                ),
+            ]);
+
+        } catch (Exception $e) {
+            log_message('error', 'Phone index migration: ' . $e->getMessage());
+            $this->json_error('Migration failed: ' . $e->getMessage());
         }
     }
 

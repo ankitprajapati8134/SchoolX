@@ -16,6 +16,12 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 class Health_check extends MY_Controller
 {
     private const ADMIN_ROLES = ['Admin'];
+
+    public function __construct()
+    {
+        parent::__construct();
+        require_permission('Configuration');
+    }
     /* ══════════════════════════════════════════════════════════════════════
        MODULE REGISTRY
     ══════════════════════════════════════════════════════════════════════ */

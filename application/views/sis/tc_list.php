@@ -232,7 +232,7 @@ function lookupStudent() {
     });
 }
 
-function submitTc() {
+function submitTc(forceOverride) {
     var uid = document.getElementById('tcUserId').value.trim();
     var reason = document.getElementById('tcReason').value.trim();
     if (!uid || !reason) { alert('Student ID and reason are required.'); return; }
@@ -241,6 +241,7 @@ function submitTc() {
         reason: reason,
         destination: document.getElementById('tcDestination').value.trim(),
     });
+    if (forceOverride) body.append('force_override', 'true');
     body.append(csrfName, csrfToken);
     fetch('<?= base_url('sis/issue_tc') ?>', {
         method: 'POST',
@@ -250,10 +251,32 @@ function submitTc() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         var a = document.getElementById('modalAlert');
-        a.className = 'alert ' + (data.status === 'success' ? 'alert-success' : 'alert-error');
-        a.textContent = data.message;
-        a.style.display = 'block';
-        if (data.status === 'success') setTimeout(function() { location.reload(); }, 1500);
+        if (data.status === 'success') {
+            a.className = 'alert alert-success';
+            a.textContent = data.message;
+            a.style.display = 'block';
+            setTimeout(function() { location.reload(); }, 1500);
+        } else if (data.can_override && data.dues) {
+            // Show dues warning with override option
+            var d = data.dues;
+            a.className = 'alert alert-error';
+            a.innerHTML = '<strong style="display:block;margin-bottom:6px;">'
+                + '<i class="fa fa-exclamation-triangle"></i> Outstanding Dues Detected</strong>'
+                + '<span>' + data.message + '</span>'
+                + '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">'
+                + '<a href="<?= base_url('fees/fees_counter') ?>" class="btn btn-sm" '
+                + 'style="background:var(--gold);color:#fff;border:none;border-radius:6px;font-size:12px;">'
+                + '<i class="fa fa-inr"></i> Collect Fees</a>'
+                + '<button onclick="submitTc(true)" class="btn btn-sm" '
+                + 'style="background:#dc2626;color:#fff;border:none;border-radius:6px;font-size:12px;">'
+                + '<i class="fa fa-warning"></i> Issue TC Anyway (Override)</button>'
+                + '</div>';
+            a.style.display = 'block';
+        } else {
+            a.className = 'alert alert-error';
+            a.textContent = data.message;
+            a.style.display = 'block';
+        }
     });
 }
 

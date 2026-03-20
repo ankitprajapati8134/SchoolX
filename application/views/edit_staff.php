@@ -119,11 +119,35 @@
                                 </select>
                             </div>
 
+                            <?php
+                                $existingRoles   = $staff_data['staff_roles']  ?? [];
+                                $existingPrimary = $staff_data['primary_role'] ?? '';
+                                if (!is_array($existingRoles)) $existingRoles = [];
+                            ?>
+                            <!-- Staff roles auto-assigned from Designation via backend -->
+                            <input type="hidden" name="staff_roles" id="staffRolesHidden"
+                                   value="<?= htmlspecialchars(implode(',', $existingRoles)) ?>">
+                            <input type="hidden" name="primary_role" id="primaryRoleHidden"
+                                   value="<?= htmlspecialchars($existingPrimary) ?>">
+
                             <div class="nsa-field">
-                                <label>Staff Position <span class="req">*</span></label>
-                                <input type="text" id="staff_position" name="position"
-                                       value="<?= htmlspecialchars($staff_data['Position'] ?? '') ?>"
-                                       class="nsa-input" placeholder="e.g. Senior Teacher" required>
+                                <label>Designation / Title <span class="req">*</span></label>
+                                <?php $curPos = $staff_data['Position'] ?? ''; ?>
+                                <select id="staff_position" name="position" class="nsa-input" required>
+                                    <option value="">-- Select Designation --</option>
+                                    <?php
+                                    $designations = ['Teacher','Senior Teacher','Head of Department','Vice Principal','Principal','Accountant','Librarian','Lab Assistant','Clerk','Receptionist','IT Administrator','Sports Coach','Counselor','Driver','Security Guard','Peon / Attendant','Other'];
+                                    foreach ($designations as $dsg):
+                                        $sel = ($curPos === $dsg) ? ' selected' : '';
+                                    ?>
+                                    <option value="<?= $dsg ?>"<?= $sel ?>><?= $dsg ?></option>
+                                    <?php endforeach;
+                                    // If current position doesn't match any preset, add it
+                                    if ($curPos !== '' && !in_array($curPos, $designations, true)):
+                                    ?>
+                                    <option value="<?= htmlspecialchars($curPos) ?>" selected><?= htmlspecialchars($curPos) ?></option>
+                                    <?php endif; ?>
+                                </select>
                             </div>
 
                             <div class="nsa-field">
@@ -142,9 +166,9 @@
 
                             <div class="nsa-field">
                                 <label>Department <span class="req">*</span></label>
-                                <input type="text" id="teacher_department" name="department"
-                                       value="<?= htmlspecialchars($staff_data['Department'] ?? '') ?>"
-                                       class="nsa-input" placeholder="e.g. Science" required>
+                                <select id="teacher_department" name="department" class="nsa-input" required>
+                                    <option value="">-- Select Department --</option>
+                                </select>
                             </div>
 
                         </div>
@@ -595,7 +619,7 @@ function validateEditForm() {
 
     if (!getValue('name'))                   showError('name',                   'Name is required');
     if (!getValue('dob'))                    showError('dob',                    'Date of birth is required');
-    if (!getValue('staff_position'))         showError('staff_position',         'Position is required');
+    // Staff roles auto-assigned from designation — no validation needed
     if (!getValue('father_name'))            showError('father_name',            'Father name is required');
     if (!getValue('street'))                 showError('street',                 'Street is required');
     if (!getValue('city'))                   showError('city',                   'City is required');
@@ -656,6 +680,46 @@ function validateEditForm() {
 /* ── DOMContentLoaded ── */
 document.addEventListener('DOMContentLoaded', function() {
 
+    /* ── Load departments from HR module ── */
+    (function(){
+        var sel = document.getElementById('teacher_department');
+        if (!sel) return;
+        var currentDept = '<?= htmlspecialchars($staff_data['Department'] ?? '', ENT_QUOTES, 'UTF-8') ?>';
+        fetch('<?= base_url("hr/get_departments") ?>')
+            .then(function(r){ return r.json(); })
+            .then(function(r){
+                if (r.status !== 'success') return;
+                var depts = r.departments || [];
+                var found = false;
+                depts.forEach(function(d){
+                    if ((d.status||'Active') !== 'Active') return;
+                    var opt = document.createElement('option');
+                    opt.value = d.name;
+                    opt.textContent = d.name;
+                    if (d.name === currentDept) { opt.selected = true; found = true; }
+                    sel.appendChild(opt);
+                });
+                // If current department doesn't match any HR dept, add it as-is
+                if (currentDept && !found) {
+                    var opt = document.createElement('option');
+                    opt.value = currentDept;
+                    opt.textContent = currentDept + ' (not in HR)';
+                    opt.selected = true;
+                    sel.appendChild(opt);
+                }
+            })
+            .catch(function(){
+                // Fallback: add current value as only option
+                if (currentDept) {
+                    var opt = document.createElement('option');
+                    opt.value = currentDept;
+                    opt.textContent = currentDept;
+                    opt.selected = true;
+                    sel.appendChild(opt);
+                }
+            });
+    })();
+
     /* Net salary calculator */
     var basicInput = document.getElementById('basicSalary');
     var allowInput = document.getElementById('allowances');
@@ -669,6 +733,73 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!validateEditForm()) return;
             submitEditForm();
         });
+    }
+
+    /* ── Staff Role Picker (multi-select chips) ── */
+    var _roleData = {};
+    var _selectedRoles = (document.getElementById('staffRolesHidden').value || '').split(',').filter(Boolean);
+    var _primaryRole = document.getElementById('primaryRoleHidden').value || '';
+
+    function loadStaffRoles() {
+        $.getJSON('<?= base_url("staff/get_staff_roles") ?>', function(d) {
+            if (d.status !== 'success' || !d.roles) return;
+            _roleData = d.roles;
+            var sel = document.getElementById('staffRoleSelect');
+            sel.innerHTML = '<option value="">+ Add role...</option>';
+            Object.keys(_roleData).forEach(function(rid) {
+                var r = _roleData[rid];
+                var opt = document.createElement('option');
+                opt.value = rid;
+                opt.textContent = r.label + ' (' + r.category + ')';
+                sel.appendChild(opt);
+            });
+            // Render existing selections
+            if (_selectedRoles.length && !_primaryRole) _primaryRole = _selectedRoles[0];
+            renderRoleChips();
+        });
+    }
+    loadStaffRoles();
+
+    document.getElementById('staffRoleSelect').addEventListener('change', function() {
+        var rid = this.value;
+        if (!rid || _selectedRoles.indexOf(rid) !== -1) { this.value = ''; return; }
+        _selectedRoles.push(rid);
+        if (_selectedRoles.length === 1) _primaryRole = rid;
+        renderRoleChips();
+        this.value = '';
+    });
+
+    function renderRoleChips() {
+        var container = document.getElementById('selectedRolesChips');
+        container.innerHTML = '';
+        _selectedRoles.forEach(function(rid) {
+            var r = _roleData[rid] || { label: rid, category: '?' };
+            var isPrimary = rid === _primaryRole;
+            var chip = document.createElement('span');
+            chip.className = 'nsa-role-chip' + (isPrimary ? ' nsa-role-primary' : '');
+            chip.innerHTML = (isPrimary ? '<i class="fa fa-star" style="font-size:10px;margin-right:3px;"></i>' : '')
+                + r.label
+                + '<button type="button" class="nsa-role-remove" data-rid="' + rid + '">&times;</button>';
+            chip.title = isPrimary ? 'Primary role' : 'Click to set as primary';
+            chip.setAttribute('data-rid', rid);
+            chip.addEventListener('click', function(e) {
+                if (e.target.classList.contains('nsa-role-remove')) return;
+                _primaryRole = rid;
+                renderRoleChips();
+            });
+            container.appendChild(chip);
+        });
+        container.querySelectorAll('.nsa-role-remove').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var rid = this.getAttribute('data-rid');
+                _selectedRoles = _selectedRoles.filter(function(r) { return r !== rid; });
+                if (_primaryRole === rid) _primaryRole = _selectedRoles[0] || '';
+                renderRoleChips();
+            });
+        });
+        document.getElementById('staffRolesHidden').value = _selectedRoles.join(',');
+        document.getElementById('primaryRoleHidden').value = _primaryRole;
     }
 
     /* Sidebar active scroll highlight */
@@ -1049,4 +1180,29 @@ function submitEditForm() {
 .nsa-toast.success { background: var(--nsa-dark); }
 .nsa-toast.error   { background: var(--nsa-red);  }
 .nsa-toast.warning { background: var(--nsa-amber);}
+
+/* ── Staff Role Picker ── */
+.nsa-field-full { grid-column: 1 / -1; }
+.nsa-roles-picker {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 8px 10px; border: 1.5px solid var(--nsa-border, #d1d5db); border-radius: 8px;
+    background: var(--nsa-white, #fff); min-height: 44px;
+}
+.nsa-roles-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.nsa-role-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 16px; font-size: 12px; font-weight: 600;
+    background: var(--nsa-sky, #e6f4f1); color: var(--nsa-teal, #0f766e);
+    border: 1px solid rgba(15,118,110,.2); cursor: pointer; transition: all .15s;
+}
+.nsa-role-chip:hover { background: rgba(15,118,110,.15); }
+.nsa-role-chip.nsa-role-primary {
+    background: var(--nsa-teal, #0f766e); color: #fff;
+    border-color: var(--nsa-teal, #0f766e);
+}
+.nsa-role-remove {
+    background: none; border: none; color: inherit; font-size: 14px; font-weight: 700;
+    cursor: pointer; padding: 0 2px; line-height: 1; opacity: .7;
+}
+.nsa-role-remove:hover { opacity: 1; }
 </style>

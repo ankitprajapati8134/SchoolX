@@ -32,9 +32,14 @@ class Firebase
         $serviceAccountPath = __DIR__ . '/../config/graders-1c047-firebase-adminsdk-z1a10-ca28a54060.json';
         $databaseUri        = 'https://graders-1c047-default-rtdb.asia-southeast1.firebasedatabase.app/';
 
+        $httpOptions = \Kreait\Firebase\Http\HttpClientOptions::default()
+            ->withTimeout(15.0)          // 15-second total request timeout
+            ->withConnectTimeout(5.0);   // 5-second connection timeout
+
         $factory = (new Factory)
             ->withServiceAccount($serviceAccountPath)
-            ->withDatabaseUri($databaseUri);
+            ->withDatabaseUri($databaseUri)
+            ->withHttpClientOptions($httpOptions);
 
         $this->database = $factory->createDatabase();
         $this->auth     = $factory->createAuth();
@@ -50,6 +55,14 @@ class Firebase
     public function getDatabase()
     {
         return $this->database;
+    }
+
+    /**
+     * Get the storage bucket instance (C-07: shared with Common_model to avoid duplicate SDK init).
+     */
+    public function getStorageBucket()
+    {
+        return $this->storageBucket;
     }
 
     // ── [FIX-1] All reads now go through the authenticated Admin SDK ──────────

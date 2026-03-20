@@ -457,7 +457,7 @@ html, body {
                 <div class="sa-form-eyebrow">Super Admin</div>
                 <div class="sa-form-title">Control Panel</div>
                 <div class="sa-form-hint">
-                    Developers: School ID = <code>Our Panel</code>
+                    Authorized personnel only
                 </div>
             </div>
 
@@ -473,7 +473,7 @@ html, body {
                         <label class="sa-label">School ID</label>
                         <div class="sa-input-wrap">
                             <input type="text" class="sa-input" id="saSchoolId"
-                                   name="school_id" placeholder="Our Panel"
+                                   name="school_id" placeholder="School code"
                                    required autofocus maxlength="32">
                             <i class="fa fa-building sa-input-icon"></i>
                         </div>

@@ -6,9 +6,8 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 .etb-wrap {
-  padding: 20px 16px 48px;
-  max-width: 1140px;
-  margin: 0 auto;
+  padding: 24px 28px 48px;
+  margin: 0;
   color: var(--t1);
 }
 
@@ -18,17 +17,17 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 18px;
+  gap: 12px;
+  margin-bottom: 24px;
 }
 .etb-page-title {
-  font-size: 1.3rem;
+  font-size: 1.55rem;
   font-weight: 700;
   font-family: var(--font-b);
   color: var(--t1);
 }
-.etb-page-title i { color: var(--gold); margin-right: 6px; font-size: 1.1rem; }
-.etb-header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.etb-page-title i { color: var(--gold); margin-right: 8px; font-size: 1.3rem; }
+.etb-header-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
 /* ── Breadcrumb ──────────────────────────────────────────────────────── */
 .etb-breadcrumb {
@@ -37,7 +36,7 @@
   gap: 6px;
   padding: 0;
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--t3);
 }
 .etb-breadcrumb li + li::before { content: '/'; margin-right: 6px; color: var(--t3); }
@@ -48,11 +47,11 @@
 .etb-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 18px;
+  gap: 7px;
+  padding: 10px 22px;
   border: none;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 10px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all var(--ease);
@@ -73,28 +72,25 @@
   flex-wrap: wrap;
   background: var(--bg2);
   border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 16px 18px;
-  margin-bottom: 18px;
-  box-shadow: var(--sh);
+  border-radius: 14px;
+  padding: 20px 24px;
+  margin-bottom: 22px;
 }
-.etb-form-group { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+.etb-form-group { display: flex; flex-direction: column; gap: 5px; min-width: 150px; }
 .etb-label {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
-  font-family: var(--font-m);
   color: var(--t3);
   text-transform: uppercase;
   letter-spacing: .4px;
 }
 .etb-select {
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: var(--r-sm);
+  border-radius: 10px;
   background: var(--bg);
   color: var(--t1);
-  font-size: 13px;
-  font-family: var(--font-m);
+  font-size: 14px;
   outline: none;
   transition: border-color .2s;
 }
@@ -103,31 +99,30 @@
 /* ── Loading / Empty ─────────────────────────────────────────────────── */
 .etb-loading, .etb-empty {
   text-align: center;
-  padding: 40px 20px;
+  padding: 48px 24px;
   color: var(--t3);
-  font-size: 13px;
+  font-size: 14px;
 }
-.etb-loading i, .etb-empty i { font-size: 1.6rem; display: block; margin-bottom: 8px; }
+.etb-loading i, .etb-empty i { font-size: 2rem; display: block; margin-bottom: 10px; }
 
 /* ── Table wrapper ───────────────────────────────────────────────────── */
 .etb-table-outer {
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: var(--r);
+  border-radius: 14px;
   background: var(--bg2);
-  box-shadow: var(--sh);
 }
 
 /* ── Tabulation table ────────────────────────────────────────────────── */
 .etb-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
 }
 .etb-table th,
 .etb-table td {
-  padding: 5px 8px;
+  padding: 7px 10px;
   border: 1px solid var(--border);
   text-align: center;
   vertical-align: middle;
@@ -139,7 +134,7 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  font-size: 10px;
+  font-size: 11.5px;
   text-transform: uppercase;
   letter-spacing: .3px;
 }
@@ -148,7 +143,7 @@
   background: var(--bg3);
   color: var(--t2);
   font-weight: 600;
-  font-size: 10px;
+  font-size: 11.5px;
 }
 .etb-table tbody tr:nth-child(even) { background: var(--bg); }
 .etb-table tbody tr:nth-child(odd) { background: var(--bg2); }

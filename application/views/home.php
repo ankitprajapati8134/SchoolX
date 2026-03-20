@@ -283,14 +283,16 @@
         .db-class-dist { grid-column: 1/5; }
         .db-gender     { grid-column: 5/9; }
         .db-quick      { grid-column: 9/-1; }
-        .db-calendar   { grid-column: 1/5; }
-        .db-gallery    { grid-column: 5/-1; }
+        .db-tasks      { grid-column: 1/5; }
+        .db-calendar   { grid-column: 5/9; }
+        .db-gallery       { grid-column: 9/-1; }
+        .db-subscription  { grid-column: 1/-1; }
 
         @media(max-width:1100px) {
             .db-fee-chart, .db-events { grid-column: 1/-1; }
         }
         @media(max-width:900px) {
-            .db-class-dist, .db-gender, .db-quick, .db-calendar, .db-gallery { grid-column: 1/-1; }
+            .db-class-dist, .db-gender, .db-quick, .db-tasks, .db-calendar, .db-gallery, .db-subscription { grid-column: 1/-1; }
         }
         @media(max-width:700px) {
             .db-body { padding: 16px 16px 40px; gap: 14px; }
@@ -493,8 +495,63 @@
         .db-class-dist { animation: dbFadeUp .45s .34s ease both; }
         .db-gender     { animation: dbFadeUp .45s .39s ease both; }
         .db-quick      { animation: dbFadeUp .45s .44s ease both; }
+        .db-tasks      { animation: dbFadeUp .45s .47s ease both; }
         .db-calendar   { animation: dbFadeUp .45s .49s ease both; }
         .db-gallery    { animation: dbFadeUp .45s .54s ease both; }
+
+        /* ── Today's Tasks panel ── */
+        .db-task-list { display:flex; flex-direction:column; gap:6px; margin-top:12px; }
+        .db-task-item {
+            display:flex; align-items:center; gap:10px; padding:9px 12px;
+            border-radius:8px; background:var(--bg); border:1px solid var(--border);
+            font:400 12px/1.4 var(--font-m); color:var(--t2); cursor:pointer;
+            transition:border-color .15s,background .15s;
+            text-decoration:none;
+        }
+        .db-task-item:hover { border-color:var(--gold-ring); background:var(--gold-dim); color:var(--t1); }
+        .db-task-icon {
+            width:28px; height:28px; border-radius:6px; display:flex; align-items:center;
+            justify-content:center; font-size:12px; flex-shrink:0; color:#fff;
+        }
+        .db-task-body { flex:1; min-width:0; }
+        .db-task-title { font:600 12px/1.3 var(--font-b); color:var(--t1); }
+        .db-task-detail { font:400 11px/1.3 var(--font-m); color:var(--t3); margin-top:1px; }
+        .db-task-badge {
+            font:600 10px/1 var(--font-m); padding:3px 7px; border-radius:4px; flex-shrink:0;
+        }
+        .db-task-badge.high   { background:rgba(220,38,38,.12); color:#dc2626; }
+        .db-task-badge.medium { background:rgba(217,119,6,.12); color:#d97706; }
+        .db-task-badge.low    { background:rgba(15,118,110,.1);  color:#0f766e; }
+
+        /* ── Smart Alert Banner ── */
+        .db-alerts { grid-column:1/-1; display:flex; flex-direction:column; gap:8px; }
+        .db-alert-banner {
+            display:flex; align-items:center; gap:12px; padding:12px 16px;
+            border-radius:10px; font:400 12px/1.5 var(--font-m);
+            animation:dbFadeUp .35s ease both;
+        }
+        .db-alert-banner.warning {
+            background:rgba(217,119,6,.08); border:1px solid rgba(217,119,6,.2); color:#92400e;
+        }
+        .db-alert-banner.error {
+            background:rgba(220,38,38,.08); border:1px solid rgba(220,38,38,.2); color:#991b1b;
+        }
+        .db-alert-banner i.alert-icon { font-size:16px; flex-shrink:0; opacity:.8; }
+        .db-alert-body { flex:1; min-width:0; }
+        .db-alert-title { font:600 13px/1.3 var(--font-b); }
+        .db-alert-detail { font:400 11px/1.4 var(--font-m); opacity:.75; margin-top:2px; }
+        .db-alert-action {
+            font:600 11px/1 var(--font-b); padding:5px 12px; border-radius:6px;
+            border:1px solid currentColor; background:transparent; color:inherit;
+            cursor:pointer; flex-shrink:0; text-decoration:none; opacity:.8;
+            transition:opacity .15s;
+        }
+        .db-alert-action:hover { opacity:1; }
+        .db-alert-dismiss {
+            background:none; border:none; color:inherit; cursor:pointer; opacity:.4;
+            font-size:14px; padding:4px; flex-shrink:0;
+        }
+        .db-alert-dismiss:hover { opacity:.8; }
     </style>
 
     <!-- ─── HERO HEADER ─── -->
@@ -678,6 +735,24 @@
             </div>
         </div>
 
+        <!-- ── SMART ALERTS (full width, above tasks row) ── -->
+        <div class="db-alerts" id="dbAlerts"></div>
+
+        <!-- ── TODAY'S TASKS ── -->
+        <div class="db-panel db-tasks">
+            <div class="card-heading">
+                <div>
+                    <div class="card-title-txt">Today's Tasks</div>
+                    <div class="card-subtitle" id="dbTaskCount">Loading...</div>
+                </div>
+            </div>
+            <div class="db-task-list" id="dbTaskList">
+                <div style="text-align:center;padding:20px 0;color:var(--t3);font:400 12px/1.5 var(--font-m)">
+                    <i class="fa fa-spinner fa-spin"></i> Checking modules...
+                </div>
+            </div>
+        </div>
+
         <!-- ── CALENDAR ── -->
         <div class="db-panel db-calendar">
             <div class="card-heading">
@@ -704,6 +779,45 @@
             </div>
         </div>
 
+        <!-- ── SUBSCRIPTION & PAYMENT ── -->
+        <div class="db-panel db-subscription" id="subPanel" style="display:none;">
+            <div class="card-heading">
+                <div>
+                    <div class="card-title-txt">Subscription</div>
+                    <div class="card-subtitle" id="subPlanLabel">Plan & payment status</div>
+                </div>
+                <span class="card-badge" id="subStatusBadge" style="background:rgba(34,197,94,.12);color:#22c55e;">--</span>
+            </div>
+
+            <!-- Subscription summary row -->
+            <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:80px;background:var(--bg3,rgba(15,118,110,.05));border-radius:var(--r-sm);padding:12px;text-align:center;">
+                    <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-family:var(--font-mono);">Expires</div>
+                    <div id="subExpiry" style="font-size:15px;font-weight:700;color:var(--heading);font-family:var(--font-display);margin-top:2px;">—</div>
+                    <div id="subDaysLeft" style="font-size:10px;color:var(--muted);margin-top:1px;"></div>
+                </div>
+                <div style="flex:1;min-width:80px;background:var(--bg3,rgba(15,118,110,.05));border-radius:var(--r-sm);padding:12px;text-align:center;">
+                    <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-family:var(--font-mono);">Total Paid</div>
+                    <div id="subTotalPaid" style="font-size:15px;font-weight:700;color:#22c55e;font-family:var(--font-display);margin-top:2px;">—</div>
+                </div>
+                <div style="flex:1;min-width:80px;background:var(--bg3,rgba(15,118,110,.05));border-radius:var(--r-sm);padding:12px;text-align:center;">
+                    <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-family:var(--font-mono);">Balance Due</div>
+                    <div id="subBalanceDue" style="font-size:15px;font-weight:700;color:#ef4444;font-family:var(--font-display);margin-top:2px;">—</div>
+                    <div id="subNextDueDate" style="font-size:10px;color:var(--muted);margin-top:1px;"></div>
+                </div>
+            </div>
+
+            <!-- Payment alert (overdue/upcoming) -->
+            <div id="subAlert" style="display:none;padding:10px 14px;border-radius:var(--r-sm);margin-bottom:14px;font-size:12px;font-family:var(--font-body);display:flex;align-items:center;gap:8px;">
+            </div>
+
+            <!-- Recent payments list -->
+            <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;font-family:var(--font-mono);">Recent Payments</div>
+            <div id="subPayments" style="display:flex;flex-direction:column;gap:6px;">
+                <div style="text-align:center;padding:12px;color:var(--muted);font-size:12px;">Loading...</div>
+            </div>
+        </div>
+
     </div><!-- /db-body -->
 </div><!-- /db-root -->
 
@@ -717,6 +831,7 @@
     var tdEl  = document.getElementById('todayDate');
     var BASE  = '<?= rtrim(base_url(), '/') ?>';
     var ROLE  = '<?= htmlspecialchars($admin_role, ENT_QUOTES, 'UTF-8') ?>';
+    var CAN_FEES = <?= json_encode(has_permission('Fees')) ?>;
 
     var feeChartInst = null;
     var classChartInst = null;
@@ -751,8 +866,8 @@
     /* Enable transitions after first paint */
     requestAnimationFrame(function() { setTimeout(function() { root.classList.add('t-ready'); }, 60); });
 
-    /* ── Role-based visibility ── */
-    if (ROLE === 'Teacher') {
+    /* ── Permission-based visibility ── */
+    if (!CAN_FEES) {
         document.querySelectorAll('.db-finance-only').forEach(function(el) { el.style.display = 'none'; });
     }
 
@@ -808,6 +923,99 @@
             console.error('Dashboard load failed:', e);
         });
 
+    /* ══════════════════════════════════════════
+       LOAD WORKFLOW TASKS & ALERTS
+    ══════════════════════════════════════════ */
+    fetch(BASE + '/notifications/get_tasks')
+        .then(function(r) { return r.json(); })
+        .then(function(D) {
+            if (D.status !== 'success') return;
+            renderTasks(D.tasks || []);
+            renderAlerts(D.alerts || []);
+        })
+        .catch(function() {
+            document.getElementById('dbTaskList').innerHTML =
+                '<div style="text-align:center;padding:16px 0;color:var(--t3);font:400 11px/1.4 var(--font-m)">'
+                + '<i class="fa fa-check-circle" style="color:var(--gold)"></i> No pending tasks</div>';
+        });
+
+    function renderTasks(tasks) {
+        var el = document.getElementById('dbTaskList');
+        var countEl = document.getElementById('dbTaskCount');
+        if (!el) return;
+
+        if (!tasks.length) {
+            el.innerHTML = '<div style="text-align:center;padding:20px 0;color:var(--t3);font:400 12px/1.5 var(--font-m)">'
+                + '<i class="fa fa-check-circle" style="color:var(--gold);font-size:20px;display:block;margin-bottom:6px"></i>All caught up!</div>';
+            if (countEl) countEl.textContent = 'Nothing pending';
+            return;
+        }
+
+        var highCount = tasks.filter(function(t) { return t.priority === 'high'; }).length;
+        if (countEl) countEl.textContent = tasks.length + ' item' + (tasks.length > 1 ? 's' : '') + (highCount ? ' (' + highCount + ' urgent)' : '');
+
+        var h = '';
+        tasks.forEach(function(t) {
+            var href = t.action ? (BASE + '/' + t.action) : '#';
+            h += '<a class="db-task-item" href="' + _esc(href) + '">'
+              + '<div class="db-task-icon" style="background:' + _esc(t.color || '#0f766e') + '"><i class="fa ' + _esc(t.icon || 'fa-tasks') + '"></i></div>'
+              + '<div class="db-task-body">'
+              + '<div class="db-task-title">' + _esc(t.title) + '</div>'
+              + '<div class="db-task-detail">' + _esc(t.detail || '') + '</div>'
+              + '</div>'
+              + '<span class="db-task-badge ' + _esc(t.priority || 'low') + '">' + _esc((t.priority || 'low').toUpperCase()) + '</span>'
+              + '</a>';
+        });
+        el.innerHTML = h;
+    }
+
+    function renderAlerts(alerts) {
+        var el = document.getElementById('dbAlerts');
+        if (!el || !alerts.length) { if(el) el.style.display='none'; return; }
+
+        var h = '';
+        alerts.forEach(function(a, i) {
+            var type = a.type || 'warning';
+            h += '<div class="db-alert-banner ' + _esc(type) + '" style="animation-delay:' + (i * 0.08) + 's" data-key="' + _esc(a.key || '') + '">'
+              + '<i class="fa ' + _esc(a.icon || 'fa-exclamation-triangle') + ' alert-icon"></i>'
+              + '<div class="db-alert-body">'
+              + '<div class="db-alert-title">' + _esc(a.title) + '</div>'
+              + '<div class="db-alert-detail">' + _esc(a.detail || '') + '</div>'
+              + '</div>';
+            if (a.action) {
+                h += '<a class="db-alert-action" href="' + BASE + '/' + _esc(a.action) + '">View</a>';
+            }
+            h += '<button class="db-alert-dismiss" title="Dismiss" onclick="dismissAlert(this)"><i class="fa fa-times"></i></button>'
+              + '</div>';
+        });
+        el.innerHTML = h;
+        el.style.display = '';
+    }
+
+    window.dismissAlert = function(btn) {
+        var banner = btn.closest('.db-alert-banner');
+        if (!banner) return;
+        var key = banner.getAttribute('data-key');
+        banner.style.transition = 'opacity .25s, max-height .25s';
+        banner.style.opacity = '0';
+        banner.style.maxHeight = '0';
+        banner.style.overflow = 'hidden';
+        setTimeout(function() { banner.remove(); }, 300);
+
+        if (key) {
+            var csrf = document.querySelector('meta[name="csrf-token"]');
+            var csrfName = document.querySelector('meta[name="csrf-name"]');
+            var fd = new FormData();
+            fd.append('key', key);
+            if (csrf && csrfName) fd.append(csrfName.content, csrf.content);
+            fetch(BASE + '/notifications/dismiss_alert', { method: 'POST', body: fd });
+        }
+    };
+
+    function _esc(s) {
+        var d = document.createElement('div'); d.textContent = String(s || ''); return d.innerHTML;
+    }
+
     /* ── Populate stat cards ── */
     function populateStats(s) {
         animateValue(document.getElementById('valStudents'), s.students);
@@ -818,7 +1026,7 @@
         document.getElementById('classCount').textContent = s.classes + ' classes';
         document.getElementById('sectionCount').textContent = s.sections + ' sections';
 
-        if (ROLE !== 'Teacher') {
+        if (CAN_FEES) {
             animateINR(document.getElementById('valFees'), s.fees_collected);
         }
     }
@@ -1120,6 +1328,124 @@
             }
         }).observe(root, { attributes: true });
     }
+
+    /* ══════════════════════════════════════════
+       SUBSCRIPTION & PAYMENT INFO
+    ══════════════════════════════════════════ */
+    fetch(BASE + '/admin/get_subscription_info')
+        .then(function(r) { return r.json(); })
+        .then(function(D) {
+            if (D.error || !D.plan_name || D.plan_name === '—') return; // no plan assigned
+
+            document.getElementById('subPanel').style.display = '';
+            document.getElementById('subPlanLabel').textContent = D.plan_name + ' · ' + capitalize(D.billing_cycle || '');
+
+            // Status badge
+            var badge = document.getElementById('subStatusBadge');
+            var st = (D.sub_status || 'Inactive').toLowerCase();
+            badge.textContent = capitalize(D.sub_status || 'Inactive');
+            if (st === 'active') { badge.style.background = 'rgba(34,197,94,.12)'; badge.style.color = '#22c55e'; }
+            else if (st === 'suspended') { badge.style.background = 'rgba(239,68,68,.12)'; badge.style.color = '#ef4444'; }
+            else if (st === 'grace_period') { badge.style.background = 'rgba(249,115,22,.12)'; badge.style.color = '#f97316'; }
+            else { badge.style.background = 'rgba(107,114,128,.12)'; badge.style.color = '#6b7280'; }
+
+            // Expiry
+            document.getElementById('subExpiry').textContent = D.expiry_date ? fmtShortDate(D.expiry_date) : '—';
+            if (D.days_left !== null && D.days_left !== undefined) {
+                var dlEl2 = document.getElementById('subDaysLeft');
+                if (D.days_left < 0) {
+                    dlEl2.textContent = Math.abs(D.days_left) + ' days ago';
+                    dlEl2.style.color = '#ef4444';
+                } else if (D.days_left <= 30) {
+                    dlEl2.textContent = D.days_left + ' days left';
+                    dlEl2.style.color = '#f97316';
+                } else {
+                    dlEl2.textContent = D.days_left + ' days left';
+                    dlEl2.style.color = '#22c55e';
+                }
+            }
+
+            // Total paid
+            document.getElementById('subTotalPaid').textContent = fmtINR(D.total_paid || 0);
+
+            // Balance due
+            var balEl = document.getElementById('subBalanceDue');
+            var ddEl  = document.getElementById('subNextDueDate');
+            var totalBal = D.total_balance || 0;
+            balEl.textContent = fmtINR(totalBal);
+            balEl.style.color = totalBal > 0 ? '#ef4444' : '#22c55e';
+            if (D.next_due_date) {
+                ddEl.textContent = 'Due: ' + fmtShortDate(D.next_due_date);
+                var today = new Date().toISOString().slice(0,10);
+                if (D.next_due_date < today) ddEl.style.color = '#ef4444';
+            } else if (totalBal <= 0) {
+                ddEl.textContent = 'All clear';
+                ddEl.style.color = '#22c55e';
+            }
+
+            // Alert bar
+            var alertEl = document.getElementById('subAlert');
+            var todayStr = new Date().toISOString().slice(0,10);
+            if (totalBal > 0 && D.next_due_date && D.next_due_date < todayStr) {
+                alertEl.style.display = 'flex';
+                alertEl.style.background = 'rgba(239,68,68,.08)';
+                alertEl.style.border = '1px solid rgba(239,68,68,.2)';
+                alertEl.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#ef4444;"></i>'
+                    + '<span style="color:#ef4444;font-weight:600;">Payment overdue!</span>'
+                    + '<span style="color:var(--muted);margin-left:auto;">' + fmtINR(totalBal) + ' balance due since ' + fmtShortDate(D.next_due_date) + '</span>';
+            } else if (D.days_left !== null && D.days_left <= 30 && D.days_left >= 0) {
+                alertEl.style.display = 'flex';
+                alertEl.style.background = 'rgba(249,115,22,.08)';
+                alertEl.style.border = '1px solid rgba(249,115,22,.2)';
+                alertEl.innerHTML = '<i class="fas fa-clock" style="color:#f97316;"></i>'
+                    + '<span style="color:#f97316;font-weight:600;">Subscription expiring soon</span>'
+                    + '<span style="color:var(--muted);margin-left:auto;">' + D.days_left + ' days remaining</span>';
+            }
+
+            // Payment history
+            var payEl = document.getElementById('subPayments');
+            var pays = D.payments || [];
+            if (!pays.length) {
+                payEl.innerHTML = '<div style="text-align:center;padding:12px;color:var(--muted);font-size:12px;">No payment records yet.</div>';
+                return;
+            }
+            var stCfg = {
+                paid:    { bg:'rgba(34,197,94,.1)',  color:'#22c55e', icon:'fas fa-check-circle' },
+                partial: { bg:'rgba(249,115,22,.1)', color:'#ea580c', icon:'fas fa-adjust' },
+                pending: { bg:'rgba(37,99,235,.1)',  color:'#2563eb', icon:'fas fa-clock' },
+                overdue: { bg:'rgba(239,68,68,.1)',  color:'#ef4444', icon:'fas fa-exclamation-circle' },
+                failed:  { bg:'rgba(107,114,128,.1)',color:'#6b7280', icon:'fas fa-times-circle' }
+            };
+            var html = pays.slice(0, 6).map(function(p) {
+                var c = stCfg[p.status] || stCfg.pending;
+                var amt = parseFloat(p.amount||0), pd = parseFloat(p.amount_paid||0), bl = parseFloat(p.balance||0);
+                var pct = amt > 0 ? Math.round(pd/amt*100) : 0;
+                return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg3,rgba(15,118,110,.03));border-radius:var(--r-sm);">'
+                    + '<i class="' + c.icon + '" style="color:' + c.color + ';font-size:14px;flex-shrink:0;"></i>'
+                    + '<div style="flex:1;min-width:0;">'
+                    + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+                    + '<span style="font-size:12.5px;font-weight:600;color:var(--heading);">' + fmtINR(amt) + '</span>'
+                    + '<span style="font-size:10px;padding:2px 6px;border-radius:6px;background:' + c.bg + ';color:' + c.color + ';font-weight:600;">' + capitalize(p.status) + '</span>'
+                    + '</div>'
+                    + '<div style="display:flex;gap:8px;align-items:center;margin-top:3px;">'
+                    + '<div style="flex:1;height:3px;background:rgba(15,118,110,.1);border-radius:2px;">'
+                    + '<div style="width:' + pct + '%;height:100%;background:' + (pct>=100?'#22c55e':'#f97316') + ';border-radius:2px;"></div></div>'
+                    + '<span style="font-size:9px;color:var(--muted);">' + pct + '%</span>'
+                    + '</div>'
+                    + '<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">'
+                    + 'Paid: ' + fmtINR(pd)
+                    + (bl > 0 ? ' &middot; <span style="color:#ef4444;">Balance: ' + fmtINR(bl) + '</span>' : '')
+                    + ' &middot; Due: ' + (p.due_date ? fmtShortDate(p.due_date) : '—')
+                    + '</div></div></div>';
+            }).join('');
+            payEl.innerHTML = html;
+        })
+        .catch(function(e) {
+            console.error('Subscription info load failed:', e);
+        });
+
+    function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ') : ''; }
+    function fmtINR(n) { return '\u20B9' + Number(n||0).toLocaleString('en-IN'); }
 
 })();
 </script>

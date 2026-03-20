@@ -125,7 +125,7 @@ class MY_Superadmin_Controller extends CI_Controller
             . "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.datatables.net https://api.fontshare.com; "
             . "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.fontshare.com; "
             . "img-src 'self' data: blob: https://*.googleapis.com https://*.firebasestorage.googleapis.com; "
-            . "connect-src 'self' https://*.firebaseio.com https://*.firebasedatabase.app https://cdnjs.cloudflare.com; "
+            . "connect-src 'self' https://*.firebaseio.com https://*.firebasedatabase.app https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
             . "frame-ancestors 'none'; "
             . "base-uri 'self'; "
             . "form-action 'self';";

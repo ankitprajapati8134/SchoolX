@@ -40,10 +40,12 @@ $at = $active_tab ?? 'circulars';
 .cm-badge-purple{background:rgba(139,92,246,.12);color:#8b5cf6}
 .cm-empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--font-b)}
 .cm-empty i{font-size:36px;display:block;margin-bottom:12px;opacity:.5}
+.cm-loading{text-align:center;padding:18px 20px;color:var(--t3);font-size:13px;font-family:var(--font-b)}
 /* Modal/toast/form styles inherited from header.php global definitions */
 .cm-modal{width:600px}
 .cm-form-group textarea{resize:vertical;min-height:80px}
 .cm-form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.cm-toast{position:fixed;top:20px;right:20px;z-index:10000;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;font-family:var(--font-b);color:#fff;display:none;max-width:400px;box-shadow:0 8px 24px rgba(0,0,0,.15)}
 .cm-toast.success{background:#22c55e;display:block}.cm-toast.error{background:#ef4444;display:block}
 </style>
 
@@ -61,7 +63,7 @@ $at = $active_tab ?? 'circulars';
 
 <div class="cm-card">
     <div class="cm-card-title"><span>Circulars</span><button class="cm-btn cm-btn-primary" onclick="CIR.openModal()"><i class="fa fa-plus"></i> Upload Circular</button></div>
-    <table class="cm-table"><thead><tr><th>Title</th><th>Category</th><th>Target</th><th>Issued Date</th><th>Attachment</th><th>Actions</th></tr></thead><tbody id="circularsTbody"><tr><td colspan="6" class="cm-empty"><i class="fa fa-spinner fa-spin"></i></td></tr></tbody></table>
+    <table class="cm-table"><thead><tr><th>Title</th><th>Category</th><th>Target</th><th>Issued Date</th><th>Attachment</th><th>Actions</th></tr></thead><tbody id="circularsTbody"><tr><td colspan="6" class="cm-loading">Loading...</td></tr></tbody></table>
 </div>
 
 </div></section></div>
@@ -101,7 +103,7 @@ var CIR = {};
 
 CIR.load = function() {
     $.getJSON(CM.BASE + 'communication/get_circulars', function(r) {
-        if (r.status !== 'success') { CM.toast(r.message,'error'); return; }
+        if (r.status !== 'success') { CM.toast(r.message,'error'); $('#circularsTbody').html('<tr><td colspan="6" class="cm-empty"><i class="fa fa-exclamation-circle"></i> Failed to load</td></tr>'); return; }
         var list = r.circulars || [];
         var html = '';
         if (!list.length) {
@@ -109,20 +111,34 @@ CIR.load = function() {
         } else {
             CIR.data = list;
             list.forEach(function(c) {
-                var catMap = {Policy:'cm-badge-purple',Holiday:'cm-badge-green',Exam:'cm-badge-amber',Fee:'cm-badge-rose',General:'cm-badge-blue'};
-                var att = c.attachment_url ? '<a href="' + CM.esc(c.attachment_url) + '" target="_blank" class="cm-btn cm-btn-sm cm-btn-outline"><i class="fa fa-download"></i> ' + CM.esc(c.attachment_name||'Download') + '</a>' : '<span style="color:var(--t3)">None</span>';
+                var catMap = {Policy:'cm-badge-purple',Holiday:'cm-badge-green',Exam:'cm-badge-amber',Fee:'cm-badge-rose',General:'cm-badge-blue',Recruitment:'cm-badge-purple'};
+                var isRecruitment = c.source === 'hr_recruitment' || c.category === 'Recruitment';
+                var att = '';
+                if (c.attachment_url) {
+                    att = '<a href="' + CM.esc(c.attachment_url) + '" target="_blank" class="cm-btn cm-btn-sm cm-btn-outline"><i class="fa fa-download"></i> ' + CM.esc(c.attachment_name||'Download') + '</a>';
+                } else if (isRecruitment && c.is_poster) {
+                    att = '<button class="cm-btn cm-btn-sm cm-btn-outline" onclick="CIR.viewPoster(\'' + CM.esc(c.id) + '\')"><i class="fa fa-eye"></i> View Poster</button>';
+                } else {
+                    att = '<span style="color:var(--t3)">None</span>';
+                }
+                var srcBadge = isRecruitment ? ' <span class="cm-badge cm-badge-amber" style="font-size:9px;">HR Job</span>' : '';
                 html += '<tr>' +
-                    '<td><strong>' + CM.esc(c.title) + '</strong></td>' +
+                    '<td><strong>' + CM.esc(c.title) + '</strong>' + srcBadge + '</td>' +
                     '<td><span class="cm-badge ' + (catMap[c.category]||'cm-badge-blue') + '">' + CM.esc(c.category) + '</span></td>' +
                     '<td>' + CM.esc(c.target_group||'') + '</td>' +
                     '<td>' + CM.esc(c.issued_date||'') + '</td>' +
                     '<td>' + att + '</td>' +
-                    '<td><button class="cm-btn cm-btn-sm cm-btn-primary" onclick="CIR.edit(\'' + CM.esc(c.id) + '\')"><i class="fa fa-pencil"></i></button> ' +
+                    '<td>' +
+                    (isRecruitment && c.is_poster ? '<button class="cm-btn cm-btn-sm cm-btn-outline" onclick="CIR.viewPoster(\'' + CM.esc(c.id) + '\')" style="margin-right:4px;" title="View poster"><i class="fa fa-eye"></i></button> ' : '') +
+                    '<button class="cm-btn cm-btn-sm cm-btn-primary" onclick="CIR.edit(\'' + CM.esc(c.id) + '\')"><i class="fa fa-pencil"></i></button> ' +
                     '<button class="cm-btn cm-btn-sm cm-btn-danger" onclick="CIR.del(\'' + CM.esc(c.id) + '\')"><i class="fa fa-trash"></i></button></td>' +
                     '</tr>';
             });
         }
         $('#circularsTbody').html(html);
+    }).fail(function() {
+        CM.toast('Failed to load circulars','error');
+        $('#circularsTbody').html('<tr><td colspan="6" class="cm-empty"><i class="fa fa-exclamation-circle"></i> Failed to load circulars</td></tr>');
     });
 
     // Load target groups
@@ -180,5 +196,70 @@ CIR.del = function(id) {
     }, 'json');
 };
 
+CIR.viewPoster = function(circularId) {
+    var c = CIR.data.find(function(x){ return x.id === circularId; });
+    if (!c) return;
+
+    // If description contains HTML poster content, show it directly
+    if (c.is_poster && c.description) {
+        $('#cirPosterContent').html(c.description);
+        $('#cirPosterTitle').text(c.title || 'Job Circular');
+        $('#cirPosterModal').addClass('show');
+        return;
+    }
+
+    // Otherwise fetch from HR endpoint
+    var srcId = c.source_id || '';
+    if (!srcId) {
+        // Show raw description
+        $('#cirPosterContent').html('<div style="padding:20px;white-space:pre-line;">' + CM.esc(c.description || 'No content.') + '</div>');
+        $('#cirPosterTitle').text(c.title || 'Circular');
+        $('#cirPosterModal').addClass('show');
+        return;
+    }
+
+    $('#cirPosterContent').html('<div style="text-align:center;padding:40px;color:var(--t3);"><i class="fa fa-spinner fa-spin" style="font-size:24px;"></i></div>');
+    $('#cirPosterTitle').text(c.title || 'Job Circular');
+    $('#cirPosterModal').addClass('show');
+
+    $.getJSON(CM.BASE + 'hr/view_circular?circular_id=' + encodeURIComponent(circularId), function(r) {
+        if (r.status === 'success' && r.poster_html) {
+            $('#cirPosterContent').html(r.poster_html);
+        } else {
+            $('#cirPosterContent').html('<div style="padding:20px;white-space:pre-line;">' + CM.esc(c.description || 'Failed to load poster.') + '</div>');
+        }
+    });
+};
+
+CIR.closePoster = function() { $('#cirPosterModal').removeClass('show'); };
+
+CIR.printPoster = function() {
+    var content = document.getElementById('cirPosterContent').innerHTML;
+    var w = window.open('', '_blank', 'width=700,height=900');
+    w.document.write('<!DOCTYPE html><html><head><title>Circular</title>');
+    w.document.write('<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">');
+    w.document.write('<style>body{margin:20px;font-family:"Segoe UI",system-ui,sans-serif;}@media print{body{margin:0;}}</style>');
+    w.document.write('</head><body>');
+    w.document.write(content);
+    w.document.write('<script>setTimeout(function(){window.print();},500);<\/script>');
+    w.document.write('</body></html>');
+    w.document.close();
+};
+
 document.addEventListener('DOMContentLoaded', function(){ CIR.load(); });
 </script>
+
+<!-- Poster Viewer Modal -->
+<div class="cm-modal-bg" id="cirPosterModal">
+  <div class="cm-modal" style="max-width:680px;">
+    <div class="cm-modal-title">
+      <span id="cirPosterTitle">Job Circular</span>
+      <button class="cm-modal-close" onclick="CIR.closePoster()">&times;</button>
+    </div>
+    <div id="cirPosterContent" style="max-height:70vh;overflow-y:auto;padding:4px;"></div>
+    <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
+      <button class="cm-btn cm-btn-outline cm-btn-sm" onclick="CIR.closePoster()">Close</button>
+      <button class="cm-btn cm-btn-primary cm-btn-sm" onclick="CIR.printPoster()"><i class="fa fa-print"></i> Print</button>
+    </div>
+  </div>
+</div>

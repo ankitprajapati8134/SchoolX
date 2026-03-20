@@ -32,6 +32,7 @@ class Lms extends MY_Controller
     public function __construct()
     {
         parent::__construct();
+        require_permission('LMS');
         $this->_lmsBase = "Schools/{$this->school_name}/{$this->session_year}/LMS";
     }
 

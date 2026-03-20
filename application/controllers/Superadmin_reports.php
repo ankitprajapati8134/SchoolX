@@ -34,7 +34,6 @@ class Superadmin_reports extends MY_Superadmin_Controller
     {
         try {
             $schools = $this->firebase->get('System/Schools') ?? [];
-            $meta    = $this->firebase->get('System/Schools') ?? [];
             $rows    = [];
             $total   = 0;
 
@@ -42,7 +41,7 @@ class Superadmin_reports extends MY_Superadmin_Controller
                 if (!is_array($school)) continue;
                 $sub   = is_array($school['subscription'] ?? null) ? $school['subscription'] : [];
                 $cache = is_array($school['stats_cache']  ?? null) ? $school['stats_cache']  : [];
-                $saP   = is_array($meta[$name]['profile'] ?? null) ? $meta[$name]['profile'] : [];
+                $saP   = is_array($school['profile']      ?? null) ? $school['profile']      : [];
 
                 $count  = (int)($cache['total_students'] ?? 0);
                 $total += $count;
@@ -51,7 +50,7 @@ class Superadmin_reports extends MY_Superadmin_Controller
                     'name'        => $saP['name']      ?? $name,
                     'city'        => $saP['city']       ?? '',
                     'status'      => strtolower($sub['status'] ?? 'inactive'),
-                    'plan_name'   => $sub['plan_name']  ?? ($meta[$name]['subscription']['plan_name'] ?? '—'),
+                    'plan_name'   => $sub['plan_name']  ?? '—',
                     'students'    => $count,
                     'staff'       => (int)($cache['total_staff']    ?? 0),
                     'last_updated'=> $cache['last_updated'] ?? '',
@@ -73,31 +72,38 @@ class Superadmin_reports extends MY_Superadmin_Controller
     {
         try {
             $schools      = $this->firebase->get('System/Schools') ?? [];
-            $meta         = $this->firebase->get('System/Schools') ?? [];
+            $payments_raw = $this->firebase->get('System/Payments') ?? [];
             $rows         = [];
             $total_revenue= 0.0;
             $active_count = 0;
 
+            // Build per-school revenue from paid subscription payments
+            $school_revenue = [];
+            foreach ($payments_raw as $pid => $p) {
+                if (!is_array($p)) continue;
+                if (strtolower($p['status'] ?? '') !== 'paid') continue;
+                $suid = $p['school_uid'] ?? $p['school_name'] ?? '';
+                $school_revenue[$suid] = ($school_revenue[$suid] ?? 0) + (float)($p['amount'] ?? 0);
+            }
+
             foreach ($schools as $name => $school) {
                 if (!is_array($school)) continue;
                 $sub    = is_array($school['subscription'] ?? null) ? $school['subscription'] : [];
-                $cache  = is_array($school['stats_cache']  ?? null) ? $school['stats_cache']  : [];
-                $saP    = is_array($meta[$name]['profile'] ?? null) ? $meta[$name]['profile'] : [];
-                $saSub  = is_array($meta[$name]['subscription'] ?? null) ? $meta[$name]['subscription'] : [];
+                $saP    = is_array($school['profile']      ?? null) ? $school['profile']      : [];
 
                 $status = strtolower($sub['status'] ?? 'inactive');
                 if ($status === 'active') $active_count++;
-                $revenue       = (float)($cache['total_fees_collected'] ?? 0);
+                $revenue       = (float)($school_revenue[$name] ?? 0);
                 $total_revenue += $revenue;
-                $expiry = $sub['expiry_date'] ?? ($sub['duration']['endDate'] ?? ($saSub['expiry_date'] ?? ''));
+                $expiry = $sub['expiry_date'] ?? ($sub['duration']['endDate'] ?? '');
 
                 $rows[] = [
                     'uid'         => $name,
                     'name'        => $saP['name']     ?? $name,
-                    'plan_name'   => $sub['plan_name'] ?? ($saSub['plan_name'] ?? '—'),
-                    'plan_price'  => $saSub['plan_price'] ?? 0,
+                    'plan_name'   => $sub['plan_name'] ?? '—',
+                    'plan_price'  => $sub['plan_price'] ?? 0,
                     'expiry_date' => $expiry,
-                    'sub_status'  => $sub['status'] ?? 'Inactive',
+                    'sub_status'  => strtolower($sub['status'] ?? 'inactive'),
                     'revenue'     => $revenue,
                 ];
             }
@@ -179,13 +185,12 @@ class Superadmin_reports extends MY_Superadmin_Controller
     {
         try {
             $schools  = $this->firebase->get('System/Schools') ?? [];
-            $meta     = $this->firebase->get('System/Schools') ?? [];
             $plan_map = [];
 
             foreach ($schools as $name => $school) {
                 if (!is_array($school)) continue;
                 $sub  = is_array($school['subscription'] ?? null) ? $school['subscription'] : [];
-                $plan = $sub['plan_name'] ?? ($meta[$name]['subscription']['plan_name'] ?? 'No Plan');
+                $plan = $sub['plan_name'] ?? 'No Plan';
                 $plan_map[$plan] = ($plan_map[$plan] ?? 0) + 1;
             }
 

@@ -35,8 +35,9 @@ $at = $active_tab ?? 'events';
 .ev-badge-rose{background:rgba(239,68,68,.12);color:#ef4444}
 .ev-badge-purple{background:rgba(139,92,246,.12);color:#8b5cf6}
 .ev-badge-gray{background:rgba(156,163,175,.12);color:#9ca3af}
-.ev-empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--font-b)}
-.ev-empty i{font-size:36px;display:block;margin-bottom:12px;opacity:.5}
+.ev-empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--font-b);overflow:hidden}
+.ev-empty i{font-size:22px;display:inline-block;margin-bottom:8px;opacity:.5;vertical-align:middle}
+.ev-empty .ev-load-text{display:block;font-size:12px;margin-top:4px;color:var(--t3)}
 /* Modal/toast/form styles inherited from header.php global definitions */
 .ev-modal{width:640px}
 .ev-form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -70,7 +71,7 @@ $at = $active_tab ?? 'events';
         <button class="ev-filter" onclick="EVT.filter('sports')" data-c="sports">Sports</button>
     </div>
     <table class="ev-table"><thead><tr><th>Title</th><th>Category</th><th>Date</th><th>Location</th><th>Organizer</th><th>Status</th><th>Actions</th></tr></thead>
-    <tbody id="evtTbody"><tr><td colspan="7" class="ev-empty"><i class="fa fa-spinner fa-spin"></i></td></tr></tbody></table>
+    <tbody id="evtTbody"><tr><td colspan="7" class="ev-empty"><i class="fa fa-spinner fa-spin"></i><span class="ev-load-text">Loading...</span></td></tr></tbody></table>
 </div>
 
 </div></section></div>
@@ -157,7 +158,8 @@ EVT.load = function() {
                         '<td style="font-size:12px">' + EV.esc(e.location||'') + '</td>' +
                         '<td style="font-size:12px">' + EV.esc(e.organizer||'') + '</td>' +
                         '<td><span class="ev-badge ' + EVT.statusBadge(e.status) + '">' + EV.esc(e.status) + '</span></td>' +
-                        '<td><button class="ev-btn ev-btn-sm ev-btn-primary" onclick="EVT.edit(\'' + EV.escJs(e.id) + '\')"><i class="fa fa-pencil"></i></button> ' +
+                        '<td><button class="ev-btn ev-btn-sm ev-btn-outline" onclick="EVT.circular(\'' + EV.escJs(e.id) + '\')" title="View Circular"><i class="fa fa-file-text-o"></i></button> ' +
+                        '<button class="ev-btn ev-btn-sm ev-btn-primary" onclick="EVT.edit(\'' + EV.escJs(e.id) + '\')"><i class="fa fa-pencil"></i></button> ' +
                         '<button class="ev-btn ev-btn-sm ev-btn-danger" onclick="EVT.del(\'' + EV.escJs(e.id) + '\')"><i class="fa fa-trash"></i></button></td>' +
                         '</tr>';
                 });
@@ -232,6 +234,10 @@ EVT.save = function() {
 EVT.del = function(id) {
     if (!confirm('Delete this event? This will also remove all participants.')) return;
     EV.ajax('events/delete_event', {id:id}, function(r) { EV.toast(r.message||'Deleted'); EVT.load(); }, 'POST');
+};
+
+EVT.circular = function(id) {
+    window.open(EV.BASE + 'events/circular/' + encodeURIComponent(id), '_blank');
 };
 
 document.addEventListener('DOMContentLoaded', function(){ EVT.load(); });

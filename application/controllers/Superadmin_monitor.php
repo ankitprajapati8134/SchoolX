@@ -110,6 +110,7 @@ class Superadmin_monitor extends MY_Superadmin_Controller
     {
         $date       = trim($this->input->post('date',       TRUE) ?? date('Y-m-d'));
         $school_uid = trim($this->input->post('school_uid', TRUE) ?? '');
+        if (!$this->_valid_date($date)) { $this->json_error('Invalid date.'); return; }
         try {
             $raw  = $this->firebase->get("System/Logs/SchoolLogins/{$date}") ?? [];
             $rows = array_values($raw);
@@ -171,6 +172,13 @@ class Superadmin_monitor extends MY_Superadmin_Controller
             $date = date('Y-m-d');
             $key  = 'api_' . substr(md5(uniqid('', true)), 0, 8);
             $this->firebase->update("System/Logs/ApiUsage/{$date}", [$key => $entry]);
+
+            // M-05 FIX: Audit log for API call tracking (skip sa_log for high-frequency
+            // calls to avoid recursion — only log errors/timeouts)
+            if ($status !== 'success') {
+                $this->sa_log('api_call_logged', '', ['endpoint' => $endpoint, 'status' => $status]);
+            }
+
             $this->json_success(['logged' => true]);
         } catch (Exception $e) {
             $this->json_error('Log failed.');
@@ -307,6 +315,10 @@ class Superadmin_monitor extends MY_Superadmin_Controller
 
     public function cleanup_old_logs()
     {
+        if (!in_array($this->sa_role, ['superadmin', 'developer'], true)) {
+            $this->json_error('Insufficient privileges.', 403); return;
+        }
+
         $retain_days = max(1, (int)($this->input->post('retain_days', TRUE) ?? 30));
         $cutoff      = date('Y-m-d', strtotime("-{$retain_days} days"));
 
@@ -316,8 +328,8 @@ class Superadmin_monitor extends MY_Superadmin_Controller
 
         foreach ($log_types as $type) {
             try {
-                // Get all date keys under this log type
-                $dates = $this->firebase->get("System/Logs/{$type}") ?? [];
+                // Shallow read — only date keys, not full log entries
+                $dates = $this->firebase->shallow_get("System/Logs/{$type}") ?? [];
                 foreach (array_keys($dates) as $date) {
                     if (!$this->_valid_date($date)) continue;
                     if ($date < $cutoff) {

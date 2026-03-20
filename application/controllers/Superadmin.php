@@ -33,11 +33,10 @@ class Superadmin extends MY_Superadmin_Controller
 
             // Expiry alerts — always live (needs accurate timing, small payload)
             $schools = $this->firebase->get('System/Schools') ?? [];
-            $meta    = $this->firebase->get('System/Schools') ?? [];
             foreach ($schools as $name => $schoolData) {
                 if (!is_array($schoolData)) continue;
                 $sub     = is_array($schoolData['subscription'] ?? null) ? $schoolData['subscription'] : [];
-                $saP     = is_array($meta[$name]['profile']    ?? null) ? $meta[$name]['profile']    : [];
+                $saP     = is_array($schoolData['profile']     ?? null) ? $schoolData['profile']     : [];
                 $endDate = $sub['expiry_date'] ?? ($sub['duration']['endDate'] ?? '');
                 if ($endDate && strtotime($endDate) !== false) {
                     $days = (int)ceil((strtotime($endDate) - time()) / 86400);
@@ -106,7 +105,6 @@ class Superadmin extends MY_Superadmin_Controller
     {
         try {
             $schools    = $this->firebase->get('System/Schools') ?? [];
-            $meta       = $this->firebase->get('System/Schools') ?? [];
             $payments   = $this->firebase->get('System/Payments') ?? [];
             $thirty_ago = date('Y-m-d', strtotime('-30 days'));
 
@@ -120,7 +118,7 @@ class Superadmin extends MY_Superadmin_Controller
 
                 $sub   = is_array($school['subscription'] ?? null) ? $school['subscription'] : [];
                 $cache = is_array($school['stats_cache']  ?? null) ? $school['stats_cache']  : [];
-                $saP   = is_array($meta[$name]['profile'] ?? null) ? $meta[$name]['profile'] : [];
+                $saP   = is_array($school['profile']      ?? null) ? $school['profile']      : [];
 
                 // Status distribution — stored lowercase in Firebase
                 $status = strtolower($sub['status'] ?? 'inactive');
@@ -186,13 +184,78 @@ class Superadmin extends MY_Superadmin_Controller
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // POST  /superadmin/dashboard/search
+    // Quick search across schools, plans, payments — partial match, case-insensitive
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function search()
+    {
+        $q = strtolower(trim($this->input->post('q', TRUE) ?? ''));
+        if (strlen($q) < 2) {
+            $this->json_success(['results' => []]); return;
+        }
+
+        $results = [];
+
+        try {
+            // Search schools
+            $schools = $this->firebase->get('System/Schools') ?? [];
+            foreach ($schools as $uid => $school) {
+                if (!is_array($school)) continue;
+                $profile = is_array($school['profile'] ?? null) ? $school['profile'] : [];
+                $name    = $profile['school_name'] ?? ($profile['name'] ?? $uid);
+                $code    = $profile['school_code'] ?? '';
+                $city    = $profile['city'] ?? '';
+
+                if (stripos($name, $q) !== false || stripos($code, $q) !== false
+                    || stripos($city, $q) !== false || stripos($uid, $q) !== false) {
+                    $sub = is_array($school['subscription'] ?? null) ? $school['subscription'] : [];
+                    $results[] = [
+                        'type'   => 'school',
+                        'icon'   => 'fa-building',
+                        'title'  => $name,
+                        'detail' => ($code ? "Code: {$code}" : '') . ($city ? " · {$city}" : ''),
+                        'url'    => 'superadmin/schools/view/' . urlencode($uid),
+                        'status' => $sub['status'] ?? 'inactive',
+                    ];
+                }
+                if (count($results) >= 15) break;
+            }
+
+            // Search plans
+            if (count($results) < 15) {
+                $plans = $this->firebase->get('System/Plans') ?? [];
+                foreach ($plans as $pid => $plan) {
+                    if (!is_array($plan)) continue;
+                    $pname = $plan['name'] ?? $pid;
+                    if (stripos($pname, $q) !== false || stripos($pid, $q) !== false) {
+                        $results[] = [
+                            'type'   => 'plan',
+                            'icon'   => 'fa-tags',
+                            'title'  => $pname,
+                            'detail' => 'Plan · ' . ($plan['billing_cycle'] ?? '') . ' · ₹' . number_format((float)($plan['price'] ?? 0)),
+                            'url'    => 'superadmin/plans',
+                            'status' => '',
+                        ];
+                    }
+                    if (count($results) >= 15) break;
+                }
+            }
+
+            $this->json_success(['results' => $results, 'query' => $q]);
+        } catch (Exception $e) {
+            log_message('error', 'SA search: ' . $e->getMessage());
+            $this->json_error('Search failed.');
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // PRIVATE: Compute full summary from Firebase (writes to cache)
     // ─────────────────────────────────────────────────────────────────────────
 
     private function _compute_summary(): array
     {
         $schools    = $this->firebase->get('System/Schools') ?? [];
-        $meta       = $this->firebase->get('System/Schools') ?? [];
         $payments   = $this->firebase->get('System/Payments') ?? [];
         $thirty_ago = date('Y-m-d', strtotime('-30 days'));
 
@@ -208,15 +271,13 @@ class Superadmin extends MY_Superadmin_Controller
 
             $sub    = is_array($schoolData['subscription'] ?? null) ? $schoolData['subscription'] : [];
             $cache  = is_array($schoolData['stats_cache']  ?? null) ? $schoolData['stats_cache']  : [];
-            // Prefer canonical profile from System/Schools
-            $usP    = is_array($schoolData['profile']      ?? null) ? $schoolData['profile']      : [];
-            $saP    = is_array($meta[$name]['profile']     ?? null) ? $meta[$name]['profile']     : [];
+            $profile= is_array($schoolData['profile']      ?? null) ? $schoolData['profile']      : [];
 
             if (strtolower((string)($sub['status'] ?? '')) === 'active') $active_schools++;
             $total_students += (int)($cache['total_students'] ?? 0);
             $total_staff    += (int)($cache['total_staff']    ?? 0);
 
-            $created = $usP['created_at'] ?? ($saP['created_at'] ?? '');
+            $created = $profile['created_at'] ?? '';
             if ($created && substr($created, 0, 10) >= $thirty_ago) $recent_regs++;
         }
 
@@ -235,7 +296,7 @@ class Superadmin extends MY_Superadmin_Controller
             'total_staff'    => $total_staff,
             'total_revenue'  => $total_revenue,
             'recent_regs'    => $recent_regs,
-            'last_refreshed' => gmdate('Y-m-d\TH:i:s\Z'), // UTC ISO 8601 for JS Date parsing
+            'last_refreshed' => date('Y-m-d\TH:i:sP'), // ISO 8601 with local timezone offset for JS Date parsing
         ];
     }
 }

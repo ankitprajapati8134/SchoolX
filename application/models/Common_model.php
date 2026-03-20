@@ -1,8 +1,6 @@
 <?php
 require 'vendor/autoload.php';  // Ensure Composer's autoload file is included
 
-use Kreait\Firebase\Factory;
-use Kreait\Firebase\ServiceAccount;
 use Google\Cloud\Storage\StorageClient;
 
 
@@ -15,20 +13,26 @@ class Common_model extends CI_Model
     {
         parent::__construct();
 
-        // Adjust the path to your service account key
-        $serviceAccountPath = __DIR__ . '/../config/graders-1c047-firebase-adminsdk-z1a10-ca28a54060.json';
-        $databaseUri = 'https://graders-1c047-default-rtdb.asia-southeast1.firebasedatabase.app/'; // Your Firebase database URI
+        // ── C-07 FIX: Reuse the Firebase library singleton instead of creating a
+        //    duplicate SDK instance. Halves memory usage and connection count. ──
+        $CI =& get_instance();
+        if (isset($CI->firebase) && is_object($CI->firebase)) {
+            // Reuse existing Firebase library's database instance
+            $this->firebaseDatabase = $CI->firebase->getDatabase();
+            // Reuse storage bucket from Firebase library
+            $this->firebaseStorage = $CI->firebase->getStorageBucket();
+        } else {
+            // Fallback: initialize independently (e.g. CLI context without MY_Controller)
+            $serviceAccountPath = __DIR__ . '/../config/graders-1c047-firebase-adminsdk-z1a10-ca28a54060.json';
+            $databaseUri = 'https://graders-1c047-default-rtdb.asia-southeast1.firebasedatabase.app/';
 
-        // Initialize the Firebase factory
-        $firebase = (new Factory)
-            ->withServiceAccount($serviceAccountPath)
-            ->withDatabaseUri($databaseUri);
+            $firebase = (new \Kreait\Firebase\Factory)
+                ->withServiceAccount($serviceAccountPath)
+                ->withDatabaseUri($databaseUri);
 
-        // Get a reference to the Firebase Realtime Database
-        $this->firebaseDatabase = $firebase->createDatabase();
-
-        // Initialize Firebase Storage
-        $this->initializeFirebaseStorage($serviceAccountPath);
+            $this->firebaseDatabase = $firebase->createDatabase();
+            $this->initializeFirebaseStorage($serviceAccountPath);
+        }
     }
 
     private function initializeFirebaseStorage($serviceAccountPath)

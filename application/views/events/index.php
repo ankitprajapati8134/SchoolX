@@ -35,8 +35,9 @@ $at = $active_tab ?? 'dashboard';
 .ev-badge-rose{background:rgba(239,68,68,.12);color:#ef4444}
 .ev-badge-purple{background:rgba(139,92,246,.12);color:#8b5cf6}
 .ev-badge-gray{background:rgba(156,163,175,.12);color:#9ca3af}
-.ev-empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--font-b)}
-.ev-empty i{font-size:36px;display:block;margin-bottom:12px;opacity:.5}
+.ev-empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--font-b);overflow:hidden}
+.ev-empty i{font-size:22px;display:inline-block;margin-bottom:8px;opacity:.5;vertical-align:middle}
+.ev-empty .ev-load-text{display:block;font-size:12px;margin-top:4px;color:var(--t3)}
 /* Toast base styles inherited from header.php */
 .ev-toast.success{background:#22c55e;display:block}.ev-toast.error{background:#ef4444;display:block}
 </style>
@@ -66,14 +67,14 @@ $at = $active_tab ?? 'dashboard';
 <div class="ev-card">
     <div class="ev-card-title"><span>Upcoming Events</span></div>
     <table class="ev-table"><thead><tr><th>Title</th><th>Category</th><th>Date</th><th>Location</th><th>Status</th></tr></thead>
-    <tbody id="upcomingTbody"><tr><td colspan="5" class="ev-empty"><i class="fa fa-spinner fa-spin"></i></td></tr></tbody></table>
+    <tbody id="upcomingTbody"><tr><td colspan="5" class="ev-empty"><i class="fa fa-spinner fa-spin"></i><span class="ev-load-text">Loading...</span></td></tr></tbody></table>
 </div>
 
 <!-- Recent Participants -->
 <div class="ev-card">
     <div class="ev-card-title"><span>Recent Registrations</span></div>
     <table class="ev-table"><thead><tr><th>Name</th><th>Type</th><th>Event</th><th>Status</th><th>Registered</th></tr></thead>
-    <tbody id="recentPTbody"><tr><td colspan="5" class="ev-empty"><i class="fa fa-spinner fa-spin"></i></td></tr></tbody></table>
+    <tbody id="recentPTbody"><tr><td colspan="5" class="ev-empty"><i class="fa fa-spinner fa-spin"></i><span class="ev-load-text">Loading...</span></td></tr></tbody></table>
 </div>
 
 </div></section></div>

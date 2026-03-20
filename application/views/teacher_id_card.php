@@ -21,6 +21,7 @@ function tic_date(string $raw): string {
 $staff        = $staff        ?? [];
 $session_year = $session_year ?? '';
 $school_name  = $school_name  ?? 'School';
+$school_logo  = $school_logo  ?? '';
 
 /* Pre-compute unique departments & positions for filter dropdowns */
 $filterDepts = [];
@@ -103,20 +104,14 @@ ksort($filterPosns);
     $uid     = htmlspecialchars($t['User ID']         ?? '',  ENT_QUOTES, 'UTF-8');
     $dept    = htmlspecialchars(trim($t['Department'] ?? ''), ENT_QUOTES, 'UTF-8');
     $posn    = htmlspecialchars(trim($t['Position']   ?? ''), ENT_QUOTES, 'UTF-8');
-    $empType = htmlspecialchars(trim($t['Employment Type'] ?? ''), ENT_QUOTES, 'UTF-8');
+    $bloodGrp= htmlspecialchars(trim($t['Blood Group'] ?? $t['blood_group'] ?? ''), ENT_QUOTES, 'UTF-8');
     $phone   = htmlspecialchars($t['Phone Number']    ?? '—', ENT_QUOTES, 'UTF-8');
     $dob     = tic_date($t['DOB'] ?? $t['Date of Birth'] ?? '');
     $gender  = htmlspecialchars($t['Gender']          ?? '',  ENT_QUOTES, 'UTF-8');
     $joining = tic_date($t['Date Of Joining']         ?? '');
     $initial = mb_strtoupper(mb_substr($t['Name'] ?? 'T', 0, 1));
     $safeUid = preg_replace('/[^a-z0-9]/i', '_', $t['User ID'] ?? 'x');
-
-    /* School abbreviation: first letter of each word, max 3 chars */
-    $abbr = '';
-    foreach (explode(' ', $school_name) as $w) {
-        $abbr .= mb_strtoupper(mb_substr($w, 0, 1));
-    }
-    $abbr = mb_substr($abbr, 0, 3);
+    $logoUrl = htmlspecialchars($school_logo, ENT_QUOTES, 'UTF-8');
   ?>
   <div class="ic-card-wrap"
        data-name="<?= mb_strtolower($name) ?>"
@@ -131,7 +126,13 @@ ksort($filterPosns);
       <div class="ic-card-hd">
         <div class="ic-hd-pattern"></div>
         <div class="ic-hd-content">
-          <div class="ic-logo-circle"><?= $abbr ?></div>
+          <?php if ($logoUrl): ?>
+            <img src="<?= $logoUrl ?>" alt="" class="ic-logo-img"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+            <div class="ic-logo-circle" style="display:none"><?= $initial ?></div>
+          <?php else: ?>
+            <div class="ic-logo-circle"><?= $initial ?></div>
+          <?php endif; ?>
           <div class="ic-hd-text">
             <div class="ic-school-nm"><?= htmlspecialchars($school_name) ?></div>
             <div class="ic-session-nm"><?= htmlspecialchars($session_year) ?></div>
@@ -153,10 +154,16 @@ ksort($filterPosns);
 
       <!-- Name & role badges -->
       <div class="ic-staff-nm"><?= $name ?></div>
+
+      <!-- Barcode -->
+      <div class="ic-barcode-wrap">
+        <svg class="ic-barcode" data-barcode="<?= $uid ?>"></svg>
+      </div>
+
       <div class="ic-badges">
-        <?php if ($dept):    ?><span class="ic-badge ic-badge-dept"><?= $dept ?></span><?php endif; ?>
-        <?php if ($posn):    ?><span class="ic-badge ic-badge-posn"><?= $posn ?></span><?php endif; ?>
-        <?php if ($empType): ?><span class="ic-badge ic-badge-emp"><?= $empType ?></span><?php endif; ?>
+        <?php if ($dept):     ?><span class="ic-badge ic-badge-dept"><?= $dept ?></span><?php endif; ?>
+        <?php if ($posn):     ?><span class="ic-badge ic-badge-posn"><?= $posn ?></span><?php endif; ?>
+        <?php if ($bloodGrp): ?><span class="ic-badge ic-badge-blood"><i class="fa fa-tint"></i> <?= $bloodGrp ?></span><?php endif; ?>
       </div>
 
       <!-- Divider -->
@@ -223,6 +230,7 @@ ksort($filterPosns);
 </div><!-- /.content-wrapper -->
 
 
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
 /* ══════════════════════════════════════════════════════════════════
    Teacher ID Card — Filter & Print Logic
@@ -315,37 +323,66 @@ ksort($filterPosns);
     setTimeout(function () { w.print(); }, 800);
   };
 
+  /* ── Initialize barcodes ─────────────────────────────────────── */
+  function initBarcodes(root) {
+    var svgs = (root || document).querySelectorAll('.ic-barcode[data-barcode]');
+    if (typeof JsBarcode === 'undefined') return;
+    svgs.forEach(function(svg) {
+      var code = svg.getAttribute('data-barcode');
+      if (!code) return;
+      try {
+        JsBarcode(svg, code, {
+          format: 'CODE128',
+          width: 1.2,
+          height: 28,
+          displayValue: false,
+          margin: 0,
+          background: 'transparent'
+        });
+      } catch(e) { /* silently skip invalid codes */ }
+    });
+  }
+  // Init barcodes on page load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { initBarcodes(); });
+  } else {
+    initBarcodes();
+  }
+
   /* ── Card CSS (screen card + print window) ───────────────────── */
   function getCardCSS(forPrint) {
     return [
-      '.ic-card{width:200px;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.18);font-family:Arial,sans-serif;background:#fff;display:flex;flex-direction:column;align-items:center;}',
-      '.ic-card-hd{width:100%;background:linear-gradient(135deg,#0f766e 0%,#134e4a 100%);padding:10px 12px;position:relative;overflow:hidden;box-sizing:border-box;}',
+      '.ic-card{width:260px;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.18);font-family:Arial,sans-serif;background:#fff;display:flex;flex-direction:column;align-items:center;}',
+      '.ic-card-hd{width:100%;background:linear-gradient(135deg,#0f766e 0%,#134e4a 100%);padding:12px 14px;position:relative;overflow:hidden;box-sizing:border-box;}',
       '.ic-hd-pattern{position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0,rgba(255,255,255,.04) 1px,transparent 1px,transparent 8px);}',
       '.ic-hd-content{position:relative;display:flex;align-items:center;gap:8px;}',
-      '.ic-logo-circle{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.62rem;font-weight:700;letter-spacing:.05em;flex-shrink:0;}',
-      '.ic-school-nm{color:#fff;font-size:.72rem;font-weight:700;letter-spacing:.04em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;}',
-      '.ic-session-nm{color:rgba(255,255,255,.75);font-size:.6rem;margin-top:1px;}',
-      '.ic-photo-ring{width:74px;height:74px;border-radius:50%;border:3px solid #0f766e;box-shadow:0 2px 12px rgba(15,118,110,.3);margin-top:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#e6f4f1;flex-shrink:0;}',
+      '.ic-logo-circle{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.72rem;font-weight:700;letter-spacing:.05em;flex-shrink:0;}',
+      '.ic-logo-img{width:36px;height:36px;border-radius:50%;object-fit:cover;border:1.5px solid rgba(255,255,255,.5);flex-shrink:0;background:#fff;}',
+      '.ic-school-nm{color:#fff;font-size:.85rem;font-weight:700;letter-spacing:.04em;line-height:1.25;overflow:hidden;text-overflow:ellipsis;max-width:180px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;}',
+      '.ic-session-nm{color:rgba(255,255,255,.75);font-size:.68rem;margin-top:2px;}',
+      '.ic-photo-ring{width:88px;height:88px;border-radius:50%;border:3px solid #0f766e;box-shadow:0 2px 12px rgba(15,118,110,.3);margin-top:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#e6f4f1;flex-shrink:0;}',
       '.ic-photo{width:100%;height:100%;object-fit:cover;}',
-      '.ic-photo-fb{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:700;color:#0f766e;background:#e6f4f1;}',
-      '.ic-staff-nm{font-size:.82rem;font-weight:700;color:#111;text-align:center;margin:8px 10px 4px;line-height:1.3;}',
+      '.ic-photo-fb{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.8rem;font-weight:700;color:#0f766e;background:#e6f4f1;}',
+      '.ic-staff-nm{font-size:.95rem;font-weight:700;color:#111;text-align:center;margin:8px 10px 4px;line-height:1.3;}',
+      '.ic-barcode-wrap{width:85%;text-align:center;margin:2px auto 0;padding:0 4px;}',
+      '.ic-barcode{width:100%;height:28px;}',
       '.ic-badges{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;margin-bottom:6px;padding:0 8px;}',
-      '.ic-badge{font-size:.58rem;font-weight:700;padding:2px 7px;border-radius:20px;letter-spacing:.04em;text-transform:uppercase;}',
+      '.ic-badge{font-size:.66rem;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.04em;text-transform:uppercase;}',
       '.ic-badge-dept{background:#ccfbf1;color:#0f766e;}',
       '.ic-badge-posn{background:#d1fae5;color:#065f46;}',
-      '.ic-badge-emp{background:#e0f2fe;color:#0369a1;}',
+      '.ic-badge-blood{background:#fee2e2;color:#dc2626;}',
       '.ic-divider{width:85%;height:1px;background:linear-gradient(90deg,transparent,#0f766e55,transparent);margin:2px 0 6px;}',
-      '.ic-info{width:100%;padding:0 14px 8px;box-sizing:border-box;}',
-      '.ic-info-row{display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid #f0f9f8;}',
+      '.ic-info{width:100%;padding:0 16px 10px;box-sizing:border-box;}',
+      '.ic-info-row{display:flex;align-items:center;gap:6px;padding:3.5px 0;border-bottom:1px solid #f0f9f8;}',
       '.ic-info-row:last-child{border-bottom:none;}',
-      '.ic-info-ico{color:#0f766e;font-size:.7rem;width:14px;text-align:center;flex-shrink:0;}',
-      '.ic-info-lbl{font-size:.62rem;color:#6b7280;font-weight:600;width:36px;flex-shrink:0;text-transform:uppercase;letter-spacing:.03em;}',
-      '.ic-info-val{font-size:.68rem;color:#1f2937;font-weight:500;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+      '.ic-info-ico{color:#0f766e;font-size:.78rem;width:16px;text-align:center;flex-shrink:0;}',
+      '.ic-info-lbl{font-size:.68rem;color:#6b7280;font-weight:600;width:42px;flex-shrink:0;text-transform:uppercase;letter-spacing:.03em;}',
+      '.ic-info-val{font-size:.78rem;color:#1f2937;font-weight:500;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.ic-uid{color:#0f766e;font-weight:700;}',
       '.ic-phone{color:#0369a1;font-weight:600;}',
-      '.ic-card-ft{width:100%;background:linear-gradient(135deg,#0f766e,#134e4a);padding:6px 12px;display:flex;justify-content:space-between;align-items:center;margin-top:auto;box-sizing:border-box;}',
-      '.ic-ft-title{color:#fff;font-size:.58rem;font-weight:700;letter-spacing:.1em;}',
-      '.ic-ft-valid{color:rgba(255,255,255,.75);font-size:.55rem;}',
+      '.ic-card-ft{width:100%;background:linear-gradient(135deg,#0f766e,#134e4a);padding:7px 14px;display:flex;justify-content:space-between;align-items:center;margin-top:auto;box-sizing:border-box;}',
+      '.ic-ft-title{color:#fff;font-size:.66rem;font-weight:700;letter-spacing:.1em;}',
+      '.ic-ft-valid{color:rgba(255,255,255,.75);font-size:.62rem;}',
       forPrint ? '.ic-print-body{margin:0;padding:0;background:#fff;}' : ''
     ].join('');
   }
@@ -495,8 +532,8 @@ ksort($filterPosns);
 /* ── Cards grid ──────────────────────────────────────────────── */
 .ic-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 28px;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 30px;
   justify-items: center;
 }
 
@@ -510,7 +547,7 @@ ksort($filterPosns);
 
 /* ── THE ID CARD ─────────────────────────────────────────────── */
 .ic-card {
-  width: 200px;
+  width: 260px;
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 6px 28px rgba(0, 0, 0, .14);
@@ -530,7 +567,7 @@ ksort($filterPosns);
 .ic-card-hd {
   width: 100%;
   background: linear-gradient(135deg, var(--gold) 0%, #134e4a 100%);
-  padding: 10px 12px;
+  padding: 12px 14px;
   position: relative;
   overflow: hidden;
   box-sizing: border-box;
@@ -554,8 +591,8 @@ ksort($filterPosns);
   gap: 8px;
 }
 .ic-logo-circle {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: rgba(255,255,255,.18);
   border: 1.5px solid rgba(255,255,255,.5);
@@ -563,32 +600,44 @@ ksort($filterPosns);
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: .62rem;
+  font-size: .72rem;
   font-weight: 700;
   letter-spacing: .05em;
   flex-shrink: 0;
 }
+.ic-logo-img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid rgba(255,255,255,.5);
+  flex-shrink: 0;
+  background: #fff;
+}
 .ic-school-nm {
   color: #fff;
-  font-size: .72rem;
+  font-size: .85rem;
   font-weight: 700;
   letter-spacing: .04em;
   line-height: 1.25;
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 130px;
+  max-width: 180px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
 }
 .ic-session-nm {
   color: rgba(255,255,255,.75);
-  font-size: .6rem;
-  margin-top: 1px;
+  font-size: .68rem;
+  margin-top: 2px;
 }
 
 /* Photo ring */
 .ic-photo-ring {
-  width: 76px;
-  height: 76px;
+  width: 88px;
+  height: 88px;
   border-radius: 50%;
   border: 3px solid var(--gold);
   box-shadow: 0 2px 14px rgba(15,118,110,.28);
@@ -622,13 +671,29 @@ ksort($filterPosns);
 
 /* Name */
 .ic-staff-nm {
-  font-size: .82rem;
+  font-size: .95rem;
   font-weight: 700;
   color: var(--t1);
   text-align: center;
   margin: 9px 10px 4px;
   line-height: 1.3;
 }
+
+/* Barcode */
+.ic-barcode-wrap {
+  width: 85%;
+  text-align: center;
+  margin: 2px auto 0;
+  padding: 0 4px;
+}
+.ic-barcode {
+  width: 100%;
+  height: 28px;
+}
+/* Background rect = transparent; bar rects inside <g> = dark */
+.ic-barcode > rect { fill: transparent !important; }
+.ic-barcode g rect { fill: #1e293b !important; }
+[data-theme="night"] .ic-barcode g rect { fill: var(--t1) !important; }
 
 /* Badges */
 .ic-badges {
@@ -639,16 +704,16 @@ ksort($filterPosns);
   padding: 0 8px 6px;
 }
 .ic-badge {
-  font-size: .58rem;
+  font-size: .66rem;
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 20px;
   letter-spacing: .04em;
   text-transform: uppercase;
 }
-.ic-badge-dept { background: var(--gold-dim);             color: var(--gold); }
-.ic-badge-posn { background: rgba(5,150,105,.12);         color: #059669; }
-.ic-badge-emp  { background: rgba(59,130,246,.1);         color: #2563eb; }
+.ic-badge-dept  { background: var(--gold-dim);             color: var(--gold); }
+.ic-badge-posn  { background: rgba(5,150,105,.12);         color: #059669; }
+.ic-badge-blood { background: rgba(239,68,68,.1);          color: #dc2626; }
 
 /* Divider */
 .ic-divider {
@@ -674,22 +739,22 @@ ksort($filterPosns);
 .ic-info-row:last-child { border-bottom: none; }
 .ic-info-ico {
   color: var(--gold);
-  font-size: .7rem;
-  width: 14px;
+  font-size: .78rem;
+  width: 16px;
   text-align: center;
   flex-shrink: 0;
 }
 .ic-info-lbl {
-  font-size: .6rem;
+  font-size: .68rem;
   color: var(--t3);
   font-weight: 600;
-  width: 36px;
+  width: 42px;
   flex-shrink: 0;
   text-transform: uppercase;
   letter-spacing: .03em;
 }
 .ic-info-val {
-  font-size: .68rem;
+  font-size: .78rem;
   color: var(--t1);
   font-weight: 500;
   flex: 1;
@@ -713,13 +778,13 @@ ksort($filterPosns);
 }
 .ic-ft-title {
   color: #fff;
-  font-size: .58rem;
+  font-size: .66rem;
   font-weight: 700;
   letter-spacing: .1em;
 }
 .ic-ft-valid {
   color: rgba(255,255,255,.75);
-  font-size: .55rem;
+  font-size: .62rem;
 }
 
 /* ── Print button below each card ────────────────────────────── */
@@ -757,8 +822,8 @@ ksort($filterPosns);
 
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 600px) {
-  .ic-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-  .ic-card { width: 100%; max-width: 200px; }
+  .ic-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px; }
+  .ic-card { width: 100%; max-width: 260px; }
   .ic-topbar { flex-direction: column; }
 }
 @media (max-width: 380px) {

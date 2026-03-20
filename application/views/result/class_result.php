@@ -67,6 +67,13 @@
       <button id="rcrPrintBtn" class="rcr-btn-sm" onclick="window.print()">
         <i class="fa fa-print"></i> Print
       </button>
+      <a id="rcrBatchPrintBtn" href="#" target="_blank" class="rcr-btn-sm" style="text-decoration:none;display:none">
+        <i class="fa fa-print"></i> Print All
+      </a>
+      <a id="rcrBatchPdfBtn" href="#" class="rcr-btn-sm rcr-btn-pdf" style="text-decoration:none;display:none"
+         onclick="this.textContent='Generating...';this.style.opacity='0.6';this.style.pointerEvents='none'">
+        <i class="fa fa-file-pdf-o"></i> Download All PDFs
+      </a>
     </div>
     <div class="rcr-table-outer">
       <table class="rcr-table" id="rcrTable">
@@ -234,9 +241,12 @@
       actTd.className = 'rcr-td-actions';
       var rcUrl  = '<?= base_url('result/report_card') ?>/' + encodeURIComponent(stu.uid) + '/' + encodeURIComponent(CURRENT_EXAM_ID);
       var srUrl  = '<?= base_url('result/student_result') ?>/' + encodeURIComponent(stu.uid);
+      var pdfUrl = '<?= base_url('result/download_pdf') ?>/' + encodeURIComponent(stu.uid) + '/' + encodeURIComponent(CURRENT_EXAM_ID);
       actTd.innerHTML =
         '<a href="' + rcUrl + '" target="_blank" class="rcr-act-btn rcr-act-rc" title="Print Report Card">'
         + '<i class="fa fa-print"></i></a>'
+        + '<a href="' + pdfUrl + '" class="rcr-act-btn rcr-act-pdf" title="Download PDF">'
+        + '<i class="fa fa-file-pdf-o"></i></a>'
         + '<a href="' + srUrl + '" class="rcr-act-btn rcr-act-sr" title="Student Result">'
         + '<i class="fa fa-bar-chart"></i></a>';
       tr.appendChild(actTd);
@@ -246,6 +256,23 @@
 
     tableWrap.style.display = '';
     updateCount();
+
+    // Update batch buttons with correct URLs
+    var batchPrintUrl = '<?= base_url('result/batch_report_cards') ?>/'
+      + encodeURIComponent(CURRENT_EXAM_ID) + '/'
+      + encodeURIComponent(classSel.value) + '/'
+      + encodeURIComponent(sectionSel.value);
+    var batchPdfUrl = '<?= base_url('result/download_batch_pdf') ?>/'
+      + encodeURIComponent(CURRENT_EXAM_ID) + '/'
+      + encodeURIComponent(classSel.value) + '/'
+      + encodeURIComponent(sectionSel.value);
+
+    var batchPrintBtn = document.getElementById('rcrBatchPrintBtn');
+    var batchPdfBtn   = document.getElementById('rcrBatchPdfBtn');
+    batchPrintBtn.href = batchPrintUrl;
+    batchPrintBtn.style.display = '';
+    batchPdfBtn.href = batchPdfUrl;
+    batchPdfBtn.style.display = '';
   }
 
   searchInp.addEventListener('input', function () {
@@ -371,6 +398,10 @@ html { font-size: 16px !important; }
 .rcr-act-rc:hover { background: #0f766e; color: #fff; }
 .rcr-act-sr { background: rgba(37,99,235,.10); color: #2563eb; }
 .rcr-act-sr:hover { background: #2563eb; color: #fff; }
+.rcr-act-pdf { background: rgba(220,38,38,.10); color: #dc2626; }
+.rcr-act-pdf:hover { background: #dc2626; color: #fff; }
+.rcr-btn-pdf { background: rgba(220,38,38,.08); color: #dc2626; border: 1px solid #fca5a5; }
+.rcr-btn-pdf:hover { background: #dc2626; color: #fff; }
 
 /* States */
 .rcr-loading { text-align: center; padding: 40px; color: var(--t3); font-size: 1.05rem; }

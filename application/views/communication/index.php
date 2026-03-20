@@ -59,6 +59,8 @@ $at = $active_tab ?? 'dashboard';
 .cm-modal{width:600px}
 .cm-empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--font-b)}
 .cm-empty i{font-size:36px;display:block;margin-bottom:12px;opacity:.5}
+.cm-loading{text-align:center;padding:18px 20px;color:var(--t3);font-size:13px;font-family:var(--font-b)}
+.cm-toast{position:fixed;top:20px;right:20px;z-index:10000;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;font-family:var(--font-b);color:#fff;display:none;max-width:400px;box-shadow:0 8px 24px rgba(0,0,0,.15)}
 .cm-toast.success{background:#22c55e;display:block} .cm-toast.error{background:#ef4444;display:block}
 </style>
 
@@ -75,20 +77,48 @@ $at = $active_tab ?? 'dashboard';
     <?php endforeach; ?>
 </nav>
 
-<!-- Dashboard Content -->
+<!-- Dashboard Content (server-rendered — no AJAX spinner) -->
+<?php
+    $esc = function($s) { return htmlspecialchars((string)($s ?? ''), ENT_QUOTES, 'UTF-8'); };
+    $_conversations  = $conversations ?? 0;
+    $_unread         = $unread_messages ?? 0;
+    $_notices        = $notices ?? 0;
+    $_circulars      = $circulars ?? 0;
+    $_qSent          = $queue_sent ?? 0;
+    $_qPending       = $queue_pending ?? 0;
+    $_qFailed        = $queue_failed ?? 0;
+    $_recentNotices  = $recent_notices ?? [];
+?>
 <div id="dashboardContent">
     <div class="cm-stat-grid">
-        <div class="cm-stat"><div class="cm-stat-icon teal"><i class="fa fa-comments"></i></div><div><div class="cm-stat-val" id="statConversations">--</div><div class="cm-stat-lbl">Conversations</div></div></div>
-        <div class="cm-stat"><div class="cm-stat-icon blue"><i class="fa fa-envelope"></i></div><div><div class="cm-stat-val" id="statUnread">--</div><div class="cm-stat-lbl">Unread Messages</div></div></div>
-        <div class="cm-stat"><div class="cm-stat-icon amber"><i class="fa fa-bullhorn"></i></div><div><div class="cm-stat-val" id="statNotices">--</div><div class="cm-stat-lbl">Notices</div></div></div>
-        <div class="cm-stat"><div class="cm-stat-icon purple"><i class="fa fa-file-text-o"></i></div><div><div class="cm-stat-val" id="statCirculars">--</div><div class="cm-stat-lbl">Circulars</div></div></div>
-        <div class="cm-stat"><div class="cm-stat-icon green"><i class="fa fa-check-circle"></i></div><div><div class="cm-stat-val" id="statSent">--</div><div class="cm-stat-lbl">Messages Sent</div></div></div>
-        <div class="cm-stat"><div class="cm-stat-icon rose"><i class="fa fa-clock-o"></i></div><div><div class="cm-stat-val" id="statPending">--</div><div class="cm-stat-lbl">Queue Pending</div></div></div>
+        <div class="cm-stat"><div class="cm-stat-icon teal"><i class="fa fa-comments"></i></div><div><div class="cm-stat-val"><?= (int)$_conversations ?></div><div class="cm-stat-lbl">Conversations</div></div></div>
+        <div class="cm-stat"><div class="cm-stat-icon blue"><i class="fa fa-envelope"></i></div><div><div class="cm-stat-val"><?= (int)$_unread ?></div><div class="cm-stat-lbl">Unread Messages</div></div></div>
+        <div class="cm-stat"><div class="cm-stat-icon amber"><i class="fa fa-bullhorn"></i></div><div><div class="cm-stat-val"><?= (int)$_notices ?></div><div class="cm-stat-lbl">Notices</div></div></div>
+        <div class="cm-stat"><div class="cm-stat-icon purple"><i class="fa fa-file-text-o"></i></div><div><div class="cm-stat-val"><?= (int)$_circulars ?></div><div class="cm-stat-lbl">Circulars</div></div></div>
+        <div class="cm-stat"><div class="cm-stat-icon green"><i class="fa fa-check-circle"></i></div><div><div class="cm-stat-val"><?= (int)$_qSent ?></div><div class="cm-stat-lbl">Messages Sent</div></div></div>
+        <div class="cm-stat"><div class="cm-stat-icon rose"><i class="fa fa-clock-o"></i></div><div><div class="cm-stat-val"><?= (int)$_qPending ?></div><div class="cm-stat-lbl">Queue Pending</div></div></div>
     </div>
 
     <div class="cm-card">
         <div class="cm-card-title"><span>Recent Notices</span><a href="<?= base_url('communication/notices') ?>" class="cm-btn cm-btn-sm cm-btn-outline">View All</a></div>
-        <table class="cm-table"><thead><tr><th>Title</th><th>Category</th><th>Target</th><th>Date</th><th>Priority</th></tr></thead><tbody id="recentNoticesTbody"><tr><td colspan="5" class="cm-empty"><i class="fa fa-spinner fa-spin"></i> Loading...</td></tr></tbody></table>
+        <table class="cm-table"><thead><tr><th>Title</th><th>Category</th><th>Target</th><th>Date</th><th>Priority</th></tr></thead><tbody>
+        <?php if (empty($_recentNotices)): ?>
+            <tr><td colspan="5" class="cm-empty"><i class="fa fa-bell-slash-o"></i> No notices yet</td></tr>
+        <?php else: ?>
+            <?php foreach ($_recentNotices as $n):
+                $pri = $n['priority'] ?? 'Normal';
+                $priClass = $pri === 'High' ? 'cm-badge-rose' : ($pri === 'Low' ? 'cm-badge-blue' : 'cm-badge-amber');
+            ?>
+            <tr>
+                <td><?= $esc($n['title'] ?? '') ?></td>
+                <td><span class="cm-badge cm-badge-blue"><?= $esc($n['category'] ?? 'General') ?></span></td>
+                <td><?= $esc($n['target_group'] ?? '') ?></td>
+                <td><?= $esc(substr($n['created_at'] ?? '', 0, 10)) ?></td>
+                <td><span class="cm-badge <?= $priClass ?>"><?= $esc($pri) ?></span></td>
+            </tr>
+            <?php endforeach; ?>
+        <?php endif; ?>
+        </tbody></table>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
@@ -104,15 +134,15 @@ $at = $active_tab ?? 'dashboard';
             <div class="cm-card-title"><span>Queue Overview</span></div>
             <div style="display:flex;gap:16px;flex-wrap:wrap">
                 <div style="flex:1;text-align:center;padding:12px;border-radius:8px;background:rgba(34,197,94,.08)">
-                    <div style="font-size:20px;font-weight:700;color:#22c55e" id="qSent">0</div>
+                    <div style="font-size:20px;font-weight:700;color:#22c55e"><?= (int)$_qSent ?></div>
                     <div style="font-size:11px;color:var(--t3)">Sent</div>
                 </div>
                 <div style="flex:1;text-align:center;padding:12px;border-radius:8px;background:rgba(245,158,11,.08)">
-                    <div style="font-size:20px;font-weight:700;color:#f59e0b" id="qPending">0</div>
+                    <div style="font-size:20px;font-weight:700;color:#f59e0b"><?= (int)$_qPending ?></div>
                     <div style="font-size:11px;color:var(--t3)">Pending</div>
                 </div>
                 <div style="flex:1;text-align:center;padding:12px;border-radius:8px;background:rgba(239,68,68,.08)">
-                    <div style="font-size:20px;font-weight:700;color:#ef4444" id="qFailed">0</div>
+                    <div style="font-size:20px;font-weight:700;color:#ef4444"><?= (int)$_qFailed ?></div>
                     <div style="font-size:11px;color:var(--t3)">Failed</div>
                 </div>
             </div>
@@ -135,7 +165,7 @@ CM.toast = function(msg, type) {
     setTimeout(function(){ t.className = 'cm-toast'; }, 3000);
 };
 
-CM.ajax = function(url, data, cb, method) {
+CM.ajax = function(url, data, cb, method, failCb) {
     $.ajax({
         url: CM.BASE + url,
         type: method || 'GET',
@@ -143,51 +173,20 @@ CM.ajax = function(url, data, cb, method) {
         dataType: 'json',
         success: function(r) {
             if (r.status === 'success') { if (cb) cb(r); }
-            else CM.toast(r.message || 'Error', 'error');
+            else { CM.toast(r.message || 'Error', 'error'); if (failCb) failCb(); }
         },
         error: function(xhr) {
             var msg = 'Request failed';
             try { msg = JSON.parse(xhr.responseText).message || msg; } catch(e){}
             CM.toast(msg, 'error');
+            if (failCb) failCb();
         }
-    });
-};
-
-CM.loadDashboard = function() {
-    CM.ajax('communication/get_dashboard', {}, function(r) {
-        $('#statConversations').text(r.conversations || 0);
-        $('#statUnread').text(r.unread_messages || 0);
-        $('#statNotices').text(r.notices || 0);
-        $('#statCirculars').text(r.circulars || 0);
-        $('#statSent').text(r.queue_sent || 0);
-        $('#statPending').text(r.queue_pending || 0);
-        $('#qSent').text(r.queue_sent || 0);
-        $('#qPending').text(r.queue_pending || 0);
-        $('#qFailed').text(r.queue_failed || 0);
-
-        var html = '';
-        if (r.recent_notices && r.recent_notices.length) {
-            r.recent_notices.forEach(function(n) {
-                var priClass = n.priority === 'High' ? 'cm-badge-rose' : (n.priority === 'Low' ? 'cm-badge-blue' : 'cm-badge-amber');
-                html += '<tr><td>' + CM.esc(n.title) + '</td><td><span class="cm-badge cm-badge-blue">' + CM.esc(n.category || 'General') + '</span></td><td>' + CM.esc(n.target_group || '') + '</td><td>' + CM.esc((n.created_at || '').substring(0,10)) + '</td><td><span class="cm-badge ' + priClass + '">' + CM.esc(n.priority || 'Normal') + '</span></td></tr>';
-            });
-        } else {
-            html = '<tr><td colspan="5" class="cm-empty"><i class="fa fa-bell-slash-o"></i> No notices yet</td></tr>';
-        }
-        $('#recentNoticesTbody').html(html);
     });
 };
 
 CM.processQueue = function() {
     CM.ajax('communication/process_queue', {}, function(r) {
         CM.toast(r.message || 'Queue processed');
-        CM.loadDashboard();
     }, 'POST');
 };
-
-CM.esc = function(s) { var d = document.createElement('span'); d.textContent = s || ''; return d.innerHTML; };
-
-document.addEventListener('DOMContentLoaded', function() {
-    CM.loadDashboard();
-});
 </script>

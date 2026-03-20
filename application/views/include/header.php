@@ -24,8 +24,6 @@
     <link rel="stylesheet" href="<?php echo base_url(); ?>tools/bower_components/bootstrap-daterangepicker/daterangepicker.css">
     <link rel="stylesheet" href="<?php echo base_url(); ?>tools/css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Syne:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
     <style>
         :root {
             --gold:#0f766e;--gold2:#0d6b63;--gold3:#14b8a6;
@@ -146,10 +144,25 @@
         .g-bell-panel{display:none;position:absolute;top:calc(100% + 8px);right:0;width:320px;background:var(--bg2);border:1px solid var(--brd2);border-radius:14px;box-shadow:var(--sh);z-index:9999;overflow:hidden;animation:panelIn .18s ease;}
         .g-bell-panel.open{display:block;}
         @keyframes panelIn{from{opacity:0;transform:translateY(-8px) scale(.96)}to{opacity:1;transform:none}}
-        .g-bell-hd{padding:13px 16px 11px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+        .g-bell-hd{padding:10px 16px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;}
         .g-bell-title{font-family:var(--font-d);font-size:14px;font-weight:700;color:var(--t1);}
+        .g-bell-tabs{display:flex;gap:2px;background:var(--bg);border-radius:6px;padding:2px;}
+        .g-bell-tab{font:600 11px/1 var(--font-b);padding:5px 12px;border-radius:5px;border:none;background:transparent;color:var(--t3);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:4px;}
+        .g-bell-tab.active{background:var(--gold);color:#fff;}
+        .g-bell-tab:not(.active):hover{color:var(--t1);}
+        .g-bell-tab-badge{font:600 9px/1 var(--font-m);background:rgba(220,38,38,.15);color:#dc2626;padding:2px 5px;border-radius:8px;min-width:14px;text-align:center;}
+        .g-bell-tab.active .g-bell-tab-badge{background:rgba(255,255,255,.25);color:#fff;}
         .g-bell-mark-btn{font-size:10px;font-family:var(--font-m);color:var(--t3);background:none;border:none;cursor:pointer;padding:3px 7px;border-radius:4px;transition:all .14s;}
         .g-bell-mark-btn:hover{background:var(--gold-dim);color:var(--gold);}
+        .g-task-item{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);text-decoration:none;color:var(--t2);transition:background .12s;}
+        .g-task-item:hover{background:var(--gold-dim);}
+        .g-task-icon{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;flex-shrink:0;}
+        .g-task-title{font:600 12px/1.3 var(--font-b);color:var(--t1);}
+        .g-task-detail{font:400 10px/1.3 var(--font-m);color:var(--t3);margin-top:1px;}
+        .g-task-pri{font:600 9px/1 var(--font-m);padding:2px 6px;border-radius:3px;flex-shrink:0;}
+        .g-task-pri.high{background:rgba(220,38,38,.1);color:#dc2626;}
+        .g-task-pri.medium{background:rgba(217,119,6,.1);color:#d97706;}
+        .g-task-pri.low{background:rgba(15,118,110,.1);color:#0f766e;}
         .g-bell-list{max-height:290px;overflow-y:auto;}
         .g-bell-list::-webkit-scrollbar{width:3px;}
         .g-bell-list::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px;}
@@ -558,15 +571,28 @@
                     </button>
                     <div class="g-bell-panel" id="gBellPanel">
                         <div class="g-bell-hd">
-                            <span class="g-bell-title">Notifications</span>
+                            <div class="g-bell-tabs">
+                                <button class="g-bell-tab active" data-tab="notices" onclick="gSwitchBellTab('notices',this)">Notices</button>
+                                <button class="g-bell-tab" data-tab="tasks" onclick="gSwitchBellTab('tasks',this)">
+                                    Tasks <span class="g-bell-tab-badge" id="gTaskBadge" style="display:none">0</span>
+                                </button>
+                            </div>
                             <button class="g-bell-mark-btn" onclick="gMarkAllRead()">✓ Mark all read</button>
                         </div>
                         <div class="g-bell-list" id="gBellList">
                             <div class="g-bell-empty"><i class="fa fa-spinner fa-spin"></i> Loading…</div>
                         </div>
-                        <div class="g-bell-ft">
+                        <div class="g-bell-list" id="gTaskList" style="display:none">
+                            <div class="g-bell-empty"><i class="fa fa-spinner fa-spin"></i> Loading…</div>
+                        </div>
+                        <div class="g-bell-ft" id="gBellFtNotices">
                             <a href="<?= base_url('communication/notices') ?>">
                                 <i class="fa fa-list-ul" style="margin-right:5px"></i>View All Notices
+                            </a>
+                        </div>
+                        <div class="g-bell-ft" id="gBellFtTasks" style="display:none">
+                            <a href="<?= base_url('admin') ?>">
+                                <i class="fa fa-tachometer" style="margin-right:5px"></i>View Dashboard
                             </a>
                         </div>
                     </div>
@@ -616,7 +642,7 @@
                                 <p><?= htmlspecialchars($admin_name ?? 'Admin', ENT_QUOTES, 'UTF-8') ?><small><?= htmlspecialchars($admin_role ?? '', ENT_QUOTES, 'UTF-8') ?></small></p>
                             </li>
                             <li class="user-footer">
-                                <div><a href="<?= base_url('admin/manage_admin') ?>" class="btn btn-flat"><i class="fa fa-user" style="margin-right:5px"></i>Profile</a></div>
+                                <div><a href="<?= base_url('admin/profile') ?>" class="btn btn-flat"><i class="fa fa-user" style="margin-right:5px"></i>Profile</a></div>
                                 <div><a href="<?= base_url('admin_login/logout') ?>" class="btn btn-flat"><i class="fa fa-sign-out" style="margin-right:5px"></i>Logout</a></div>
                             </li>
                         </ul>
@@ -708,6 +734,17 @@
 <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
 <aside class="main-sidebar">
     <section class="sidebar">
+        <?php
+        // ── RBAC sidebar helper ──────────────────────────────────────
+        // $rbac_permissions is shared by MY_Controller. Bypass roles
+        // (Super Admin, Admin) already have all modules in the array.
+        $rp = isset($rbac_permissions) && is_array($rbac_permissions) ? $rbac_permissions : [];
+        $can = function(string $module) use ($rp, $admin_role) {
+            // Bypass roles always see everything
+            if (isset($admin_role) && in_array($admin_role, ['Super Admin', 'Admin'], true)) return true;
+            return in_array($module, $rp, true);
+        };
+        ?>
         <ul class="sidebar-menu" data-widget="tree">
 
             <!-- ═══════════════════════════════════════════════════════════
@@ -724,6 +761,12 @@
             </li>
             <?php endif; ?>
 
+            <?php if (isset($school_features) && in_array('School Management', $school_features) && $can('Configuration')): ?>
+            <li class="sidebar-single">
+                <a href="<?= base_url('school_config') ?>"><i class="fa fa-university"></i><span>Academic Setup</span></a>
+            </li>
+            <?php endif; ?>
+
             <!-- ═══════════════════════════════════════════════════════════
                  ACADEMICS — classes, subjects, students, exams, results
                  ═══════════════════════════════════════════════════════════ -->
@@ -733,11 +776,11 @@
 
            
 
-            <?php if (isset($school_features) && in_array('Class Management', $school_features)): ?>
+            <?php if (isset($school_features) && in_array('Class Management', $school_features) && $can('Academic')): ?>
             <li class="sidebar-single"><a href="<?= base_url('academic') ?>"><i class="fa fa-university"></i><span>Academic Planner</span></a></li>
             <?php endif; ?>
 
-            <?php if (isset($school_features) && in_array('Class Management', $school_features)): ?>
+            <?php if (isset($school_features) && in_array('Class Management', $school_features) && $can('LMS')): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-laptop"></i><span>LMS</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
@@ -750,7 +793,7 @@
             </li>
             <?php endif; ?>
 
-            <?php if (isset($school_features) && in_array('Exam Management', $school_features)): ?>
+            <?php if (isset($school_features) && in_array('Exam Management', $school_features) && $can('Examinations')): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-pencil-square-o"></i><span>Examinations</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
@@ -762,6 +805,8 @@
                 </ul>
             </li>
 
+            <?php endif; ?>
+            <?php if (isset($school_features) && in_array('Exam Management', $school_features) && $can('Results')): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-bar-chart"></i><span>Results</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
@@ -781,40 +826,34 @@
             <li class="g-sec">People</li>
             <?php endif; ?>
 
-            <?php if (isset($school_features) && in_array('Student Management', $school_features)): ?>
-            <li class="treeview">
-                <a href="#"><i class="fa fa-users"></i><span>Students</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
-                <ul class="treeview-menu">
-                    <li><a href="<?= base_url('student/all_student') ?>"><i class="fa fa-circle-o"></i>All Students</a></li>
-                    <li><a href="<?= base_url('student/studentAdmission') ?>"><i class="fa fa-circle-o"></i>Admission</a></li>
-                    <li><a href="<?= base_url('student/id_card') ?>"><i class="fa fa-circle-o"></i>ID Cards</a></li>
-                </ul>
-            </li>
-
-            <li class="treeview">
-                <a href="#"><i class="fa fa-graduation-cap"></i><span>Admission CRM</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
-                <ul class="treeview-menu">
-                    <li><a href="<?= base_url('admission_crm') ?>"><i class="fa fa-circle-o"></i>Dashboard</a></li>
-                    <li><a href="<?= base_url('admission_crm/inquiries') ?>"><i class="fa fa-circle-o"></i>Inquiries</a></li>
-                    <li><a href="<?= base_url('admission_crm/applications') ?>"><i class="fa fa-circle-o"></i>Applications</a></li>
-                    <li><a href="<?= base_url('admission_crm/pipeline') ?>"><i class="fa fa-circle-o"></i>Pipeline</a></li>
-                    <li><a href="<?= base_url('admission_crm/waitlist') ?>"><i class="fa fa-circle-o"></i>Waiting List</a></li>
-                    <li><a href="<?= base_url('admission_crm/settings') ?>"><i class="fa fa-circle-o"></i>Settings</a></li>
-                </ul>
-            </li>
-
+            <?php if (isset($school_features) && in_array('Student Management', $school_features) && $can('SIS')): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-id-badge"></i><span>Student Info System</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
                     <li><a href="<?= base_url('sis') ?>"><i class="fa fa-circle-o"></i>Dashboard</a></li>
                     <li><a href="<?= base_url('sis/students') ?>"><i class="fa fa-circle-o"></i>Student Records</a></li>
+                    <li><a href="<?= base_url('sis/studentAdmission') ?>"><i class="fa fa-circle-o"></i>Admission</a></li>
+                    <li><a href="<?= base_url('sis/master_student') ?>"><i class="fa fa-circle-o"></i>Import Students</a></li>
+                    <li><a href="<?= base_url('sis/id_card') ?>"><i class="fa fa-circle-o"></i>ID Cards</a></li>
                     <li><a href="<?= base_url('sis/promote') ?>"><i class="fa fa-circle-o"></i>Promotion</a></li>
                     <li><a href="<?= base_url('sis/tc') ?>"><i class="fa fa-circle-o"></i>Transfer Certificates</a></li>
+                </ul>
+            </li>
+            <li class="treeview">
+                <a href="#"><i class="fa fa-funnel-dollar fa-filter"></i><span>Admission CRM</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
+                <ul class="treeview-menu">
+                    <li><a href="<?= base_url('sis/crm') ?>"><i class="fa fa-circle-o"></i>CRM Dashboard</a></li>
+                    <li><a href="<?= base_url('sis/inquiries') ?>"><i class="fa fa-circle-o"></i>Inquiries</a></li>
+                    <li><a href="<?= base_url('sis/applications') ?>"><i class="fa fa-circle-o"></i>Applications</a></li>
+                    <li><a href="<?= base_url('sis/pipeline') ?>"><i class="fa fa-circle-o"></i>Pipeline</a></li>
+                    <li><a href="<?= base_url('sis/waitlist') ?>"><i class="fa fa-circle-o"></i>Waiting List</a></li>
+                    <li><a href="<?= base_url('sis/crm_settings') ?>"><i class="fa fa-circle-o"></i>CRM Settings</a></li>
                 </ul>
             </li>
             <?php endif; ?>
 
             <!-- Certificate Management -->
+            <?php if ($can('Certificates')): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-certificate"></i><span>Certificates</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
@@ -824,6 +863,7 @@
                     <li><a href="<?= base_url('certificates/issued') ?>"><i class="fa fa-circle-o"></i>Issued</a></li>
                 </ul>
             </li>
+            <?php endif; ?>
 
             <?php if (isset($school_features) && in_array('Staff Management', $school_features)): ?>
             <li class="treeview">
@@ -831,12 +871,11 @@
                 <ul class="treeview-menu">
                     <li><a href="<?= base_url('staff/all_staff') ?>"><i class="fa fa-circle-o"></i>All Staff</a></li>
                     <li><a href="<?= base_url('staff/new_staff') ?>"><i class="fa fa-circle-o"></i>New Staff</a></li>
-                    <li><a href="<?= base_url('staff/teacher_duty') ?>"><i class="fa fa-circle-o"></i>Teacher Duty</a></li>
                 </ul>
             </li>
             <?php endif; ?>
 
-            <?php if (isset($school_features) && in_array('Student Management', $school_features)): ?>
+            <?php if (isset($school_features) && in_array('Student Management', $school_features) && $can('Attendance')): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-calendar-check-o"></i><span>Attendance</span>
                     <span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span>
@@ -851,13 +890,14 @@
             </li>
             <?php endif; ?>
 
-            <?php if (isset($school_features) && in_array('Staff Management', $school_features)): ?>
+            <?php if (isset($school_features) && in_array('Staff Management', $school_features) && $can('HR')): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-id-card-o"></i><span>HR &amp; Payroll</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
                     <li><a href="<?= base_url('hr') ?>"><i class="fa fa-circle-o"></i>Dashboard</a></li>
                     <li><a href="<?= base_url('hr/departments') ?>"><i class="fa fa-circle-o"></i>Departments</a></li>
                     <li><a href="<?= base_url('hr/recruitment') ?>"><i class="fa fa-circle-o"></i>Recruitment</a></li>
+                    <li><a href="<?= base_url('ats') ?>"><i class="fa fa-circle-o"></i>Applicant Tracking</a></li>
                     <li><a href="<?= base_url('hr/leaves') ?>"><i class="fa fa-circle-o"></i>Leave Management</a></li>
                     <li><a href="<?= base_url('hr/payroll') ?>"><i class="fa fa-circle-o"></i>Payroll</a></li>
                     <li><a href="<?= base_url('hr/appraisals') ?>"><i class="fa fa-circle-o"></i>Appraisals</a></li>
@@ -872,7 +912,7 @@
             <li class="g-sec">Finance</li>
             <?php endif; ?>
 
-            <?php if (isset($school_features) && in_array('Fees Management', $school_features)): ?>
+            <?php if (isset($school_features) && in_array('Fees Management', $school_features) && $can('Fees')): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-inr"></i><span>Fees</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
@@ -891,7 +931,7 @@
             </li>
             <?php endif; ?>
 
-            <?php if (isset($school_features) && in_array('Account Management', $school_features)): ?>
+            <?php if (isset($school_features) && in_array('Account Management', $school_features) && $can('Accounting')): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-briefcase"></i><span>Accounts</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
@@ -926,7 +966,7 @@
             <li class="g-sec">Campus</li>
             <?php endif; ?>
 
-            <?php if (isset($school_features) && in_array('Notice and Announcement', $school_features)): ?>
+            <?php if (isset($school_features) && in_array('Notice and Announcement', $school_features) && $can('Communication')): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-comments"></i><span>Communication</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
@@ -940,6 +980,10 @@
                 </ul>
             </li>
 
+            <?php endif; ?>
+
+
+            <?php if (isset($school_features) && in_array('Notice and Announcement', $school_features) && $can('Events')): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-calendar"></i><span>Events</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
@@ -957,6 +1001,7 @@
             </li>
             <?php endif; ?>
 
+            <?php if ($can('Operations')): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-cog"></i><span>Operations</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
@@ -968,35 +1013,24 @@
                     <li><a href="<?= base_url('assets') ?>"><i class="fa fa-circle-o"></i>Assets</a></li>
                 </ul>
             </li>
+            <?php endif; ?>
 
             <!-- ═══════════════════════════════════════════════════════════
                  SETTINGS & SYSTEM
                  ═══════════════════════════════════════════════════════════ -->
             <li class="g-sec">Settings</li>
 
-            <?php if (isset($school_features) && in_array('School Management', $school_features)): ?>
-            <li class="sidebar-single">
-                <a href="<?= base_url('school_config') ?>"><i class="fa fa-cogs"></i><span>Configuration</span></a>
-            </li>
-            <?php endif; ?>
-
-            <?php if (isset($admin_role) && $admin_role === 'Super Admin'): ?>
-            <li class="sidebar-single"><a href="<?= base_url('admin/manage_admin') ?>"><i class="fa fa-user-circle-o"></i><span>Admin Users</span></a></li>
+            <?php if ($can('Admin Users')): ?>
+            <li class="sidebar-single"><a href="<?= base_url('admin_users') ?>"><i class="fa fa-user-circle-o"></i><span>Admin Users</span></a></li>
+            <li class="sidebar-single"><a href="<?= base_url('audit_logs') ?>"><i class="fa fa-shield"></i><span>Audit Logs</span></a></li>
+            <li class="sidebar-single"><a href="<?= base_url('school_backup') ?>"><i class="fa fa-cloud-download"></i><span>Backup</span></a></li>
             <?php endif; ?>
 
             <li class="sidebar-single"><a href="<?= base_url('health_check') ?>"><i class="fa fa-heartbeat"></i><span>Health Check</span></a></li>
 
-            <!-- Super Admin Control Panel link (shown when SA session is active) -->
-            <?php if (isset($sa_id) || session_id() && $this->session->userdata('sa_id')): ?>
-            <li class="g-sec" style="margin-top:6px;">Super Admin</li>
-            <li class="sidebar-single">
-                <a href="<?= base_url('superadmin/dashboard') ?>" style="color:var(--sa3) !important;">
-                    <i class="fa fa-shield" style="color:var(--sa3);"></i>
-                    <span style="color:var(--sa3);">SA Panel</span>
-                    <span style="float:right;background:var(--sa3);color:#fff;font-size:9px;padding:1px 6px;border-radius:10px;font-family:var(--font-m);margin-top:2px;">SA</span>
-                </a>
-            </li>
-            <?php endif; ?>
+            <!-- SA Panel link removed from school admin sidebar.
+                 The SA panel is a separate platform-level tool accessed via /superadmin/login.
+                 School admins (even with "Super Admin" role) should not see or access it from here. -->
 
         </ul>
     </section>
@@ -1137,8 +1171,78 @@
         return d.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
     }
 
+    /* ── Workflow tasks in bell panel ── */
+    var tData=[];
+    var $tList=document.getElementById('gTaskList');
+    var $tBadge=document.getElementById('gTaskBadge');
+
+    function fetchTasks(){
+        fetch('<?= base_url("notifications/get_tasks") ?>',{cache:'no-store'})
+            .then(function(r){return r.json();})
+            .then(function(d){
+                if(d.status!=='success')return;
+                tData=(d.tasks||[]).concat((d.alerts||[]).map(function(a){
+                    return{id:a.key,icon:a.icon,color:a.type==='error'?'#dc2626':'#d97706',title:a.title,detail:a.detail,action:a.action,priority:'high',module:a.module};
+                }));
+                renderTasks();
+                updateTaskBadge();
+            })
+            .catch(function(){});
+    }
+
+    function renderTasks(){
+        if(!$tList)return;
+        if(!tData.length){$tList.innerHTML='<div class="g-bell-empty"><i class="fa fa-check-circle" style="color:var(--gold)"></i> All caught up!</div>';return;}
+        var base='<?= base_url() ?>';
+        var h='';
+        tData.slice(0,8).forEach(function(t){
+            var href=t.action?(base+t.action):'#';
+            h+='<a class="g-task-item" href="'+esc(href)+'">'
+              +'<div class="g-task-icon" style="background:'+(t.color||'#0f766e')+'"><i class="fa '+(t.icon||'fa-tasks')+'"></i></div>'
+              +'<div style="flex:1;min-width:0">'
+              +'<div class="g-task-title">'+esc(t.title)+'</div>'
+              +'<div class="g-task-detail">'+esc(t.detail||'')+'</div>'
+              +'</div>'
+              +'<span class="g-task-pri '+(t.priority||'low')+'">'+(t.priority||'low').toUpperCase()+'</span>'
+              +'</a>';
+        });
+        $tList.innerHTML=h;
+    }
+
+    function updateTaskBadge(){
+        var c=tData.filter(function(t){return t.priority==='high';}).length;
+        if($tBadge){$tBadge.textContent=String(c);$tBadge.style.display=c?'inline-block':'none';}
+        // Also add task count to bell badge total
+        updateBadge();
+    }
+
+    // Override updateBadge to merge notice + task counts
+    var _origUpdateBadge = updateBadge;
+    updateBadge = function(){
+        var noticeUnread=bData.filter(function(n){return readIds.indexOf(n.id)===-1;}).length;
+        var taskHigh=tData.filter(function(t){return t.priority==='high';}).length;
+        var total=noticeUnread+taskHigh;
+        if($badge){$badge.textContent=total>9?'9+':String(total);$badge.setAttribute('data-n',total);$badge.style.display=total?'flex':'none';}
+        if($nbadge){$nbadge.textContent=total>9?'9+':String(total);$nbadge.style.display=total?'inline-block':'none';}
+    };
+
+    window.gSwitchBellTab=function(tab,btn){
+        var tabs=document.querySelectorAll('.g-bell-tab');
+        tabs.forEach(function(t){t.classList.remove('active');});
+        if(btn)btn.classList.add('active');
+        var showNotices=(tab==='notices');
+        if($list)$list.style.display=showNotices?'':'none';
+        if($tList)$tList.style.display=showNotices?'none':'';
+        var ftN=document.getElementById('gBellFtNotices');
+        var ftT=document.getElementById('gBellFtTasks');
+        if(ftN)ftN.style.display=showNotices?'':'none';
+        if(ftT)ftT.style.display=showNotices?'none':'';
+    };
+
     fetchBell();
+    fetchTasks();
     setInterval(fetchBell,90000);
+    setInterval(fetchTasks,120000);
 })();
 </script>
 

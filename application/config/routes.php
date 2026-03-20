@@ -77,6 +77,7 @@ $route['superadmin/csrf_token']                         = 'Superadmin_login/csrf
 $route['superadmin/dashboard']                          = 'Superadmin/dashboard';
 $route['superadmin/dashboard/refresh_stats']            = 'Superadmin/refresh_stats';
 $route['superadmin/dashboard/charts']                   = 'Superadmin/dashboard_charts';
+$route['superadmin/dashboard/search']                   = 'Superadmin/search';
 
 // Schools
 $route['superadmin/schools']                            = 'Superadmin_schools/index';
@@ -111,9 +112,13 @@ $route['superadmin/plans/fetch_subscriptions']          = 'Superadmin_plans/fetc
 $route['superadmin/plans/expire_check']                 = 'Superadmin_plans/expire_check';
 $route['superadmin/plans/payments']                     = 'Superadmin_plans/payments';
 $route['superadmin/plans/fetch_payments']               = 'Superadmin_plans/fetch_payments';
+$route['superadmin/plans/get_school_plan']               = 'Superadmin_plans/get_school_plan';
 $route['superadmin/plans/add_payment']                  = 'Superadmin_plans/add_payment';
 $route['superadmin/plans/update_payment']               = 'Superadmin_plans/update_payment';
 $route['superadmin/plans/delete_payment']               = 'Superadmin_plans/delete_payment';
+$route['superadmin/plans/generate_invoice']             = 'Superadmin_plans/generate_invoice';
+$route['superadmin/plans/collect_payment']              = 'Superadmin_plans/collect_payment';
+$route['superadmin/plans/fetch_school_payments']        = 'Superadmin_plans/fetch_school_payments';
 
 // Reports
 $route['superadmin/reports']                            = 'Superadmin_reports/index';
@@ -159,27 +164,6 @@ $route['superadmin/debug/clear_debug_logs']             = 'Superadmin_debug/clea
 $route['superadmin/debug/schema_check']                 = 'Superadmin_debug/schema_check';
 $route['superadmin/debug/log_ajax_error']               = 'Superadmin_debug/log_ajax_error';
 
-// ─── Subject Master List (SA)
-$route['superadmin/subjects']                           = 'Superadmin_subjects/index';
-$route['superadmin/subjects/get_boards']                = 'Superadmin_subjects/get_boards';
-$route['superadmin/subjects/get_patterns']              = 'Superadmin_subjects/get_patterns';
-$route['superadmin/subjects/get_class_ranges']          = 'Superadmin_subjects/get_class_ranges';
-$route['superadmin/subjects/get_groups']                = 'Superadmin_subjects/get_groups';
-$route['superadmin/subjects/save_group']                = 'Superadmin_subjects/save_group';
-$route['superadmin/subjects/delete_group']              = 'Superadmin_subjects/delete_group';
-$route['superadmin/subjects/save_subject']              = 'Superadmin_subjects/save_subject';
-$route['superadmin/subjects/delete_subject']            = 'Superadmin_subjects/delete_subject';
-$route['superadmin/subjects/save_pattern']              = 'Superadmin_subjects/save_pattern';
-$route['superadmin/subjects/delete_pattern']            = 'Superadmin_subjects/delete_pattern';
-$route['superadmin/subjects/clone_pattern']             = 'Superadmin_subjects/clone_pattern';
-$route['superadmin/subjects/save_rules']                = 'Superadmin_subjects/save_rules';
-$route['superadmin/subjects/save_streams']              = 'Superadmin_subjects/save_streams';
-$route['superadmin/subjects/save_assessment']           = 'Superadmin_subjects/save_assessment';
-$route['superadmin/subjects/export_pattern']            = 'Superadmin_subjects/export_pattern';
-$route['superadmin/subjects/add_class_range']           = 'Superadmin_subjects/add_class_range';
-$route['superadmin/subjects/delete_class_range']        = 'Superadmin_subjects/delete_class_range';
-$route['superadmin/subjects/create_board']              = 'Superadmin_subjects/create_board';
-
 // ─── School Configuration
 $route['school_config']                                 = 'School_config/index';
 $route['school_config/get_config']                      = 'School_config/get_config';
@@ -190,10 +174,14 @@ $route['school_config/save_classes']                    = 'School_config/save_cl
 $route['school_config/get_sections']                    = 'School_config/get_sections';
 $route['school_config/save_section']                    = 'School_config/save_section';
 $route['school_config/delete_section']                  = 'School_config/delete_section';
+$route['school_config/get_all_sections']                = 'School_config/get_all_sections';
+$route['school_config/bulk_save_sections']              = 'School_config/bulk_save_sections';
 $route['school_config/get_subjects']                    = 'School_config/get_subjects';
 $route['school_config/get_suggested_subjects']          = 'School_config/get_suggested_subjects';
 $route['school_config/save_subject']                    = 'School_config/save_subject';
 $route['school_config/delete_subject']                  = 'School_config/delete_subject';
+$route['school_config/get_default_subjects']            = 'School_config/get_default_subjects';
+$route['school_config/save_bulk_subjects']              = 'School_config/save_bulk_subjects';
 $route['school_config/save_stream']                     = 'School_config/save_stream';
 $route['school_config/delete_stream']                   = 'School_config/delete_stream';
 $route['school_config/add_session']                     = 'School_config/add_session';
@@ -210,6 +198,7 @@ $route['school_config/soft_delete_class']               = 'School_config/soft_de
 $route['school_config/restore_class']                   = 'School_config/restore_class';
 $route['school_config/seed_streams']                    = 'School_config/seed_streams';
 $route['school_config/upload_document']                 = 'School_config/upload_document';
+$route['school_config/save_report_card_template']       = 'School_config/save_report_card_template';
 
 // ─── Academic Management
 $route['academic']                              = 'Academic/index';
@@ -262,6 +251,9 @@ $route['result/get_cumulative_data']                      = 'result/get_cumulati
 $route['result/save_cumulative_config']                   = 'result/save_cumulative_config';
 $route['result/compute_cumulative']                       = 'result/compute_cumulative';
 $route['result/get_exam_status']                          = 'result/get_exam_status';
+$route['result/download_pdf/(:any)/(:any)']               = 'result/download_pdf/$1/$2';
+$route['result/download_batch_pdf/(:any)/(:any)/(:any)']  = 'result/download_batch_pdf/$1/$2/$3';
+$route['result/batch_pdf_count']                          = 'result/batch_pdf_count';
 
 // ─── Examination Management ──────────────────────────────────────────────────
 $route['examination']                            = 'Examination/index';
@@ -304,10 +296,10 @@ $route['sis/get_sections']                      = 'Sis/get_sections';
 $route['sis/rebuild_index']                     = 'Sis/rebuild_index';
 
 // ─── SIS: Student methods (merged from Student.php) ─────────────────────────
-$route['sis/all_student']                       = 'Sis/all_student';
-$route['sis/master_student']                    = 'Sis/master_student';
+$route['sis/all_student']                       = 'Sis/students';
+$route['sis/master_student']                    = 'Sis/students';
 $route['sis/import_students']                   = 'Sis/import_students';
-$route['sis/studentAdmission']                  = 'Sis/studentAdmission';
+$route['sis/studentAdmission']                  = 'Sis/admission';
 $route['sis/get_sections_by_class']             = 'Sis/get_sections_by_class';
 $route['sis/fetch_subjects']                    = 'Sis/fetch_subjects';
 $route['sis/edit_student/(:any)']               = 'Sis/edit_student/$1';
@@ -349,11 +341,11 @@ $route['sis/fetch_analytics']                   = 'Sis/fetch_analytics';
 
 // ─── Backward-compatible routes (old student/* and admission_crm/* URLs) ────
 // These map legacy URLs to consolidated SIS methods so existing views/links work
-$route['student/all_student']                   = 'Sis/all_student';
+$route['student/all_student']                   = 'Sis/students';
 $route['student/id_card']                       = 'Sis/id_card';
-$route['student/master_student']                = 'Sis/master_student';
+$route['student/master_student']                = 'Sis/students';
 $route['student/import_students']               = 'Sis/import_students';
-$route['student/studentAdmission']              = 'Sis/studentAdmission';
+$route['student/studentAdmission']              = 'Sis/admission';
 $route['student/get_classes']                   = 'Sis/get_classes';
 $route['student/get_sections_by_class']         = 'Sis/get_sections_by_class';
 $route['student/fetch_subjects']                = 'Sis/fetch_subjects';
@@ -471,6 +463,9 @@ $route['accounting/trial_balance']                      = 'Accounting/trial_bala
 $route['accounting/profit_loss']                        = 'Accounting/profit_loss';
 $route['accounting/balance_sheet']                      = 'Accounting/balance_sheet';
 $route['accounting/cash_flow']                          = 'Accounting/cash_flow';
+$route['accounting/day_book']                           = 'Accounting/day_book';
+$route['accounting/export_excel']                       = 'Accounting/export_excel';
+$route['accounting/export_pdf']                         = 'Accounting/export_pdf';
 $route['accounting/ledger_report']                      = 'Accounting/ledger_report';
 $route['accounting/recompute_balances']                 = 'Accounting/recompute_balances';
 // Settings
@@ -481,6 +476,13 @@ $route['accounting/unmatch_transaction']                = 'Accounting/unmatch_tr
 $route['accounting/suggest_matches']                    = 'Accounting/suggest_matches';
 $route['accounting/carry_forward_balances']             = 'Accounting/carry_forward_balances';
 $route['accounting/get_audit_log']                      = 'Accounting/get_audit_log';
+
+// ─── Staff Role Management ──────────────────────────────────────────────────────
+$route['staff/get_staff_roles']                            = 'Staff/get_staff_roles';
+$route['staff/save_staff_role']                            = 'Staff/save_staff_role';
+$route['staff/delete_staff_role']                          = 'Staff/delete_staff_role';
+$route['staff/get_staff_by_role']                          = 'Staff/get_staff_by_role';
+$route['staff/migrate_staff_roles']                        = 'Staff/migrate_staff_roles';
 
 // ─── HR & Staff Management ───────────────────────────────────────────────────────
 // Page routes (all map to Hr::index — tab determined by URI segment 2)
@@ -501,15 +503,34 @@ $route['hr/delete_department']                             = 'Hr/delete_departme
 $route['hr/get_jobs']                                      = 'Hr/get_jobs';
 $route['hr/save_job']                                      = 'Hr/save_job';
 $route['hr/delete_job']                                    = 'Hr/delete_job';
+$route['hr/view_circular']                                 = 'Hr/view_circular';
+$route['hr/regenerate_circular']                           = 'Hr/regenerate_circular';
 // Recruitment — Applicants
 $route['hr/get_applicants']                                = 'Hr/get_applicants';
 $route['hr/save_applicant']                                = 'Hr/save_applicant';
 $route['hr/update_applicant_status']                       = 'Hr/update_applicant_status';
 $route['hr/delete_applicant']                              = 'Hr/delete_applicant';
+
+// ─── Applicant Tracking System (ATS) ────────────────────────────────────────
+$route['ats']                                              = 'Ats/index';
+$route['ats/get_pipeline']                                 = 'Ats/get_pipeline';
+$route['ats/get_applicant']                                = 'Ats/get_applicant';
+$route['ats/save_applicant']                               = 'Ats/save_applicant';
+$route['ats/delete_applicant']                             = 'Ats/delete_applicant';
+$route['ats/move_stage']                                   = 'Ats/move_stage';
+$route['ats/reject_applicant']                             = 'Ats/reject_applicant';
+$route['ats/add_review']                                   = 'Ats/add_review';
+$route['ats/get_reviews']                                  = 'Ats/get_reviews';
+$route['ats/get_convert_data']                             = 'Ats/get_convert_data';
+$route['ats/finalize_hire']                                = 'Ats/finalize_hire';
+$route['ats/get_jobs']                                     = 'Ats/get_jobs';
+
 // Leave Management
 $route['hr/get_leave_types']                               = 'Hr/get_leave_types';
 $route['hr/save_leave_type']                               = 'Hr/save_leave_type';
 $route['hr/delete_leave_type']                             = 'Hr/delete_leave_type';
+$route['hr/seed_leave_types']                              = 'Hr/seed_leave_types';
+$route['hr/get_leave_audit_log']                           = 'Hr/get_leave_audit_log';
 $route['hr/get_leave_balances']                            = 'Hr/get_leave_balances';
 $route['hr/allocate_leave_balances']                       = 'Hr/allocate_leave_balances';
 $route['hr/get_leave_requests']                            = 'Hr/get_leave_requests';
@@ -523,10 +544,17 @@ $route['hr/delete_salary_structure']                        = 'Hr/delete_salary_
 $route['hr/get_payroll_runs']                              = 'Hr/get_payroll_runs';
 $route['hr/preflight_payroll']                             = 'Hr/preflight_payroll';
 $route['hr/generate_payroll']                              = 'Hr/generate_payroll';
+$route['hr/auto_create_payroll_accounts']                  = 'Hr/auto_create_payroll_accounts';
 $route['hr/get_payroll_slips']                             = 'Hr/get_payroll_slips';
 $route['hr/finalize_payroll']                              = 'Hr/finalize_payroll';
 $route['hr/mark_payroll_paid']                             = 'Hr/mark_payroll_paid';
 $route['hr/get_payslip']                                   = 'Hr/get_payslip';
+$route['hr/my_payslips']                                   = 'Hr/my_payslips';
+$route['hr/backfill_salary_structures']                    = 'Hr/backfill_salary_structures';
+$route['hr/lock_payroll_month']                            = 'Hr/lock_payroll_month';
+$route['hr/approve_payroll']                               = 'Hr/approve_payroll';
+$route['hr/download_payslip']                              = 'Hr/download_payslip';
+$route['hr/export_payroll_report']                         = 'Hr/export_payroll_report';
 $route['hr/delete_payroll_run']                            = 'Hr/delete_payroll_run';
 // Appraisals
 $route['hr/get_appraisals']                                = 'Hr/get_appraisals';
@@ -537,6 +565,10 @@ $route['hr/delete_appraisal']                              = 'Hr/delete_appraisa
 // Utility
 $route['hr/get_staff_list']                                = 'Hr/get_staff_list';
 $route['hr/get_report']                                    = 'Hr/get_report';
+
+// ─── Notifications & Workflow ──────────────────────────────────────────────────
+$route['notifications/get_tasks']                          = 'Notifications/get_tasks';
+$route['notifications/dismiss_alert']                      = 'Notifications/dismiss_alert';
 
 // ─── Fee & Finance Management ──────────────────────────────────────────────────
 // Pages
@@ -769,6 +801,7 @@ $route['events']                                     = 'Events/index';
 $route['events/list']                                = 'Events/list';
 $route['events/calendar']                            = 'Events/calendar';
 $route['events/participation']                       = 'Events/participation';
+$route['events/circular/(:any)']                     = 'Events/circular/$1';
 
 // Dashboard
 $route['events/get_dashboard']                       = 'Events/get_dashboard';
@@ -880,6 +913,7 @@ $route['admin_users/get_roles']                      = 'AdminUsers/get_roles';
 $route['admin_users/save_role']                      = 'AdminUsers/save_role';
 $route['admin_users/delete_role']                    = 'AdminUsers/delete_role';
 $route['admin_users/get_login_logs']                 = 'AdminUsers/get_login_logs';
+
 
 /* ── Audit Logs ───────────────────────────────────────────────────── */
 $route['audit_logs']                                 = 'AuditLogs/index';

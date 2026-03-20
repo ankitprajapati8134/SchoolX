@@ -196,16 +196,17 @@ class Superadmin_debug extends MY_Superadmin_Controller
     {
         if (!GRADER_DEBUG) {
             $this->json_success([]); // silently accept but don't log
+            return;
         }
 
         if (!class_exists('Debug_tracker', false)) {
             require_once APPPATH . 'libraries/Debug_tracker.php';
         }
 
-        $url     = $this->input->post('url')              ?: '';
-        $status  = (int)($this->input->post('status')    ?: 0);
-        $error   = $this->input->post('error')            ?: '';
-        $preview = $this->input->post('response_preview') ?: '';
+        $url     = $this->input->post('url',              TRUE) ?: '';
+        $status  = (int)($this->input->post('status',     TRUE) ?: 0);
+        $error   = $this->input->post('error',             TRUE) ?: '';
+        $preview = $this->input->post('response_preview',  TRUE) ?: '';
 
         Debug_tracker::getInstance()->record_ajax_error(
             $url,
@@ -215,6 +216,9 @@ class Superadmin_debug extends MY_Superadmin_Controller
             $this->input->ip_address()
         );
         Debug_tracker::getInstance()->flush();
+
+        // M-05 FIX: Audit log for AJAX error recording
+        $this->sa_log('ajax_error_logged', '', ['url' => substr($url, 0, 200), 'status' => $status]);
 
         $this->json_success([]);
     }

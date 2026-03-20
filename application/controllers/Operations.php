@@ -21,6 +21,9 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Operations extends MY_Controller
 {
+    /** Roles for operations overview */
+    private const VIEW_ROLES = ['Admin', 'Principal'];
+
     // ── Role Constants (shared across all Operations sub-modules) ────
     const OPS_ADMIN_ROLES = ['Super Admin', 'Principal', 'Vice Principal'];
     const OPS_MANAGE_ROLES = ['Super Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Librarian', 'Warden', 'Transport Manager', 'Store Manager'];
@@ -29,6 +32,7 @@ class Operations extends MY_Controller
     public function __construct()
     {
         parent::__construct();
+        require_permission('Operations');
     }
 
     // ====================================================================
@@ -68,6 +72,7 @@ class Operations extends MY_Controller
      */
     public function index()
     {
+        $this->_require_role(self::VIEW_ROLES, 'ops_view');
         $data = ['active_tab' => 'dashboard'];
         $this->load->view('include/header', $data);
         $this->load->view('operations/index', $data);
@@ -87,6 +92,7 @@ class Operations extends MY_Controller
      */
     public function get_summary()
     {
+        $this->_require_role(self::VIEW_ROLES, 'ops_summary');
         $this->_require_ops_view();
 
         $stats = [

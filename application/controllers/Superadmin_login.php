@@ -71,8 +71,6 @@ class Superadmin_login extends CI_Controller
     // ─────────────────────────────────────────────────────────────────────────
     public function index()
     {
-        // Force session read from storage (not stale PHP object state)
-        $this->session->sess_regenerate(FALSE);
         if ($this->session->userdata('sa_id')) {
             redirect('superadmin/dashboard');
             return;
@@ -90,6 +88,19 @@ class Superadmin_login extends CI_Controller
             return;
         }
 
+        // Manual CSRF check — CI3's cookie-based CSRF is excluded for all SA
+        // routes because the school-admin panel shares the same cookie and
+        // overwrites the token, causing 403 on the SA login form.
+        $csrfName  = $this->security->get_csrf_token_name();
+        $csrfSent  = trim((string) $this->input->post($csrfName));
+        $csrfCookie = trim((string) ($this->input->cookie($csrfName) ?? ''));
+        // Accept if the submitted token matches EITHER the cookie or the current hash
+        $csrfHash  = $this->security->get_csrf_hash();
+        if ($csrfSent === '' || ($csrfSent !== $csrfCookie && $csrfSent !== $csrfHash)) {
+            $this->_json(['status' => 'error', 'message' => 'Security token expired. Please refresh the page and try again.']);
+            return;
+        }
+
         $ip  = $this->input->ip_address();
         $ip  = ($ip === '::1') ? '127.0.0.1' : $ip;
         $now = time();
@@ -103,7 +114,7 @@ class Superadmin_login extends CI_Controller
         // ── Read + validate inputs ───────────────────────────────────────────
         $adminId  = trim((string) $this->input->post('admin_id',  TRUE));
         $schoolId = trim((string) $this->input->post('school_id', TRUE));
-        $password = (string) $this->input->post('password');
+        $password = (string) $this->input->post('password', FALSE);  // R5-SEC-1: bypass XSS filter for passwords
 
         if ($adminId === '' || $schoolId === '' || $password === '') {
             $this->_json(['status' => 'error', 'message' => 'All fields are required.']);
@@ -152,7 +163,12 @@ class Superadmin_login extends CI_Controller
         $valid = password_verify($password, $storedHash);
 
         // Plain-text password support + auto-upgrade to bcrypt
-        if (!$valid && $adminData !== null && $password === $storedHash) {
+        // Guard: only allow plaintext match if stored value is NOT a bcrypt hash
+        if (!$valid && $adminData !== null
+            && strlen($storedHash) !== 60
+            && strpos($storedHash, '$2y$') !== 0
+            && strpos($storedHash, '$2a$') !== 0
+            && $password === $storedHash) {
             $newHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
             try {
                 if (isset($adminData['Credentials']['Password'])) {
@@ -160,7 +176,9 @@ class Superadmin_login extends CI_Controller
                 } else {
                     $this->firebase->update("Users/Admin/{$schoolId}/{$adminId}", ['Password' => $newHash]);
                 }
-            } catch (Exception $e) {}
+            } catch (Exception $e) {
+                log_message('error', 'SA Login: Password upgrade failed — ' . $e->getMessage());
+            }
             $valid = true;
         }
 
@@ -190,6 +208,16 @@ class Superadmin_login extends CI_Controller
 
         // ── Success ───────────────────────────────────────────────────────────
         $this->_clear_fail($ip);
+
+        // Clear any school admin session data to prevent session bleed-through
+        $this->session->unset_userdata([
+            'admin_id', 'school_id', 'school_code', 'admin_role', 'admin_name',
+            'session', 'current_session', 'session_year', 'schoolName',
+            'school_display_name', 'school_features', 'available_sessions',
+            'subscription_expiry', 'subscription_grace_end', 'subscription_warning',
+            'sub_check_ts', 'login_csrf',
+        ]);
+
         $this->session->sess_regenerate(TRUE);
 
         // Resolve name + email — developer records may use different field names
@@ -222,7 +250,7 @@ class Superadmin_login extends CI_Controller
     // ─────────────────────────────────────────────────────────────────────────
     public function logout()
     {
-        $this->session->unset_userdata(['sa_id', 'sa_name', 'sa_role', 'sa_email']);
+        $this->session->unset_userdata(['sa_id', 'sa_name', 'sa_role', 'sa_email', 'sa_csrf_token']);
         $this->session->sess_destroy();
         // Prevent browser back-button cache from restoring the session
         header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');

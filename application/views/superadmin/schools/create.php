@@ -367,8 +367,8 @@ $(function(){
         if(!file){ alert('Select a file first.'); return; }
         var fd = new FormData();
         fd.append('logo', file);
-        // Use placeholder school_uid — will be updated after onboarding
-        fd.append('school_uid', $('#schoolName').val().trim() || 'temp_upload');
+        // Send temp prefix so server skips Firebase write (school doesn't exist yet)
+        fd.append('school_uid', 'temp_' + ($('#schoolName').val().trim() || 'upload'));
         var $btn = $(this).prop('disabled',true);
         $('#logoUploadMsg').html('<i class="fa fa-spinner fa-spin"></i> Uploading...');
         $.ajax({
@@ -528,6 +528,7 @@ $(function(){
             url:  BASE_URL + 'superadmin/schools/onboard',
             type: 'POST',
             data: $(this).serialize(),
+            dataType: 'json',
             success: function(r){
                 if (r.status === 'success'){
                     // Show success alert
@@ -559,8 +560,15 @@ $(function(){
                     $btn.prop('disabled', false).html('<i class="fa fa-check"></i> Onboard School');
                 }
             },
-            error: function(){
-                saToast('Server error. Please try again.', 'error');
+            error: function(xhr){
+                var msg = 'Server error. Please try again.';
+                try {
+                    var r = JSON.parse(xhr.responseText);
+                    if (r && r.message) msg = r.message;
+                } catch(e){}
+                $('#onboardAlert').removeClass('alert-success').addClass('alert-danger')
+                    .html('<i class="fa fa-times-circle"></i> ' + msg).show();
+                saToast(msg, 'error');
                 $btn.prop('disabled', false).html('<i class="fa fa-check"></i> Onboard School');
             }
         });

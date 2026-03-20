@@ -11,6 +11,7 @@ class NoticeAnnouncement extends MY_Controller
     public function __construct()
     {
         parent::__construct();
+        require_permission('Communication');
     }
 
     public function index()

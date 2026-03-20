@@ -133,7 +133,8 @@ function saToast(msg, type){
         fontFamily:"'Plus Jakarta Sans',sans-serif",fontSize:'13px',
         color:'var(--t1)',boxShadow:'0 4px 20px rgba(0,0,0,.4)',
         maxWidth:'340px',backdropFilter:'blur(8px)',animation:'fadeIn .2s ease'
-    }).html('<i class="fa '+icons[type]+'" style="color:'+borders[type]+';flex-shrink:0;"></i><span>'+msg+'</span>');
+    }).append($('<i>').addClass('fa '+icons[type]).css({color:borders[type],flexShrink:0}))
+      .append($('<span>').text(msg));
     $('body').append($t);
     setTimeout(function(){ $t.fadeOut(300, function(){ $t.remove(); }); }, 3500);
 }
@@ -141,6 +142,61 @@ function saToast(msg, type){
 function saConfirm(msg, cb){
     if(window.confirm(msg)) cb();
 }
+
+/* ── Global Search Bar (header) ── */
+(function(){
+    var $wrap   = $('.g-search');
+    var $input  = $wrap.find('input');
+    if(!$input.length) return;
+
+    // Create dropdown
+    var $dd = $('<div id="saSearchDropdown">').css({
+        position:'absolute',top:'100%',left:0,right:0,zIndex:9999,
+        background:'var(--bg2)',border:'1px solid var(--border)',borderTop:'none',
+        borderRadius:'0 0 10px 10px',maxHeight:'380px',overflowY:'auto',
+        boxShadow:'0 8px 24px rgba(0,0,0,.35)',display:'none',
+        fontFamily:'var(--font-b)',fontSize:'13px'
+    }).appendTo($wrap.css('position','relative'));
+
+    var _timer = null;
+    $input.on('input', function(){
+        clearTimeout(_timer);
+        var q = $.trim(this.value);
+        if(q.length < 2){ $dd.hide().empty(); return; }
+        _timer = setTimeout(function(){
+            $.post(BASE_URL+'superadmin/dashboard/search', {q:q}, function(r){
+                if(r.status!=='success') return;
+                // Guard against stale out-of-order responses
+                if($.trim($input.val()).toLowerCase() !== (r.query||'')) return;
+                var items = r.results || [];
+                if(!items.length){
+                    $dd.html('<div style="padding:14px 16px;color:var(--t3);text-align:center;">No results for "'+$('<span>').text(q).html()+'"</div>').show();
+                    return;
+                }
+                var statusCls = {active:'#22c55e',grace:'#eab308',expired:'#ef4444',suspended:'#6b7280',inactive:'#9ca3af'};
+                var html = items.map(function(it){
+                    var dot = it.status ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+(statusCls[it.status]||'#9ca3af')+';margin-left:6px;"></span>' : '';
+                    return '<a href="'+BASE_URL+it.url+'" style="display:flex;align-items:center;gap:10px;padding:10px 16px;color:var(--t1);text-decoration:none;border-bottom:1px solid var(--border);transition:background .15s;" onmouseenter="this.style.background=\'var(--bg3)\'" onmouseleave="this.style.background=\'transparent\'">'
+                        +'<i class="fa '+it.icon+'" style="color:var(--sa3);width:18px;text-align:center;flex-shrink:0;"></i>'
+                        +'<div style="flex:1;min-width:0;">'
+                        +'<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+$('<span>').text(it.title).html()+dot+'</div>'
+                        +'<div style="font-size:11px;color:var(--t3);">'+$('<span>').text(it.detail).html()+'</div>'
+                        +'</div></a>';
+                }).join('');
+                $dd.html(html).show();
+            },'json');
+        }, 300);
+    });
+
+    // Close on click outside
+    $(document).on('click', function(e){
+        if(!$(e.target).closest('.g-search').length) $dd.hide();
+    });
+    // Close on Escape
+    $input.on('keydown', function(e){
+        if(e.key==='Escape'){ $dd.hide(); this.value=''; }
+    });
+})();
 
 /* DataTables init */
 $(document).ready(function(){

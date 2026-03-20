@@ -69,9 +69,14 @@ $logo         = sp_get($sd, 'Logo');
 $logoValid    = $logo && filter_var($logo, FILTER_VALIDATE_URL);
 
 // ── Payment ──────────────────────────────────────────────────────────────
-$lastAmt    = sp_get($sd, 'payment', 'lastPaymentAmount') ?: '0';
-$lastDate   = sp_get($sd, 'payment', 'lastPaymentDate')   ?: '—';
-$payMethod  = sp_get($sd, 'payment', 'paymentMethod')     ?: '—';
+$lastAmt      = sp_get($sd, 'payment', 'lastPaymentAmount') ?: '0';
+$lastDate     = sp_get($sd, 'payment', 'lastPaymentDate')   ?: '—';
+$payStatus    = sp_get($sd, 'payment', 'paymentStatus')     ?: '—';
+$billingCycle = sp_get($sd, 'payment', 'billingCycle')       ?: '—';
+// Format the date nicely if it's a valid date string
+if ($lastDate && $lastDate !== '—' && strtotime($lastDate)) {
+    $lastDate = date('d M Y', strtotime($lastDate));
+}
 
 // ── Activities ───────────────────────────────────────────────────────────
 $activities = sp_get($sd, 'Activities');
@@ -308,7 +313,7 @@ if (!is_array($activities)) $activities = [];
                         style="margin-bottom:10px;font-size:12px;font-weight:700;color:var(--sp-teal);text-transform:uppercase;letter-spacing:.5px;">
                         Last Payment
                     </div>
-                    <div class="sp-payment-grid">
+                    <div class="sp-payment-grid sp-payment-grid-4">
                         <div class="sp-pay-item">
                             <div class="sp-pay-label">Amount</div>
                             <div class="sp-pay-val">₹<?= number_format((float)$lastAmt) ?></div>
@@ -318,8 +323,23 @@ if (!is_array($activities)) $activities = [];
                             <div class="sp-pay-val" style="font-size:13px;"><?= htmlspecialchars($lastDate) ?></div>
                         </div>
                         <div class="sp-pay-item">
-                            <div class="sp-pay-label">Method</div>
-                            <div class="sp-pay-val" style="font-size:13px;"><?= htmlspecialchars($payMethod) ?></div>
+                            <div class="sp-pay-label">Status</div>
+                            <div class="sp-pay-val" style="font-size:13px;">
+                                <?php
+                                    $statusColor = 'var(--sp-muted)';
+                                    $statusLower = strtolower($payStatus);
+                                    if ($statusLower === 'paid')    $statusColor = 'var(--sp-green)';
+                                    elseif ($statusLower === 'pending') $statusColor = 'var(--sp-amber)';
+                                    elseif ($statusLower === 'overdue' || $statusLower === 'failed') $statusColor = 'var(--sp-red)';
+                                ?>
+                                <span style="color:<?= $statusColor ?>;font-weight:700;">
+                                    <?= htmlspecialchars(ucfirst($payStatus)) ?>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="sp-pay-item">
+                            <div class="sp-pay-label">Billing Cycle</div>
+                            <div class="sp-pay-val" style="font-size:13px;"><?= htmlspecialchars(ucfirst($billingCycle)) ?></div>
                         </div>
                     </div>
 
@@ -949,8 +969,20 @@ if (!is_array($activities)) $activities = [];
     gap: 14px;
 }
 
-@media (max-width: 480px) {
-    .sp-payment-grid {
+.sp-payment-grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 600px) {
+    .sp-payment-grid,
+    .sp-payment-grid-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 380px) {
+    .sp-payment-grid,
+    .sp-payment-grid-4 {
         grid-template-columns: 1fr;
     }
 }

@@ -34,6 +34,25 @@
     box-shadow:0 0 14px var(--gold-glow);
 }
 .sc-tab i { font-size:13px; }
+.sc-tab-num {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:18px; height:18px; border-radius:50%; font-size:10px; font-weight:700;
+    background:var(--gold-dim); color:var(--gold); line-height:1;
+}
+.sc-tab.active .sc-tab-num { background:rgba(255,255,255,.25); color:#fff; }
+
+/* ── Step Hint Banner ── */
+.sc-step-hint {
+    display:flex; align-items:center; gap:10px;
+    padding:10px 16px; margin-bottom:14px;
+    background:var(--gold-dim); border-left:4px solid var(--gold);
+    border-radius:0 8px 8px 0; font-size:12.5px; color:var(--t2); line-height:1.5;
+}
+.sc-step-badge {
+    display:inline-flex; align-items:center; justify-content:center;
+    padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700;
+    background:var(--gold); color:#fff; white-space:nowrap; flex-shrink:0;
+}
 
 /* ── Tab Panes ────────────────────────────────────────────── */
 .sc-pane { display:none; }
@@ -218,6 +237,26 @@
 /* ── Loading spinner ──────────────────────────────────────── */
 .sc-spin { display:inline-block; animation:spin .7s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── Report Card Template Selector ───────────────────────── */
+.rct-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:14px; }
+.rct-card {
+    border:2px solid var(--border); border-radius:10px; padding:12px;
+    cursor:pointer; transition:all .2s var(--ease); background:var(--bg2);
+    text-align:center;
+}
+.rct-card:hover { border-color:var(--gold); transform:translateY(-2px); box-shadow:0 4px 12px var(--gold-glow); }
+.rct-card.active { border-color:var(--gold); background:var(--gold-dim); box-shadow:0 0 0 3px var(--gold-ring); }
+.rct-preview {
+    width:100%; height:90px; border:1px solid var(--border); border-radius:6px;
+    margin-bottom:10px; overflow:hidden; background:#fff; display:flex;
+    flex-direction:column; justify-content:space-between;
+}
+.rct-mini-header { height:12px; }
+.rct-mini-row { height:10px; margin:2px 6px; background:#eee; border-radius:2px; border:1px solid #ddd; }
+.rct-mini-footer { height:8px; }
+.rct-name { font-size:13px; font-weight:700; color:var(--t1); margin-bottom:4px; }
+.rct-desc { font-size:11px; color:var(--t3); line-height:1.4; }
 </style>
 
 <div class="content-wrapper">
@@ -225,35 +264,38 @@
 
     <!-- Page Header -->
     <div class="sc-head">
-        <div class="sc-head-icon"><i class="fa fa-cogs"></i></div>
+        <div class="sc-head-icon"><i class="fa fa-university"></i></div>
         <div>
-            <div class="sc-head-title">School Configuration</div>
-            <div class="sc-head-sub">Profile · Sessions · Board · Classes · Sections · Subjects · Streams</div>
+            <div class="sc-head-title">Academic Setup</div>
+            <div class="sc-head-sub">Set up your school step by step: Profile &rarr; Board &rarr; Sessions &rarr; Classes &rarr; Streams &rarr; Sections &rarr; Subjects &rarr; Report Card</div>
         </div>
     </div>
 
-    <!-- Tab Navigation -->
+    <!-- Tab Navigation — ordered by natural school setup sequence -->
     <div class="sc-tabs" id="scTabs">
         <button class="sc-tab active" data-tab="profile">
-            <i class="fa fa-building-o"></i> Profile
-        </button>
-        <button class="sc-tab" data-tab="sessions">
-            <i class="fa fa-calendar"></i> Sessions
+            <i class="fa fa-building-o"></i>Profile
         </button>
         <button class="sc-tab" data-tab="board">
-            <i class="fa fa-graduation-cap"></i> Board
+            <i class="fa fa-graduation-cap"></i>Board
+        </button>
+        <button class="sc-tab" data-tab="sessions">
+            <i class="fa fa-calendar"></i>Sessions
         </button>
         <button class="sc-tab" data-tab="classes">
-            <i class="fa fa-th-large"></i> Classes
+            <i class="fa fa-th-large"></i>Classes
+        </button>
+        <button class="sc-tab" data-tab="streams">
+            <i class="fa fa-code-fork"></i>Streams
         </button>
         <button class="sc-tab" data-tab="sections">
-            <i class="fa fa-columns"></i> Sections
+            <i class="fa fa-columns"></i>Sections
         </button>
         <button class="sc-tab" data-tab="subjects">
             <i class="fa fa-book"></i> Subjects
         </button>
-        <button class="sc-tab" data-tab="streams">
-            <i class="fa fa-code-fork"></i> Streams
+        <button class="sc-tab" data-tab="reportcard">
+            <i class="fa fa-file-text-o"></i> Report Card
         </button>
     </div>
 
@@ -261,6 +303,10 @@
     <!-- TAB: Profile                                            -->
     <!-- ════════════════════════════════════════════════════════ -->
     <div class="sc-pane active" id="tab-profile">
+        <div class="sc-step-hint">
+            <span class="sc-step-badge">Step 1</span>
+            Start by setting up your school's identity &mdash; name, address, contact details, and logo.
+        </div>
         <div class="sc-card">
             <div class="sc-card-title"><i class="fa fa-image"></i> School Logo</div>
             <div class="sc-logo-wrap">
@@ -384,6 +430,10 @@
     <!-- TAB: Sessions                                           -->
     <!-- ════════════════════════════════════════════════════════ -->
     <div class="sc-pane" id="tab-sessions">
+        <div class="sc-step-hint">
+            <span class="sc-step-badge">Step 3</span>
+            Add academic sessions (e.g. 2025-26) and set the active one. All classes, students, and data are organized under sessions.
+        </div>
         <div class="sc-card">
             <div class="sc-card-title" style="justify-content:space-between;">
                 <span><i class="fa fa-calendar-check-o"></i> Academic Sessions</span>
@@ -413,6 +463,10 @@
     <!-- TAB: Board                                              -->
     <!-- ════════════════════════════════════════════════════════ -->
     <div class="sc-pane" id="tab-board">
+        <div class="sc-step-hint">
+            <span class="sc-step-badge">Step 2</span>
+            Select your education board (CBSE, ICSE, State Board, etc.). This determines the subject curriculum suggestions.
+        </div>
         <div class="sc-card">
             <div class="sc-card-title"><i class="fa fa-university"></i> Board Type</div>
             <div class="sc-radio-group" id="boardTypeGroup">
@@ -468,6 +522,10 @@
     <!-- TAB: Classes                                            -->
     <!-- ════════════════════════════════════════════════════════ -->
     <div class="sc-pane" id="tab-classes">
+        <div class="sc-step-hint">
+            <span class="sc-step-badge">Step 4</span>
+            Define which classes your school offers (Nursery to 12th). Save the list, then activate them in the current session.
+        </div>
         <div class="sc-card">
             <div class="sc-card-title" style="justify-content:space-between;">
                 <span><i class="fa fa-th-large"></i> Master Class List</span>
@@ -507,34 +565,63 @@
     <!-- TAB: Sections                                           -->
     <!-- ════════════════════════════════════════════════════════ -->
     <div class="sc-pane" id="tab-sections">
+        <div class="sc-step-hint">
+            <span class="sc-step-badge">Step 6</span>
+            Assign sections (A, B, C...) to each class. For 11th &amp; 12th, sections are grouped by stream (e.g. Science A, Commerce A).
+        </div>
         <div class="sc-card">
-            <div class="sc-card-title"><i class="fa fa-columns"></i> Section Setup</div>
-            <div class="sc-grid sc-grid-2" style="max-width:480px;margin-bottom:14px;">
-                <div class="sc-field">
+            <div class="sc-card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                <span><i class="fa fa-columns"></i> Section Matrix</span>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div class="sc-field" style="margin:0;">
+                        <select id="secSessSel" style="min-width:130px;font-size:12px;padding:5px 8px;"></select>
+                    </div>
+                    <button class="sc-btn sc-btn-ghost sc-btn-sm" onclick="loadAllSections()" title="Reload">
+                        <i class="fa fa-refresh"></i>
+                    </button>
+                </div>
+            </div>
+            <p style="color:var(--t3);font-size:12px;margin:0 0 14px;">
+                Click section letters to toggle. Green = active. Changes are tracked and saved together.
+            </p>
+
+            <!-- Bulk matrix -->
+            <div id="sectionMatrixWrap" style="position:relative;min-height:80px;">
+                <div id="sectionMatrixLoader" style="text-align:center;padding:30px 0;color:var(--t3);">
+                    <i class="fa fa-spinner fa-spin"></i> Loading sections...
+                </div>
+                <div id="sectionMatrix"></div>
+            </div>
+
+            <!-- Save bar -->
+            <div id="secBulkBar" style="display:none;margin-top:16px;padding:12px 16px;background:var(--gold-dim);border:1px solid var(--gold);border-radius:10px;display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                <span style="font-size:13px;color:var(--t1);">
+                    <i class="fa fa-pencil" style="color:var(--gold);"></i>
+                    <span id="secChangeCount">0</span> change(s) pending
+                </span>
+                <div style="display:flex;gap:8px;">
+                    <button class="sc-btn sc-btn-ghost sc-btn-sm" onclick="discardSectionChanges()">Discard</button>
+                    <button class="sc-btn sc-btn-primary sc-btn-sm" onclick="saveBulkSections()" id="secBulkSaveBtn">
+                        <i class="fa fa-check"></i> Save All Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick-add custom section (for letters beyond F) -->
+        <div class="sc-card" style="margin-top:0;">
+            <div class="sc-card-title" style="font-size:13px;"><i class="fa fa-plus-circle"></i> Add Custom Section</div>
+            <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+                <div class="sc-field" style="min-width:160px;">
                     <label>Class</label>
                     <select id="secClassSel"></select>
                 </div>
-                <div class="sc-field">
-                    <label>Session</label>
-                    <select id="secSessSel"></select>
-                </div>
-            </div>
-            <button class="sc-btn sc-btn-ghost sc-btn-sm" onclick="loadSections()">
-                <i class="fa fa-refresh"></i> Load Sections
-            </button>
-        </div>
-
-        <div class="sc-card" id="sectionsCard" style="display:none;">
-            <div class="sc-card-title"><i class="fa fa-list"></i> Sections in <span id="sectionsClassLabel"></span></div>
-            <div id="sectionsList" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;"></div>
-            <div style="display:flex;gap:10px;align-items:center;">
-                <div class="sc-field" style="width:100px;">
-                    <label>New Section</label>
-                    <input type="text" id="newSectionInput" maxlength="1"
-                           placeholder="A"
+                <div class="sc-field" style="width:80px;">
+                    <label>Letter</label>
+                    <input type="text" id="newSectionInput" maxlength="1" placeholder="G"
                            style="text-transform:uppercase;text-align:center;font-weight:700;">
                 </div>
-                <button class="sc-btn sc-btn-primary sc-btn-sm" onclick="addSection()" style="margin-top:17px;">
+                <button class="sc-btn sc-btn-primary sc-btn-sm" onclick="addSection()" style="margin-bottom:1px;">
                     <i class="fa fa-plus"></i> Add
                 </button>
             </div>
@@ -545,77 +632,103 @@
     <!-- TAB: Subjects                                           -->
     <!-- ════════════════════════════════════════════════════════ -->
     <div class="sc-pane" id="tab-subjects">
-        <div class="sc-card">
-            <div class="sc-card-title"><i class="fa fa-book"></i> Subject Assignment</div>
-            <div class="sc-grid sc-grid-2" style="max-width:380px;margin-bottom:14px;">
-                <div class="sc-field">
-                    <label>Class</label>
-                    <select id="subClassSel"></select>
-                </div>
-            </div>
-            <button class="sc-btn sc-btn-ghost sc-btn-sm" onclick="loadSubjects()">
-                <i class="fa fa-refresh"></i> Load Subjects
-            </button>
+        <div class="sc-step-hint">
+            <span class="sc-step-badge">Step 7</span>
+            Assign subjects to each class. Load defaults from your board curriculum or add them manually. For 11th &amp; 12th, subjects are stream-specific.
         </div>
 
-        <div class="sc-card" id="subjectsCard" style="display:none;">
-            <div class="sc-card-title">
-                <i class="fa fa-list"></i> Subjects — <span id="subjectsClassLabel"></span>
-            </div>
-            <table class="sc-table" id="subjectsTable">
-                <thead>
-                    <tr>
-                        <th>Code</th>
-                        <th>Name</th>
-                        <th>Category</th>
-                        <th>Stream</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody id="subjectsTbody"></tbody>
-            </table>
-
-            <!-- Add Subject Form -->
-            <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
-                <div class="sc-card-title" style="margin-bottom:12px;"><i class="fa fa-plus-circle"></i> Add Subject</div>
-                <div class="sc-grid sc-grid-3">
-                    <div class="sc-field">
-                        <label>Name *</label>
-                        <input type="text" id="newSubName" placeholder="e.g. Mathematics" maxlength="80">
-                    </div>
-                    <div class="sc-field">
-                        <label>Category</label>
-                        <select id="newSubCat">
-                            <option value="Core">Core</option>
-                            <option value="Elective">Elective</option>
-                            <option value="Additional">Additional</option>
-                            <option value="Language">Language</option>
-                            <option value="Vocational">Vocational</option>
-                            <option value="Assessment">Assessment</option>
-                        </select>
-                    </div>
-                    <div class="sc-field">
-                        <label>Stream (optional)</label>
-                        <select id="newSubStream">
-                            <option value="common">Common</option>
-                        </select>
-                    </div>
-                    <div class="sc-field">
-                        <label>Code (auto-generated if blank)</label>
-                        <input type="text" id="newSubCode" placeholder="e.g. 901" maxlength="20">
-                    </div>
+        <!-- Select Class -->
+        <div class="sc-card">
+            <div class="sc-card-title"><i class="fa fa-book"></i> Subject Configuration</div>
+            <p style="font-size:12.5px;color:var(--t3);margin:0 0 14px;">
+                Select a class to configure its subjects. You'll get recommended subjects that you can edit, add to, or remove before saving.
+            </p>
+            <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+                <div class="sc-field" style="min-width:200px;">
+                    <label>Select Class</label>
+                    <select id="subClassSel"></select>
                 </div>
-                <button class="sc-btn sc-btn-primary sc-btn-sm" onclick="addSubject()" style="margin-top:6px;">
-                    <i class="fa fa-plus"></i> Add Subject
+                <button class="sc-btn sc-btn-primary sc-btn-sm" onclick="subLoadClass()" style="height:38px;">
+                    <i class="fa fa-arrow-right"></i> Configure Subjects
                 </button>
             </div>
         </div>
+
+        <!-- Step 2: Subject Editor (hidden until class selected) -->
+        <div id="subEditorWrap" style="display:none;">
+            <!-- Header with class info and actions -->
+            <div class="sc-card" style="padding-bottom:0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+                    <div>
+                        <h4 style="margin:0;font-size:16px;font-weight:700;color:var(--t1);">
+                            <i class="fa fa-book" style="color:var(--gold);margin-right:6px;"></i>
+                            <span id="subEditorClassLabel"></span> — Subjects
+                        </h4>
+                        <div id="subEditorInfo" style="font-size:12px;color:var(--t3);margin-top:2px;"></div>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="sc-btn sc-btn-ghost sc-btn-sm" onclick="subResetDefaults()" title="Reset to recommended defaults">
+                            <i class="fa fa-magic"></i> Reset to Defaults
+                        </button>
+                        <button class="sc-btn sc-btn-primary sc-btn-sm" onclick="subSaveAll()" id="subSaveBtn">
+                            <i class="fa fa-save"></i> Save All Subjects
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stream tabs for 11-12 -->
+                <div id="subStreamTabs" style="display:none;border-bottom:1px solid var(--border);margin:0 -20px;padding:0 20px;">
+                    <div id="subStreamTabBar" style="display:flex;gap:0;"></div>
+                </div>
+            </div>
+
+            <!-- Editable subject list -->
+            <div class="sc-card" id="subEditorBody">
+                <div id="subEditList"></div>
+
+                <!-- Add new subject row -->
+                <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
+                    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+                        <div class="sc-field" style="flex:2;min-width:160px;">
+                            <label>Subject Name</label>
+                            <input type="text" id="subNewName" placeholder="e.g. Computer Science" maxlength="80">
+                        </div>
+                        <div class="sc-field" style="flex:1;min-width:120px;">
+                            <label>Category</label>
+                            <select id="subNewCat">
+                                <option value="Core">Core</option>
+                                <option value="Elective">Elective</option>
+                                <option value="Language">Language</option>
+                                <option value="Additional">Additional</option>
+                                <option value="Vocational">Vocational</option>
+                                <option value="Assessment">Assessment</option>
+                            </select>
+                        </div>
+                        <div class="sc-field" id="subNewStreamWrap" style="flex:1;min-width:120px;display:none;">
+                            <label>Stream</label>
+                            <select id="subNewStream"></select>
+                        </div>
+                        <button class="sc-btn sc-btn-primary sc-btn-sm" onclick="subAddRow()" style="height:38px;white-space:nowrap;">
+                            <i class="fa fa-plus"></i> Add
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Count summary -->
+                <div id="subSummary" style="margin-top:14px;padding:10px 14px;background:var(--bg3);border-radius:8px;font-size:12px;color:var(--t3);display:flex;gap:14px;flex-wrap:wrap;"></div>
+            </div>
+        </div>
+
     </div>
 
     <!-- ════════════════════════════════════════════════════════ -->
     <!-- TAB: Streams                                            -->
     <!-- ════════════════════════════════════════════════════════ -->
     <div class="sc-pane" id="tab-streams">
+        <div class="sc-step-hint">
+            <span class="sc-step-badge">Step 5</span>
+            Configure streams for senior classes (11th &amp; 12th) &mdash; Science, Commerce, Arts, etc. Set up streams before creating sections.
+        </div>
         <div class="sc-card">
             <div class="sc-card-title" style="justify-content:space-between;">
                 <span><i class="fa fa-code-fork"></i> Stream Configuration</span>
@@ -657,6 +770,86 @@
         </div>
     </div>
 
+    <!-- ════════════════════════════════════════════════════════ -->
+    <!-- TAB: Report Card Template                                -->
+    <!-- ════════════════════════════════════════════════════════ -->
+    <div class="sc-pane" id="tab-reportcard">
+        <div class="sc-step-hint">
+            <span class="sc-step-badge">Step 8</span>
+            Choose a report card template. This is the final step &mdash; your school is now fully configured!
+        </div>
+        <div class="sc-card">
+            <div class="sc-card-title"><i class="fa fa-file-text-o"></i> Report Card Template</div>
+            <div style="font-size:12px;color:var(--t3);margin-bottom:18px;">
+                Choose a report card layout for your school. This template will be used when printing student report cards.
+            </div>
+
+            <div class="rct-grid" id="rcTemplateGrid">
+                <!-- Classic -->
+                <div class="rct-card" data-tpl="classic">
+                    <div class="rct-preview rct-preview-classic">
+                        <div class="rct-mini-header" style="background:#14532d"></div>
+                        <div class="rct-mini-row"></div><div class="rct-mini-row"></div><div class="rct-mini-row"></div>
+                        <div class="rct-mini-footer" style="background:#fdebd0"></div>
+                    </div>
+                    <div class="rct-name">Classic</div>
+                    <div class="rct-desc">Traditional green/teal school format with detailed component columns. Original default.</div>
+                </div>
+                <!-- CBSE -->
+                <div class="rct-card" data-tpl="cbse">
+                    <div class="rct-preview rct-preview-cbse">
+                        <div class="rct-mini-header" style="background:#1a237e"></div>
+                        <div class="rct-mini-row"></div><div class="rct-mini-row"></div><div class="rct-mini-row"></div>
+                        <div class="rct-mini-footer" style="background:#283593"></div>
+                    </div>
+                    <div class="rct-name">CBSE</div>
+                    <div class="rct-desc">Official CBSE CCE-style with blue/navy theme, scholastic &amp; co-scholastic sections.</div>
+                </div>
+                <!-- Minimal -->
+                <div class="rct-card" data-tpl="minimal">
+                    <div class="rct-preview rct-preview-minimal">
+                        <div class="rct-mini-header" style="background:#2563eb;height:6px"></div>
+                        <div class="rct-mini-row" style="border-color:#e5e7eb"></div>
+                        <div class="rct-mini-row" style="border-color:#e5e7eb"></div>
+                        <div class="rct-mini-row" style="border-color:#e5e7eb"></div>
+                        <div class="rct-mini-footer" style="background:#f3f4f6"></div>
+                    </div>
+                    <div class="rct-name">Minimal</div>
+                    <div class="rct-desc">Ultra-clean, modern design. Monochrome with blue accent. Compact and readable.</div>
+                </div>
+                <!-- Modern -->
+                <div class="rct-card" data-tpl="modern">
+                    <div class="rct-preview rct-preview-modern">
+                        <div class="rct-mini-header" style="background:linear-gradient(135deg,#667eea,#764ba2)"></div>
+                        <div class="rct-mini-row" style="border-radius:4px;margin:3px"></div>
+                        <div class="rct-mini-row" style="border-radius:4px;margin:3px"></div>
+                        <div class="rct-mini-footer" style="background:linear-gradient(135deg,#667eea,#764ba2);height:8px"></div>
+                    </div>
+                    <div class="rct-name">Modern</div>
+                    <div class="rct-desc">Card-based layout with gradients, progress bars, and metric dashboard.</div>
+                </div>
+                <!-- Elegant -->
+                <div class="rct-card" data-tpl="elegant">
+                    <div class="rct-preview rct-preview-elegant" style="border:2px double #8B6914;background:#FFFDF5">
+                        <div class="rct-mini-header" style="background:#8B6914;height:10px"></div>
+                        <div class="rct-mini-row" style="background:#FFF8E7"></div>
+                        <div class="rct-mini-row" style="background:#FFFDF5"></div>
+                        <div class="rct-mini-footer" style="background:#8B6914"></div>
+                    </div>
+                    <div class="rct-name">Elegant</div>
+                    <div class="rct-desc">Premium certificate-style with serif fonts, gold accents, and decorative borders.</div>
+                </div>
+            </div>
+
+            <div style="margin-top:18px;display:flex;align-items:center;gap:14px;">
+                <button class="sc-btn sc-btn-gold" id="btnSaveRcTemplate">
+                    <i class="fa fa-save"></i> Save Template
+                </button>
+                <span id="rcCurrentLabel" style="font-size:12px;color:var(--t3);">Current: Classic</span>
+            </div>
+        </div>
+    </div>
+
 </div><!-- /.sc-wrap -->
 </div><!-- /.content-wrapper -->
 
@@ -694,10 +887,20 @@ document.getElementById('scTabs').addEventListener('click', function(e) {
     if (btn.dataset.tab === 'sessions') {
         syncSessions();
     }
+    if (btn.dataset.tab === 'sections') {
+        loadAllSections();
+    }
 });
 
 /* ── POST helper ────────────────────────────────────────────── */
+function _readCsrfCookie() {
+    var match = document.cookie.match(new RegExp('(?:^|;\\s*)' + CSRFN + '=([^;]+)'));
+    return match ? decodeURIComponent(match[1]) : CSRFT;
+}
 function post(url, data, cb) {
+    // Always read the latest CSRF token from the cookie to avoid stale-token errors
+    // (e.g., when switching between SA panel and school panel tabs)
+    CSRFT = _readCsrfCookie();
     data[CSRFN] = CSRFT;
     var body = Object.keys(data).map(function(k) {
         return encodeURIComponent(k) + '=' + encodeURIComponent(data[k]);
@@ -708,12 +911,35 @@ function post(url, data, cb) {
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'X-CSRF-Token': CSRFT,
+            'X-Requested-With': 'XMLHttpRequest',
         },
         body: body,
     })
-    .then(function(r) { return r.json(); })
-    .then(function(d) { cb(d); })
-    .catch(function(e) { cb({ status: 'error', message: 'Network error.' }); });
+    .then(function(r) {
+        if (!r.ok && r.status === 403) {
+            // CSRF token likely expired/mismatched — refresh and retry once
+            return r.text().then(function(txt) {
+                if (txt.indexOf('action is not allowed') !== -1 || txt.indexOf('csrf') !== -1) {
+                    throw new Error('CSRF token expired. Please reload the page.');
+                }
+                throw new Error('Access denied (HTTP 403).');
+            });
+        }
+        var ct = r.headers.get('content-type') || '';
+        if (ct.indexOf('application/json') === -1) {
+            return r.text().then(function(txt) {
+                console.error('Non-JSON response from ' + url + ':', txt.substring(0, 500));
+                throw new Error('Server error (HTTP ' + r.status + '). Check console for details.');
+            });
+        }
+        return r.json();
+    })
+    .then(function(d) { if (d.csrf_token) CSRFT = d.csrf_token; cb(d); })
+    .catch(function(e) {
+        console.error('POST ' + url + ' failed:', e);
+        var msg = (e && e.message) ? e.message : 'Network error — check console for details.';
+        cb({ status: 'error', message: msg });
+    });
 }
 
 /* ── Load all config on init ────────────────────────────────── */
@@ -730,6 +956,7 @@ function loadConfig() {
         renderClassSelects(d.classes || [], d.sessions || [], d.active_session || '');
         renderStreams(d.streams || {});
         populateStreamDropdown(d.streams || {});
+        renderReportCardTemplate(d.report_card_template || 'classic');
     });
 }
 
@@ -880,6 +1107,25 @@ window.addSession = function() {
             renderSessions(d.sessions, CFG.active_session || '');
             CFG.sessions = d.sessions;
             renderClassSelects(CFG.classes || [], d.sessions, CFG.active_session || '');
+
+            // Add the new session to the header dropdown so it can be switched to
+            var headerList = document.querySelector('.g-sess-list');
+            if (headerList) {
+                var existing = headerList.querySelector('[data-year="' + val + '"]');
+                if (!existing) {
+                    var li = document.createElement('li');
+                    li.className = 'g-sess-item';
+                    li.dataset.year = val;
+                    li.innerHTML = '<i class="fa fa-check g-sess-check"></i> ' + val;
+                    li.addEventListener('click', function() {
+                        var year = this.dataset.year;
+                        $.post(BASE_URL + 'admin/switch_session', { session_year: year })
+                         .done(function(res) { if (res && res.status === 'success') window.location.reload(); })
+                         .fail(function() { alert('Failed to switch session.'); });
+                    });
+                    headerList.appendChild(li);
+                }
+            }
         }
     });
 };
@@ -893,6 +1139,18 @@ window.setActive = function(sess) {
             currentSession = sess;
             renderSessions(CFG.sessions || [], sess);
             renderClassSelects(CFG.classes || [], CFG.sessions || [], sess);
+
+            // Sync the header session switcher without a full page reload
+            var headerLabel = document.getElementById('gSessLabel');
+            if (headerLabel) headerLabel.textContent = sess;
+            // Update header dropdown active state
+            document.querySelectorAll('.g-sess-item').forEach(function(item) {
+                if (item.dataset.year === sess) {
+                    item.classList.add('g-sess-item--active');
+                } else {
+                    item.classList.remove('g-sess-item--active');
+                }
+            });
         }
     });
 };
@@ -1194,123 +1452,656 @@ function renderClassSelects(classes, sessions, activeSess) {
     if (sessSel) sessSel.innerHTML = sessOpts || '<option value="">No sessions</option>';
 }
 
-/* ══════════ SECTIONS ══════════ */
-window.loadSections = function() {
-    var classKey = document.getElementById('secClassSel').value;
-    var sess     = document.getElementById('secSessSel').value;
-    if (!classKey || !sess) { toast('Select class and session.', false); return; }
+/* ══════════ SECTIONS — BULK MATRIX ══════════ */
+var _secOriginal = {};   // { classKey: ['A','B'] } — from server
+var _secCurrent  = {};   // { classKey: ['A','B','C'] } — user edits
+var _defaultLetters = ['A','B','C','D','E','F'];
 
-    post('school_config/get_sections', { class_key: classKey, session: sess }, function(d) {
+var _availableStreams = []; // from server
+
+function loadAllSections() {
+    var sess = document.getElementById('secSessSel').value;
+    if (!sess) { toast('Select a session first.', false); return; }
+    document.getElementById('sectionMatrixLoader').style.display = 'block';
+    document.getElementById('sectionMatrix').innerHTML = '';
+    document.getElementById('secBulkBar').style.display = 'none';
+
+    post('school_config/get_all_sections', { session: sess }, function(d) {
+        document.getElementById('sectionMatrixLoader').style.display = 'none';
         if (d.status !== 'success') { toast(d.message, false); return; }
-        var card = document.getElementById('sectionsCard');
-        card.style.display = 'block';
-        document.getElementById('sectionsClassLabel').textContent = d.class_node + ' (' + sess + ')';
-        renderSectionPills(d.sections, classKey, sess);
+        _secOriginal = {};
+        _secCurrent  = {};
+        _availableStreams = d.streams || [];
+
+        // Collect all letters used across all classes to build column headers
+        var allLetters = _defaultLetters.slice();
+        (d.classes || []).forEach(function(cls) {
+            if (cls.streams_enabled && cls.stream_sections) {
+                // For stream-enabled classes, build composite keys like "Science A"
+                var compositeKeys = [];
+                Object.keys(cls.stream_sections || {}).forEach(function(stm) {
+                    (cls.stream_sections[stm] || []).forEach(function(l) {
+                        compositeKeys.push(stm + ' ' + l);
+                    });
+                });
+                // Also include any plain sections
+                (cls.sections || []).forEach(function(s) {
+                    compositeKeys.push(s);
+                });
+                _secOriginal[cls.key] = compositeKeys.slice();
+                _secCurrent[cls.key]  = compositeKeys.slice();
+            } else {
+                _secOriginal[cls.key] = (cls.sections || []).slice();
+                _secCurrent[cls.key]  = (cls.sections || []).slice();
+                cls.sections.forEach(function(l) {
+                    if (allLetters.indexOf(l) === -1) allLetters.push(l);
+                });
+            }
+        });
+        allLetters.sort();
+
+        renderMatrix(d.classes || [], allLetters);
+        updateChangeCount();
+    });
+}
+window.loadAllSections = loadAllSections;
+
+function renderMatrix(classes, letters) {
+    if (!classes.length) {
+        document.getElementById('sectionMatrix').innerHTML =
+            '<div style="color:var(--t3);padding:20px;text-align:center;">'
+            + '<i class="fa fa-info-circle"></i> No classes found. Add classes in the Classes tab first.</div>';
+        return;
+    }
+
+    var html = '<div style="overflow-x:auto;"><table class="sc-matrix-table">';
+
+    // Header row
+    html += '<thead><tr><th style="text-align:left;min-width:140px;">Class</th>';
+    letters.forEach(function(l) {
+        html += '<th style="width:44px;text-align:center;">' + esc(l) + '</th>';
+    });
+    html += '<th style="width:60px;text-align:center;font-size:11px;color:var(--t3);">Count</th>';
+    html += '<th style="width:70px;text-align:center;font-size:11px;color:var(--t3);">Quick</th>';
+    html += '</tr></thead><tbody>';
+
+    classes.forEach(function(cls) {
+        if (cls.streams_enabled && _availableStreams.length) {
+            // Stream-enabled class: render one row per stream
+            _availableStreams.forEach(function(stm) {
+                html += '<tr data-classkey="' + esc(cls.key) + '" data-stream="' + esc(stm) + '">';
+                html += '<td style="font-weight:600;font-size:13px;white-space:nowrap;">'
+                    + '<i class="fa fa-code-fork" style="color:var(--amber);margin-right:6px;font-size:11px;"></i>'
+                    + esc(cls.label) + ' <span class="sc-tag sc-tag-amber" style="font-size:10px;">' + esc(stm) + '</span></td>';
+                var cur = _secCurrent[cls.key] || [];
+                letters.forEach(function(l) {
+                    var compositeKey = stm + ' ' + l;
+                    var active = cur.indexOf(compositeKey) !== -1;
+                    html += '<td style="text-align:center;">'
+                        + '<button class="sec-toggle' + (active ? ' sec-on' : '') + '" '
+                        + 'data-class="' + esc(cls.key) + '" data-letter="' + esc(compositeKey) + '" '
+                        + 'data-stream="' + esc(stm) + '" '
+                        + 'onclick="toggleSection(this)" title="Section ' + esc(compositeKey) + '">'
+                        + esc(l) + '</button></td>';
+                });
+                var streamCount = cur.filter(function(s) { return s.indexOf(stm + ' ') === 0; }).length;
+                html += '<td style="text-align:center;font-weight:700;font-size:13px;" class="sec-count-cell" data-stream="' + esc(stm) + '">'
+                    + streamCount + '</td>';
+                html += '<td style="text-align:center;white-space:nowrap;">'
+                    + '<button class="sc-btn sc-btn-ghost" style="padding:2px 6px;font-size:10px;border-radius:4px;" '
+                    + 'onclick="quickSetStreamSections(\'' + esc(cls.key) + '\',\'' + esc(stm) + '\', 1)" title="Set only ' + esc(stm) + ' A">1</button>'
+                    + '<button class="sc-btn sc-btn-ghost" style="padding:2px 6px;font-size:10px;border-radius:4px;" '
+                    + 'onclick="quickSetStreamSections(\'' + esc(cls.key) + '\',\'' + esc(stm) + '\', 2)" title="Set ' + esc(stm) + ' A, B">2</button>'
+                    + '</td>';
+                html += '</tr>';
+            });
+        } else {
+            // Normal class: one row with plain letter sections
+            html += '<tr data-classkey="' + esc(cls.key) + '">';
+            html += '<td style="font-weight:600;font-size:13px;white-space:nowrap;">'
+                + '<i class="fa fa-graduation-cap" style="color:var(--gold);margin-right:6px;font-size:11px;"></i>'
+                + esc(cls.label) + '</td>';
+            var cur = _secCurrent[cls.key] || [];
+            letters.forEach(function(l) {
+                var active = cur.indexOf(l) !== -1;
+                html += '<td style="text-align:center;">'
+                    + '<button class="sec-toggle' + (active ? ' sec-on' : '') + '" '
+                    + 'data-class="' + esc(cls.key) + '" data-letter="' + esc(l) + '" '
+                    + 'onclick="toggleSection(this)" title="Section ' + esc(l) + '">'
+                    + esc(l) + '</button></td>';
+            });
+            html += '<td style="text-align:center;font-weight:700;font-size:13px;" class="sec-count-cell">'
+                + cur.length + '</td>';
+            html += '<td style="text-align:center;white-space:nowrap;">'
+                + '<button class="sc-btn sc-btn-ghost" style="padding:2px 6px;font-size:10px;border-radius:4px;" '
+                + 'onclick="quickSetSections(\'' + esc(cls.key) + '\', 1)" title="Set only Section A">1</button>'
+                + '<button class="sc-btn sc-btn-ghost" style="padding:2px 6px;font-size:10px;border-radius:4px;" '
+                + 'onclick="quickSetSections(\'' + esc(cls.key) + '\', 3)" title="Set A, B, C">3</button>'
+                + '<button class="sc-btn sc-btn-ghost" style="padding:2px 6px;font-size:10px;border-radius:4px;" '
+                + 'onclick="quickSetSections(\'' + esc(cls.key) + '\', 6)" title="Set A through F">6</button>'
+                + '</td>';
+            html += '</tr>';
+        }
+    });
+
+    // Bulk row at bottom (for non-stream classes only)
+    html += '<tr style="border-top:2px solid var(--border);background:var(--bg3);">';
+    html += '<td style="font-size:12px;color:var(--t2);font-weight:600;">Apply to ALL (non-stream)</td>';
+    letters.forEach(function(l) {
+        html += '<td style="text-align:center;">'
+            + '<button class="sec-toggle-all" data-letter="' + esc(l) + '" '
+            + 'onclick="toggleColumnAll(this)" title="Toggle ' + esc(l) + ' for all classes" '
+            + 'style="font-size:10px;">' + esc(l) + '</button></td>';
+    });
+    html += '<td></td><td></td></tr>';
+
+    html += '</tbody></table></div>';
+
+    // Inject styles for toggle buttons
+    html += '<style>'
+        + '.sc-matrix-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;}'
+        + '.sc-matrix-table th{padding:8px 4px;font-size:11px;font-weight:600;color:var(--t2);'
+        + 'text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--border);}'
+        + '.sc-matrix-table td{padding:6px 4px;border-bottom:1px solid var(--border);vertical-align:middle;}'
+        + '.sc-matrix-table tbody tr:hover{background:var(--gold-dim);}'
+        + '.sec-toggle{width:34px;height:34px;border-radius:8px;border:2px solid var(--border);'
+        + 'background:var(--bg2);color:var(--t3);font-weight:700;font-size:13px;cursor:pointer;'
+        + 'transition:all .15s var(--ease);display:inline-flex;align-items:center;justify-content:center;}'
+        + '.sec-toggle:hover{border-color:var(--gold);color:var(--t1);transform:scale(1.08);}'
+        + '.sec-toggle.sec-on{background:var(--gold);border-color:var(--gold);color:#fff;box-shadow:0 2px 8px var(--gold-glow);}'
+        + '.sec-toggle.sec-on:hover{background:var(--gold2);}'
+        + '.sec-toggle.sec-changed{box-shadow:0 0 0 2px var(--amber);}'
+        + '.sec-toggle-all{width:28px;height:28px;border-radius:6px;border:1px dashed var(--border);'
+        + 'background:transparent;color:var(--t3);font-weight:600;cursor:pointer;transition:all .15s var(--ease);'
+        + 'display:inline-flex;align-items:center;justify-content:center;}'
+        + '.sec-toggle-all:hover{border-color:var(--gold);color:var(--gold);background:var(--gold-dim);}'
+        + '</style>';
+
+    document.getElementById('sectionMatrix').innerHTML = html;
+}
+
+window.toggleSection = function(btn) {
+    var classKey = btn.getAttribute('data-class');
+    var letter   = btn.getAttribute('data-letter'); // plain "A" or composite "Science A"
+    var streamName = btn.getAttribute('data-stream') || '';
+    var cur      = _secCurrent[classKey] || [];
+    var idx      = cur.indexOf(letter);
+    if (idx !== -1) {
+        cur.splice(idx, 1);
+        btn.classList.remove('sec-on');
+    } else {
+        cur.push(letter);
+        cur.sort();
+        btn.classList.add('sec-on');
+    }
+    _secCurrent[classKey] = cur;
+
+    // Mark changed vs original
+    var orig = _secOriginal[classKey] || [];
+    var changed = (orig.indexOf(letter) !== -1) !== (cur.indexOf(letter) !== -1);
+    btn.classList.toggle('sec-changed', changed);
+
+    // Update count cell
+    var row = btn.closest('tr');
+    if (row) {
+        var countCell = row.querySelector('.sec-count-cell');
+        if (countCell) {
+            if (streamName) {
+                // Count only sections for this stream
+                var streamCount = cur.filter(function(s) { return s.indexOf(streamName + ' ') === 0; }).length;
+                countCell.textContent = streamCount;
+            } else {
+                countCell.textContent = cur.length;
+            }
+        }
+    }
+    updateChangeCount();
+};
+
+window.quickSetSections = function(classKey, count) {
+    var letters = _defaultLetters.slice(0, count);
+    _secCurrent[classKey] = letters.slice();
+    // Re-render the buttons in that row
+    var row = document.querySelector('tr[data-classkey="' + classKey + '"]:not([data-stream])');
+    if (!row) return;
+    row.querySelectorAll('.sec-toggle').forEach(function(btn) {
+        var l = btn.getAttribute('data-letter');
+        var on = letters.indexOf(l) !== -1;
+        btn.classList.toggle('sec-on', on);
+        var orig = _secOriginal[classKey] || [];
+        var changed = (orig.indexOf(l) !== -1) !== on;
+        btn.classList.toggle('sec-changed', changed);
+    });
+    var countCell = row.querySelector('.sec-count-cell');
+    if (countCell) countCell.textContent = letters.length;
+    updateChangeCount();
+};
+
+window.quickSetStreamSections = function(classKey, streamName, count) {
+    var letters = _defaultLetters.slice(0, count);
+    var cur = _secCurrent[classKey] || [];
+    // Remove all existing sections for this stream
+    cur = cur.filter(function(s) { return s.indexOf(streamName + ' ') !== 0; });
+    // Add new stream sections
+    letters.forEach(function(l) { cur.push(streamName + ' ' + l); });
+    _secCurrent[classKey] = cur;
+    // Re-render the buttons in that stream row
+    var row = document.querySelector('tr[data-classkey="' + classKey + '"][data-stream="' + streamName + '"]');
+    if (!row) return;
+    row.querySelectorAll('.sec-toggle').forEach(function(btn) {
+        var compositeKey = btn.getAttribute('data-letter');
+        var on = cur.indexOf(compositeKey) !== -1;
+        btn.classList.toggle('sec-on', on);
+        var orig = _secOriginal[classKey] || [];
+        var changed = (orig.indexOf(compositeKey) !== -1) !== on;
+        btn.classList.toggle('sec-changed', changed);
+    });
+    var countCell = row.querySelector('.sec-count-cell');
+    if (countCell) countCell.textContent = count;
+    updateChangeCount();
+};
+
+window.toggleColumnAll = function(btn) {
+    var letter = btn.getAttribute('data-letter');
+    // Only apply to non-stream classes
+    var nonStreamKeys = [];
+    Object.keys(_secCurrent).forEach(function(k) {
+        // Check if any section contains a stream prefix — if so, it's a stream class
+        var hasStream = _secCurrent[k].some(function(s) { return s.indexOf(' ') !== -1; });
+        // Also check if _availableStreams has entries and this key is 11 or 12
+        if (!hasStream && ['11','12'].indexOf(k) === -1) nonStreamKeys.push(k);
+        else if (!hasStream) nonStreamKeys.push(k); // 11/12 with no stream sections yet = treat as non-stream
+    });
+
+    var onCount = 0;
+    nonStreamKeys.forEach(function(k) {
+        if (_secCurrent[k].indexOf(letter) !== -1) onCount++;
+    });
+    var shouldAdd = onCount <= nonStreamKeys.length / 2;
+
+    nonStreamKeys.forEach(function(classKey) {
+        var cur = _secCurrent[classKey];
+        var idx = cur.indexOf(letter);
+        if (shouldAdd && idx === -1) {
+            cur.push(letter);
+            cur.sort();
+        } else if (!shouldAdd && idx !== -1) {
+            cur.splice(idx, 1);
+        }
+        _secCurrent[classKey] = cur;
+    });
+    // Re-render all toggle buttons for this letter (non-stream only)
+    document.querySelectorAll('.sec-toggle[data-letter="' + letter + '"]:not([data-stream])').forEach(function(b) {
+        var ck = b.getAttribute('data-class');
+        var on = _secCurrent[ck].indexOf(letter) !== -1;
+        b.classList.toggle('sec-on', on);
+        var orig = _secOriginal[ck] || [];
+        b.classList.toggle('sec-changed', (orig.indexOf(letter) !== -1) !== on);
+        var row = b.closest('tr');
+        if (row) {
+            var cc = row.querySelector('.sec-count-cell');
+            if (cc) cc.textContent = _secCurrent[ck].length;
+        }
+    });
+    updateChangeCount();
+};
+
+function updateChangeCount() {
+    var count = 0;
+    Object.keys(_secCurrent).forEach(function(k) {
+        var orig = (_secOriginal[k] || []).slice().sort().join(',');
+        var cur  = (_secCurrent[k]  || []).slice().sort().join(',');
+        if (orig !== cur) count++;
+    });
+    var bar = document.getElementById('secBulkBar');
+    bar.style.display = count > 0 ? 'flex' : 'none';
+    document.getElementById('secChangeCount').textContent = count;
+}
+
+window.discardSectionChanges = function() {
+    // Reset current to original
+    Object.keys(_secOriginal).forEach(function(k) {
+        _secCurrent[k] = _secOriginal[k].slice();
+    });
+    loadAllSections(); // re-render
+};
+
+window.saveBulkSections = function() {
+    var sess = document.getElementById('secSessSel').value;
+    var changes = [];
+
+    Object.keys(_secCurrent).forEach(function(classKey) {
+        var orig = (_secOriginal[classKey] || []).slice().sort();
+        var cur  = (_secCurrent[classKey]  || []).slice().sort();
+        if (orig.join(',') === cur.join(',')) return; // no change
+
+        var toAdd    = cur.filter(function(l) { return orig.indexOf(l) === -1; });
+        var toRemove = orig.filter(function(l) { return cur.indexOf(l) === -1; });
+        if (toAdd.length || toRemove.length) {
+            changes.push({ class_key: classKey, add: toAdd, remove: toRemove });
+        }
+    });
+
+    if (!changes.length) { toast('No changes to save.'); return; }
+
+    var btn = document.getElementById('secBulkSaveBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving...';
+
+    post('school_config/bulk_save_sections', { session: sess, changes: JSON.stringify(changes) }, function(d) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa fa-check"></i> Save All Changes';
+        toast(d.message, d.status === 'success');
+        if (d.status === 'success') {
+            loadAllSections(); // refresh from server
+        }
     });
 };
 
-function renderSectionPills(sections, classKey, sess) {
-    var el = document.getElementById('sectionsList');
-    if (!sections.length) {
-        el.innerHTML = '<div style="color:var(--t3);font-size:12px;">No sections yet.</div>';
-        return;
-    }
-    el.innerHTML = sections.map(function(s) {
-        var letter = s.replace('Section ', '');
-        return '<div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:24px;">'
-            + '<i class="fa fa-columns" style="color:var(--gold);font-size:12px;"></i>'
-            + '<span style="font-weight:700;font-size:14px;">' + esc(letter) + '</span>'
-            + '<button class="sc-btn sc-btn-danger sc-btn-sm" style="padding:3px 8px;" onclick="deleteSection(\'' + esc(classKey) + '\',\'' + esc(letter) + '\',\'' + esc(sess) + '\')">'
-            + '<i class="fa fa-trash"></i></button>'
-            + '</div>';
-    }).join('');
-}
-
+/* Legacy single-class add (for custom section letters beyond F) */
 window.addSection = function() {
     var classKey = document.getElementById('secClassSel').value;
     var sess     = document.getElementById('secSessSel').value;
     var letter   = document.getElementById('newSectionInput').value.trim().toUpperCase();
+    if (!classKey) { toast('Select a class.', false); return; }
     if (!letter) { toast('Enter a section letter (A-Z).', false); return; }
     post('school_config/save_section', { class_key: classKey, section: letter, session: sess }, function(d) {
         toast(d.message, d.status === 'success');
         if (d.status === 'success') {
             document.getElementById('newSectionInput').value = '';
-            loadSections();
+            loadAllSections(); // refresh matrix
         }
     });
 };
 
+/* Keep legacy functions wired (old loadSections still used internally) */
+window.loadSections = loadAllSections;
 window.deleteSection = function(classKey, letter, sess) {
     if (!confirm('Delete Section ' + letter + '? This cannot be undone.')) return;
     post('school_config/delete_section', { class_key: classKey, section: letter, session: sess }, function(d) {
         toast(d.message, d.status === 'success');
-        if (d.status === 'success') loadSections();
+        if (d.status === 'success') loadAllSections();
     });
 };
 
 /* ══════════ SUBJECTS ══════════ */
-window.loadSubjects = function() {
+
+// Reset subject editor when class dropdown changes
+document.getElementById('subClassSel').addEventListener('change', function() {
+    document.getElementById('subEditorWrap').style.display = 'none';
+    _subClassKey = '';
+    _subItems = [];
+});
+
+/* ══════════ SUBJECT CONFIGURATION (v2) ══════════ */
+var _subClassKey = '';      // current class being edited
+var _subItems = [];         // working list: [{name,category,stream,code}]
+var _subHasStreams = false;
+var _subStreams = [];        // ['Science','Commerce','Arts']
+var _subActiveStream = 'all'; // current stream tab filter
+
+window.subLoadClass = function() {
     var classKey = document.getElementById('subClassSel').value;
     if (!classKey) { toast('Select a class.', false); return; }
+    _subClassKey = classKey;
+    _subActiveStream = 'all';
 
+    var sel = document.getElementById('subClassSel');
+    var lbl = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : classKey;
+    document.getElementById('subEditorClassLabel').textContent = lbl;
+
+    // Load existing subjects first
     post('school_config/get_subjects', { class_key: classKey }, function(d) {
-        if (d.status !== 'success') { toast(d.message, false); return; }
-        var card = document.getElementById('subjectsCard');
-        card.style.display = 'block';
-        var sel = document.getElementById('subClassSel');
-        var lbl = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : classKey;
-        document.getElementById('subjectsClassLabel').textContent = lbl;
-        renderSubjectsTable(d.subjects, classKey);
-    });
-};
-
-function renderSubjectsTable(subjects, classKey) {
-    var tbody = document.getElementById('subjectsTbody');
-    if (!subjects.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="sc-empty"><i class="fa fa-book"></i> No subjects yet.</td></tr>';
-        return;
-    }
-    tbody.innerHTML = subjects.map(function(s) {
-        var streamTag = (s.stream && s.stream !== 'common')
-            ? '<span class="sc-tag sc-tag-amber">' + esc(s.stream) + '</span>'
-            : '<span style="color:var(--t3);font-size:12px;">--</span>';
-        return '<tr>'
-            + '<td><span class="sc-tag sc-tag-teal">' + esc(String(s.code)) + '</span></td>'
-            + '<td>' + esc(s.name) + '</td>'
-            + '<td><span class="sc-tag sc-tag-green">' + esc(s.category || 'Core') + '</span></td>'
-            + '<td>' + streamTag + '</td>'
-            + '<td><button class="sc-btn sc-btn-danger sc-btn-sm" onclick="deleteSubject(\'' + esc(classKey) + '\',\'' + esc(String(s.code)) + '\')">'
-            + '<i class="fa fa-trash"></i></button></td>'
-            + '</tr>';
-    }).join('');
-}
-
-window.addSubject = function() {
-    var classKey = document.getElementById('subClassSel').value;
-    var name     = document.getElementById('newSubName').value.trim();
-    if (!classKey || !name) { toast('Class and subject name are required.', false); return; }
-
-    post('school_config/save_subject', {
-        class_key: classKey,
-        name:      name,
-        category:  document.getElementById('newSubCat').value,
-        stream:    document.getElementById('newSubStream').value,
-        code:      document.getElementById('newSubCode').value.trim(),
-    }, function(d) {
-        toast(d.message, d.status === 'success');
-        if (d.status === 'success') {
-            document.getElementById('newSubName').value = '';
-            document.getElementById('newSubCode').value = '';
-            loadSubjects();
+        if (d.status === 'success' && d.subjects && d.subjects.length > 0) {
+            // School already has subjects for this class — load them for editing
+            _subItems = d.subjects.map(function(s) {
+                return { name: s.name, category: s.category||'Core', stream: s.stream||'common', code: s.code||'' };
+            });
+            _subDetectStreams();
+            document.getElementById('subEditorInfo').textContent =
+                d.subjects.length + ' subjects currently configured. Edit below, then Save.';
+            _subShowEditor();
+        } else {
+            // No subjects — load defaults
+            subResetDefaults();
         }
     });
 };
 
-window.deleteSubject = function(classKey, code) {
-    if (!confirm('Delete subject ' + code + '?')) return;
-    post('school_config/delete_subject', { class_key: classKey, code: code }, function(d) {
+window.subResetDefaults = function() {
+    if (!_subClassKey) { toast('Select a class first.', false); return; }
+
+    post('school_config/get_default_subjects', { class_key: _subClassKey }, function(d) {
+        if (d.status !== 'success') { toast(d.message, false); return; }
+
+        _subItems = [];
+        var defaults = d.defaults || {};
+
+        // Build flat list from defaults (common + stream-specific)
+        Object.keys(defaults).forEach(function(streamKey) {
+            var subjects = defaults[streamKey];
+            if (!Array.isArray(subjects)) return;
+            subjects.forEach(function(s) {
+                _subItems.push({
+                    name: s.name,
+                    category: s.category || 'Core',
+                    stream: streamKey,
+                    code: ''
+                });
+            });
+        });
+
+        _subHasStreams = d.hasStreams;
+        _subStreams = d.streams || [];
+        document.getElementById('subEditorInfo').textContent =
+            'Recommended subjects loaded for ' + d.classRange + '. Edit as needed, then click Save.';
+        _subShowEditor();
+    });
+};
+
+function _subDetectStreams() {
+    var streamSet = {};
+    _subItems.forEach(function(s) {
+        if (s.stream && s.stream !== 'common') streamSet[s.stream] = true;
+    });
+    _subStreams = Object.keys(streamSet);
+    _subHasStreams = _subStreams.length > 0;
+}
+
+function _subShowEditor() {
+    document.getElementById('subEditorWrap').style.display = 'block';
+
+    // Stream tabs
+    var tabBar = document.getElementById('subStreamTabBar');
+    var tabWrap = document.getElementById('subStreamTabs');
+    if (_subHasStreams) {
+        var tabs = '<button class="sc-btn sc-btn-sm _sub-tab active" data-stream="all" onclick="_subSwitchTab(\'all\')" style="border-radius:8px 8px 0 0;border-bottom:2px solid var(--gold);">All</button>';
+        tabs += '<button class="sc-btn sc-btn-sm _sub-tab" data-stream="common" onclick="_subSwitchTab(\'common\')" style="border-radius:8px 8px 0 0;">Common</button>';
+        _subStreams.forEach(function(st) {
+            tabs += '<button class="sc-btn sc-btn-sm _sub-tab" data-stream="'+esc(st)+'" onclick="_subSwitchTab(\''+esc(st)+'\')" style="border-radius:8px 8px 0 0;">'+esc(st)+'</button>';
+        });
+        tabBar.innerHTML = tabs;
+        tabWrap.style.display = 'block';
+
+        // Show stream in add-new row
+        var nsSel = document.getElementById('subNewStream');
+        nsSel.innerHTML = '<option value="common">Common</option>';
+        _subStreams.forEach(function(st) {
+            nsSel.innerHTML += '<option value="'+esc(st)+'">'+esc(st)+'</option>';
+        });
+        document.getElementById('subNewStreamWrap').style.display = 'block';
+    } else {
+        tabWrap.style.display = 'none';
+        document.getElementById('subNewStreamWrap').style.display = 'none';
+    }
+
+    _subRender();
+}
+
+window._subSwitchTab = function(stream) {
+    _subActiveStream = stream;
+    document.querySelectorAll('._sub-tab').forEach(function(b) {
+        var isCur = b.getAttribute('data-stream') === stream;
+        b.classList.toggle('active', isCur);
+        b.style.borderBottom = isCur ? '2px solid var(--gold)' : 'none';
+        b.style.fontWeight = isCur ? '700' : '400';
+    });
+    _subRender();
+};
+
+function _subRender() {
+    var el = document.getElementById('subEditList');
+    var filtered = _subItems.filter(function(s, idx) {
+        s._idx = idx; // preserve original index
+        if (_subActiveStream === 'all') return true;
+        return (s.stream || 'common') === _subActiveStream;
+    });
+
+    if (!filtered.length) {
+        el.innerHTML = '<div class="sc-empty" style="padding:30px;text-align:center;"><i class="fa fa-inbox" style="font-size:24px;color:var(--t3);"></i>'
+            + '<div style="margin-top:8px;color:var(--t3);">No subjects' + (_subActiveStream !== 'all' ? ' for ' + esc(_subActiveStream) : '') + '. Add one below.</div></div>';
+        _subUpdateSummary();
+        return;
+    }
+
+    var catColors = {
+        Core:'var(--gold)', Elective:'#8b5cf6', Language:'#2563eb',
+        Additional:'#f97316', Vocational:'#ec4899', Assessment:'#6b7280'
+    };
+
+    var html = filtered.map(function(s) {
+        var i = s._idx;
+        var cc = catColors[s.category] || 'var(--t3)';
+        var streamBadge = '';
+        if (_subHasStreams && s.stream && s.stream !== 'common') {
+            streamBadge = '<span class="sc-tag sc-tag-amber" style="font-size:10px;">'+esc(s.stream)+'</span>';
+        }
+
+        return '<div class="_sub-row" data-idx="'+i+'" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--bg2);transition:all .15s;">'
+            + '<span style="width:8px;height:8px;border-radius:50%;background:'+cc+';flex-shrink:0;" title="'+esc(s.category)+'"></span>'
+            + '<input type="text" value="'+esc(s.name)+'" class="_sub-name" data-idx="'+i+'" style="flex:2;min-width:120px;border:1px solid transparent;background:transparent;color:var(--t1);font-size:13px;font-weight:500;padding:4px 8px;border-radius:6px;outline:none;" onfocus="this.style.borderColor=\'var(--gold)\';this.style.background=\'var(--bg)\'" onblur="this.style.borderColor=\'transparent\';this.style.background=\'transparent\';_subUpdateItem('+i+',\'name\',this.value)">'
+            + '<select class="_sub-cat" data-idx="'+i+'" onchange="_subUpdateItem('+i+',\'category\',this.value)" style="flex:0 0 110px;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--t1);font-size:11.5px;padding:0 6px;">'
+            + ['Core','Elective','Language','Additional','Vocational','Assessment'].map(function(c){ return '<option value="'+c+'"'+(s.category===c?' selected':'')+'>'+c+'</option>'; }).join('')
+            + '</select>'
+            + streamBadge
+            + '<button onclick="_subRemoveItem('+i+')" class="sc-btn sc-btn-danger sc-btn-sm" style="padding:4px 8px;flex-shrink:0;" title="Remove"><i class="fa fa-times"></i></button>'
+            + '</div>';
+    }).join('');
+
+    el.innerHTML = html;
+    _subUpdateSummary();
+}
+
+window._subUpdateItem = function(idx, field, value) {
+    if (_subItems[idx]) _subItems[idx][field] = value.trim();
+};
+
+window._subRemoveItem = function(idx) {
+    _subItems.splice(idx, 1);
+    _subRender();
+};
+
+window.subAddRow = function() {
+    var name = document.getElementById('subNewName').value.trim();
+    if (!name) { toast('Enter a subject name.', false); return; }
+
+    // Check duplicate
+    var stream = _subHasStreams ? document.getElementById('subNewStream').value : 'common';
+    var exists = _subItems.some(function(s) {
+        return s.name.toLowerCase() === name.toLowerCase() && (s.stream||'common') === stream;
+    });
+    if (exists) { toast('Subject already in the list.', false); return; }
+
+    _subItems.push({
+        name: name,
+        category: document.getElementById('subNewCat').value,
+        stream: stream,
+        code: ''
+    });
+    document.getElementById('subNewName').value = '';
+    _subRender();
+    // Scroll to bottom
+    var el = document.getElementById('subEditList');
+    el.scrollTop = el.scrollHeight;
+};
+
+function _subUpdateSummary() {
+    var counts = {};
+    _subItems.forEach(function(s) {
+        var c = s.category || 'Core';
+        counts[c] = (counts[c] || 0) + 1;
+    });
+    var catColors = {
+        Core:'var(--gold)', Elective:'#8b5cf6', Language:'#2563eb',
+        Additional:'#f97316', Vocational:'#ec4899', Assessment:'#6b7280'
+    };
+    var html = '<strong style="color:var(--t1);">Total: '+_subItems.length+'</strong>';
+    Object.keys(counts).forEach(function(c) {
+        var cc = catColors[c] || 'var(--t3)';
+        html += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+cc+';margin-right:4px;"></span>'+c+': '+counts[c]+'</span>';
+    });
+    if (_subHasStreams) {
+        var sc = {common:0};
+        _subStreams.forEach(function(st){sc[st]=0;});
+        _subItems.forEach(function(s){ var k=s.stream||'common'; sc[k]=(sc[k]||0)+1; });
+        Object.keys(sc).forEach(function(k) {
+            if(sc[k]) html += '<span style="color:var(--t3);">'+esc(k===''||k==='common'?'Common':k)+': '+sc[k]+'</span>';
+        });
+    }
+    document.getElementById('subSummary').innerHTML = html;
+}
+
+window.subSaveAll = function() {
+    if (!_subClassKey) { toast('No class selected.', false); return; }
+
+    // Read latest values from inputs
+    document.querySelectorAll('._sub-name').forEach(function(inp) {
+        var idx = parseInt(inp.getAttribute('data-idx'));
+        if (_subItems[idx]) _subItems[idx].name = inp.value.trim();
+    });
+    document.querySelectorAll('._sub-cat').forEach(function(sel) {
+        var idx = parseInt(sel.getAttribute('data-idx'));
+        if (_subItems[idx]) _subItems[idx].category = sel.value;
+    });
+
+    // Filter empty names
+    var valid = _subItems.filter(function(s) { return s.name.trim() !== ''; });
+    if (!valid.length) { toast('Add at least one subject.', false); return; }
+
+    var btn = document.getElementById('subSaveBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving...';
+
+    post('school_config/save_bulk_subjects', {
+        class_key: _subClassKey,
+        subjects: JSON.stringify(valid)
+    }, function(d) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa fa-save"></i> Save All Subjects';
         toast(d.message, d.status === 'success');
-        if (d.status === 'success') loadSubjects();
+        if (d.status === 'success') {
+            // Reload to get generated codes
+            post('school_config/get_subjects', { class_key: _subClassKey }, function(r) {
+                if (r.status === 'success' && r.subjects) {
+                    _subItems = r.subjects.map(function(s) {
+                        return { name:s.name, category:s.category||'Core', stream:s.stream||'common', code:s.code||'' };
+                    });
+                    _subDetectStreams();
+                    _subRender();
+                }
+            });
+        }
+    });
+};
+
+/* Keep old function names working for backward compat */
+window.loadSubjects = function() { subLoadClass(); };
+window.loadSuggestedSubjects = function() { subResetDefaults(); };
+window.addSubject = function() { subAddRow(); };
+window.deleteSubject = function(ck, code) {
+    post('school_config/delete_subject', { class_key: ck, code: code }, function(d) {
+        toast(d.message, d.status === 'success');
+        if (d.status === 'success') subLoadClass();
     });
 };
 
@@ -1344,19 +2135,9 @@ function renderStreams(streams) {
     }).join('');
 }
 
-/* Populate the subject stream dropdown from configured streams */
+/* Populate the subject stream dropdown from configured streams (legacy compat, now a no-op) */
 function populateStreamDropdown(streams) {
-    var sel = document.getElementById('newSubStream');
-    if (!sel) return;
-    sel.innerHTML = '<option value="common">Common</option>';
-    if (typeof streams === 'object') {
-        Object.keys(streams).forEach(function(k) {
-            var s = streams[k];
-            if (s && s.enabled) {
-                sel.innerHTML += '<option value="' + esc(s.key) + '">' + esc(s.label || s.key) + '</option>';
-            }
-        });
-    }
+    // Stream dropdowns are now managed by the v2 subject editor (_subShowEditor)
 }
 
 window.editStream = function(key, label, enabled) {
@@ -1412,6 +2193,51 @@ window.seedStandardStreams = function() {
 function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+/* ══════════ REPORT CARD TEMPLATE ══════════ */
+var selectedRcTemplate = 'classic';
+
+function renderReportCardTemplate(tpl) {
+    selectedRcTemplate = tpl || 'classic';
+    var cards = document.querySelectorAll('#rcTemplateGrid .rct-card');
+    cards.forEach(function(c) {
+        c.classList.toggle('active', c.dataset.tpl === selectedRcTemplate);
+    });
+    var names = { classic:'Classic', cbse:'CBSE', minimal:'Minimal', modern:'Modern', elegant:'Elegant' };
+    document.getElementById('rcCurrentLabel').textContent = 'Current: ' + (names[selectedRcTemplate] || 'Classic');
+}
+
+document.getElementById('rcTemplateGrid').addEventListener('click', function(e) {
+    var card = e.target.closest('.rct-card');
+    if (!card) return;
+    renderReportCardTemplate(card.dataset.tpl);
+});
+
+document.getElementById('btnSaveRcTemplate').addEventListener('click', function() {
+    post('school_config/save_report_card_template', { template: selectedRcTemplate }, function(d) {
+        CSRFT = d.csrf_token || CSRFT;
+        if (d.status === 'success') {
+            toast('Report card template saved!');
+        } else {
+            toast(d.message || 'Failed to save template.', false);
+        }
+    });
+});
+
+/* ── Expose to inline onclick handlers ────────────────────────── */
+window.saveProfile = saveProfile;
+window.syncSessions = syncSessions;
+window.addSession = addSession;
+window.setActive = setActive;
+window.saveBoard = saveBoard;
+window.addGradeRow = addGradeRow;
+window.addClassRow = addClassRow;
+window.saveClasses = saveClasses;
+window.seedDefaultClasses = seedDefaultClasses;
+window.activateClassesInSession = activateClassesInSession;
+window.softDeleteClass = softDeleteClass;
+window.restoreClass = restoreClass;
+/* subject functions are assigned to window inline in their definitions */
 
 /* ── Init ────────────────────────────────────────────────────── */
 loadConfig();

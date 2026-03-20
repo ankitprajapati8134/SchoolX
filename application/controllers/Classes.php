@@ -9,6 +9,7 @@ class Classes extends MY_Controller
     public function __construct()
     {
         parent::__construct();
+        require_permission('Configuration');
     }
 
 

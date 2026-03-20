@@ -186,6 +186,50 @@ class Events extends MY_Controller
         $this->load->view('include/footer');
     }
 
+    /**
+     * Circular / advertisement page for an event (standalone printable).
+     */
+    public function circular(string $eventId = '')
+    {
+        $this->_require_role(self::VIEW_ROLES, 'events_view');
+        $this->_require_view();
+
+        if ($eventId === '') redirect(base_url('events/list'));
+
+        $event = $this->firebase->get($this->_evt("List/{$eventId}"));
+        if (!is_array($event)) {
+            redirect(base_url('events/list'));
+        }
+        $event['id'] = $eventId;
+
+        // Fetch school info for the circular header
+        $schoolDisplay = $this->school_display_name ?: $this->school_name;
+        $schoolLogo    = '';
+        $sysProfile    = $this->firebase->get("System/Schools/{$this->school_id}/profile");
+        if (is_array($sysProfile) && !empty($sysProfile['logo'])) {
+            $schoolLogo = $sysProfile['logo'];
+        } else {
+            $cfgProfile = $this->firebase->get("Schools/{$this->school_name}/Config/Profile");
+            if (is_array($cfgProfile) && !empty($cfgProfile['logo'])) {
+                $schoolLogo = $cfgProfile['logo'];
+            }
+        }
+
+        // Count participants
+        $participants = $this->firebase->get($this->_evt("Participants/{$eventId}"));
+        $pCount = is_array($participants) ? count($participants) : 0;
+
+        $data = [
+            'event'        => $event,
+            'school_name'  => $schoolDisplay,
+            'school_logo'  => $schoolLogo,
+            'participant_count' => $pCount,
+        ];
+
+        // Standalone page — no header/footer
+        $this->load->view('events/circular', $data);
+    }
+
     // ====================================================================
     //  DASHBOARD
     // ====================================================================

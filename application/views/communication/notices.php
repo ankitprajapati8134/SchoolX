@@ -38,10 +38,12 @@ $at = $active_tab ?? 'notices';
 .cm-badge-rose{background:rgba(239,68,68,.12);color:#ef4444}
 .cm-empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--font-b)}
 .cm-empty i{font-size:36px;display:block;margin-bottom:12px;opacity:.5}
+.cm-loading{text-align:center;padding:18px 20px;color:var(--t3);font-size:13px;font-family:var(--font-b)}
 /* Modal/toast/form styles inherited from header.php global definitions */
 .cm-modal{width:600px}
 .cm-form-group textarea{resize:vertical;min-height:80px}
 .cm-form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.cm-toast{position:fixed;top:20px;right:20px;z-index:10000;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;font-family:var(--font-b);color:#fff;display:none;max-width:400px;box-shadow:0 8px 24px rgba(0,0,0,.15)}
 .cm-toast.success{background:#22c55e;display:block}.cm-toast.error{background:#ef4444;display:block}
 </style>
 
@@ -59,7 +61,7 @@ $at = $active_tab ?? 'notices';
 
 <div class="cm-card">
     <div class="cm-card-title"><span>Notice Board</span><button class="cm-btn cm-btn-primary" onclick="NTC.openModal()"><i class="fa fa-plus"></i> Post Notice</button></div>
-    <table class="cm-table"><thead><tr><th>Title</th><th>Target</th><th>Category</th><th>Priority</th><th>Posted By</th><th>Date</th><th>Actions</th></tr></thead><tbody id="noticesTbody"><tr><td colspan="7" class="cm-empty"><i class="fa fa-spinner fa-spin"></i></td></tr></tbody></table>
+    <table class="cm-table"><thead><tr><th>Title</th><th>Target</th><th>Category</th><th>Priority</th><th>Posted By</th><th>Date</th><th>Actions</th></tr></thead><tbody id="noticesTbody"><tr><td colspan="7" class="cm-loading">Loading...</td></tr></tbody></table>
 </div>
 
 </div></section></div>
@@ -88,7 +90,7 @@ var CM = CM || {};
 CM.BASE = '<?= base_url() ?>';
 CM.toast = function(msg,type){var t=document.getElementById('cmToast');t.textContent=msg;t.className='cm-toast '+(type||'success');setTimeout(function(){t.className='cm-toast';},3000);};
 CM.esc = function(s){var d=document.createElement('span');d.textContent=s||'';return d.innerHTML;};
-CM.ajax = function(url,data,cb,method){$.ajax({url:CM.BASE+url,type:method||'GET',data:data,dataType:'json',success:function(r){if(r.status==='success'){if(cb)cb(r);}else CM.toast(r.message||'Error','error');},error:function(xhr){var m='Request failed';try{m=JSON.parse(xhr.responseText).message||m;}catch(e){}CM.toast(m,'error');}});};
+CM.ajax = function(url,data,cb,method,failCb){$.ajax({url:CM.BASE+url,type:method||'GET',data:data,dataType:'json',success:function(r){if(r.status==='success'){if(cb)cb(r);}else{CM.toast(r.message||'Error','error');if(failCb)failCb();}},error:function(xhr){var m='Request failed';try{m=JSON.parse(xhr.responseText).message||m;}catch(e){}CM.toast(m,'error');if(failCb)failCb();}});};
 
 var NTC = {};
 
@@ -114,6 +116,8 @@ NTC.load = function() {
             });
         }
         $('#noticesTbody').html(html);
+    }, null, function() {
+        $('#noticesTbody').html('<tr><td colspan="7" class="cm-empty"><i class="fa fa-exclamation-circle"></i> Failed to load notices</td></tr>');
     });
 
     // Load target groups for dropdown

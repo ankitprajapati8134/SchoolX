@@ -39,11 +39,13 @@ $at = $active_tab ?? 'logs';
 .cm-badge-rose{background:rgba(239,68,68,.12);color:#ef4444}
 .cm-empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--font-b)}
 .cm-empty i{font-size:36px;display:block;margin-bottom:12px;opacity:.5}
+.cm-loading{text-align:center;padding:18px 20px;color:var(--t3);font-size:13px;font-family:var(--font-b)}
 .cm-stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px}
 .cm-stat-mini{text-align:center;padding:16px;background:var(--bg3,#e6f4f1);border-radius:var(--r,10px);border:1px solid var(--border)}
 .cm-stat-mini-val{font-size:22px;font-weight:700;font-family:var(--font-b);line-height:1}
 .cm-stat-mini-lbl{font-size:11px;color:var(--t3);margin-top:4px;font-family:var(--font-b)}
 /* Toast base styles inherited from header.php */
+.cm-toast{position:fixed;top:20px;right:20px;z-index:10000;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;font-family:var(--font-b);color:#fff;display:none;max-width:400px;box-shadow:0 8px 24px rgba(0,0,0,.15)}
 .cm-toast.success{background:#22c55e;display:block}.cm-toast.error{background:#ef4444;display:block}
 </style>
 
@@ -69,7 +71,7 @@ $at = $active_tab ?? 'logs';
 
 <div class="cm-card">
     <div class="cm-card-title"><span>Delivery Logs</span><button class="cm-btn cm-btn-sm cm-btn-outline" onclick="LOG.load()"><i class="fa fa-refresh"></i> Refresh</button></div>
-    <table class="cm-table"><thead><tr><th>Log ID</th><th>Queue ID</th><th>Channel</th><th>Recipient</th><th>Status</th><th>Response</th><th>Gateway</th><th>Time</th></tr></thead><tbody id="logsTbody"><tr><td colspan="8" class="cm-empty"><i class="fa fa-spinner fa-spin"></i></td></tr></tbody></table>
+    <table class="cm-table"><thead><tr><th>Log ID</th><th>Queue ID</th><th>Channel</th><th>Recipient</th><th>Status</th><th>Response</th><th>Gateway</th><th>Time</th></tr></thead><tbody id="logsTbody"><tr><td colspan="8" class="cm-loading">Loading...</td></tr></tbody></table>
 </div>
 
 </div></section></div>
@@ -81,7 +83,7 @@ var CM = CM || {};
 CM.BASE = '<?= base_url() ?>';
 CM.toast = function(msg,type){var t=document.getElementById('cmToast');t.textContent=msg;t.className='cm-toast '+(type||'success');setTimeout(function(){t.className='cm-toast';},3000);};
 CM.esc = function(s){var d=document.createElement('span');d.textContent=s||'';return d.innerHTML;};
-CM.ajax = function(url,data,cb,method){$.ajax({url:CM.BASE+url,type:method||'GET',data:data,dataType:'json',success:function(r){if(r.status==='success'){if(cb)cb(r);}else CM.toast(r.message||'Error','error');},error:function(xhr){var m='Error';try{m=JSON.parse(xhr.responseText).message||m;}catch(e){}CM.toast(m,'error');}});};
+CM.ajax = function(url,data,cb,method,failCb){$.ajax({url:CM.BASE+url,type:method||'GET',data:data,dataType:'json',success:function(r){if(r.status==='success'){if(cb)cb(r);}else{CM.toast(r.message||'Error','error');if(failCb)failCb();}},error:function(xhr){var m='Error';try{m=JSON.parse(xhr.responseText).message||m;}catch(e){}CM.toast(m,'error');if(failCb)failCb();}});};
 
 var LOG = {};
 
@@ -93,6 +95,8 @@ LOG.load = function() {
         $('#lsDelivered').text(s.delivered || 0);
         $('#lsFailed').text(s.failed || 0);
         $('#lsBounced').text(s.bounced || 0);
+    }, null, function() {
+        $('#lsTotal,#lsDelivered,#lsFailed,#lsBounced').text('0');
     });
 
     // Logs
@@ -117,6 +121,8 @@ LOG.load = function() {
             });
         }
         $('#logsTbody').html(html);
+    }, null, function() {
+        $('#logsTbody').html('<tr><td colspan="8" class="cm-empty"><i class="fa fa-exclamation-circle"></i> Failed to load logs</td></tr>');
     });
 };
 

@@ -26,7 +26,11 @@
             <a href="<?= base_url('staff/new_staff') ?>" class="nsa-btn nsa-btn-primary">
                 <i class="fa fa-plus"></i> Add New Staff
             </a>
-           
+
+            <button type="button" class="nsa-btn nsa-btn-ghost nsa-btn-sm" id="migrateRolesBtn"
+                    onclick="migrateStaffRoles()" title="Auto-assign roles to staff based on their Position field">
+                <i class="fa fa-magic"></i> Migrate Roles
+            </button>
         </div>
     </div>
 
@@ -204,7 +208,31 @@
                             <span class="nsa-gender-badge <?= $genderClass ?>"><?= $gender ?></span>
                         </td>
 
-                        <td><?= $position ?></td>
+                        <td>
+                            <?php
+                                $sRoles = $s['staff_roles'] ?? [];
+                                $sPrimary = $s['primary_role'] ?? '';
+                                if (!empty($sRoles) && is_array($sRoles)):
+                                    foreach ($sRoles as $sr):
+                                        $rDef = $staff_role_defs[$sr] ?? null;
+                                        $rLabel = $rDef['label'] ?? $sr;
+                                        $isPrimary = ($sr === $sPrimary);
+                                        $catClass = match($rDef['category'] ?? '') {
+                                            'Teaching'       => 'nsa-badge-blue',
+                                            'Administrative' => 'nsa-badge-amber',
+                                            'Non-Teaching'   => 'nsa-badge-green',
+                                            'Support'        => 'nsa-badge-gray',
+                                            default          => 'nsa-badge-gray',
+                                        };
+                            ?>
+                                <span class="nsa-role-pill <?= $catClass ?><?= $isPrimary ? ' nsa-role-pill-primary' : '' ?>"
+                                      title="<?= htmlspecialchars($rDef['category'] ?? '') ?>">
+                                    <?= htmlspecialchars($rLabel) ?>
+                                </span>
+                            <?php endforeach; else: ?>
+                                <?= $position ?>
+                            <?php endif; ?>
+                        </td>
                         <td><?= $dept ?></td>
 
                         <td>
@@ -264,6 +292,24 @@
 
 
 <script>
+/* ── Migrate Staff Roles (one-shot) ── */
+function migrateStaffRoles() {
+    if (!confirm('This will auto-assign role IDs to all staff based on their Position field.\n\nStaff who already have roles will be skipped.\n\nProceed?')) return;
+    var btn = document.getElementById('migrateRolesBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Migrating...'; }
+    $.post('<?= base_url("staff/migrate_staff_roles") ?>', {
+        '<?= $this->security->get_csrf_token_name() ?>': '<?= $this->security->get_csrf_hash() ?>'
+    }, function(res) {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa fa-magic"></i> Migrate Roles'; }
+        var r = typeof res === 'string' ? JSON.parse(res) : res;
+        alert(r.message || 'Migration complete.');
+        if (r.migrated > 0) location.reload();
+    }).fail(function() {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa fa-magic"></i> Migrate Roles'; }
+        alert('Migration failed. Check console for details.');
+    });
+}
+
 /* ================================================================
    all_staff.php  —  JS
 ================================================================ */
@@ -799,4 +845,16 @@ function resetAllFilters() {
 .nsa-btn-amber   { background: #d97706; color: #fff; box-shadow: 0 2px 10px rgba(217,119,6,.22); }
 .nsa-btn-ghost   { background: var(--nsa-white); color: var(--nsa-text); border: 1.5px solid var(--nsa-border); }
 .nsa-btn-ghost:hover { border-color: var(--nsa-teal); color: var(--nsa-teal); opacity: 1; }
+
+/* ── Role badges ── */
+.nsa-role-pill {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 11px; font-weight: 600; margin: 1px 2px;
+    line-height: 1.5;
+}
+.nsa-role-pill.nsa-badge-blue  { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+.nsa-role-pill.nsa-badge-amber { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+.nsa-role-pill.nsa-badge-green { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+.nsa-role-pill.nsa-badge-gray  { background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; }
+.nsa-role-pill-primary { font-weight: 700; }
 </style>
