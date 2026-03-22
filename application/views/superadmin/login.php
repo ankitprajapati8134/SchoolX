@@ -457,7 +457,7 @@ html, body {
                 <div class="sa-form-eyebrow">Super Admin</div>
                 <div class="sa-form-title">Control Panel</div>
                 <div class="sa-form-hint">
-                    Authorized personnel only
+                    Developer access only
                 </div>
             </div>
 
@@ -468,28 +468,15 @@ html, body {
 
             <form id="saLoginForm" autocomplete="off" novalidate>
 
-                <div class="sa-row">
-                    <div class="sa-field">
-                        <label class="sa-label">School ID</label>
-                        <div class="sa-input-wrap">
-                            <input type="text" class="sa-input" id="saSchoolId"
-                                   name="school_id" placeholder="School code"
-                                   required autofocus maxlength="32">
-                            <i class="fa fa-building sa-input-icon"></i>
-                        </div>
-                    </div>
-                    <div class="sa-field">
-                        <label class="sa-label">Admin ID</label>
-                        <div class="sa-input-wrap">
-                            <input type="text" class="sa-input" id="saAdminId"
-                                   name="admin_id" placeholder="ADM0002"
-                                   required maxlength="32">
-                            <i class="fa fa-id-badge sa-input-icon"></i>
-                        </div>
+                <div class="sa-field">
+                    <label class="sa-label">User ID</label>
+                    <div class="sa-input-wrap">
+                        <input type="text" class="sa-input" id="saAdminId"
+                               name="admin_id" placeholder="Enter your user ID"
+                               required autofocus maxlength="32">
+                        <i class="fa fa-id-badge sa-input-icon"></i>
                     </div>
                 </div>
-
-                <div class="sa-divider"></div>
 
                 <div class="sa-field">
                     <label class="sa-label">Password</label>
@@ -512,6 +499,12 @@ html, body {
                 </button>
 
             </form>
+
+            <div style="text-align:center;margin-top:14px;">
+                <a href="<?= base_url('superadmin/login/forgot_password') ?>" style="color:var(--gold);font-size:12.5px;text-decoration:none;opacity:.8;transition:opacity .2s;">
+                    <i class="fa fa-key" style="margin-right:4px;"></i>Forgot Password?
+                </a>
+            </div>
 
             <div class="sa-back">
                 <a href="<?= base_url('admin_login') ?>">
@@ -552,7 +545,7 @@ html, body {
     }
 
     /* Hide alert on input */
-    ['saSchoolId', 'saAdminId', 'saPassword'].forEach(function (id) {
+    ['saAdminId', 'saPassword'].forEach(function (id) {
         document.getElementById(id).addEventListener('input', hideAlert);
     });
 
@@ -562,12 +555,11 @@ html, body {
         hideAlert();
 
         var btn      = document.getElementById('saSubmitBtn');
-        var schoolId = document.getElementById('saSchoolId').value.trim();
         var adminId  = document.getElementById('saAdminId').value.trim();
         var password = document.getElementById('saPassword').value;
 
-        if (!schoolId || !adminId || !password) {
-            showAlert('All fields are required.');
+        if (!adminId || !password) {
+            showAlert('User ID and Password are required.');
             return;
         }
 
@@ -577,7 +569,7 @@ html, body {
         /* FormData carries CSRF token in $_POST — prevents 403 */
         var fd = new FormData();
         fd.append(csrfName,    csrfToken);
-        fd.append('school_id', schoolId);
+        fd.append('school_id', 'Our Panel');
         fd.append('admin_id',  adminId);
         fd.append('password',  password);
 

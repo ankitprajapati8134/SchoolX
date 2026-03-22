@@ -1,4 +1,5 @@
 <div class="content-wrapper">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Clash+Display:wght@400;500;600;700&family=Satoshi:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <!-- Fallback if Clash Display CDN not available -->
 <link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=satoshi@300,400,500,600,700&display=swap" rel="stylesheet">
@@ -866,25 +867,14 @@
                        name="<?= $this->security->get_csrf_token_name() ?>"
                        value="<?= $this->security->get_csrf_hash() ?>">
 
-                <!-- Admin ID + School ID side by side -->
-                <div class="lx-field-row">
-                    <div class="lx-fgroup">
-                        <div class="lx-flabel"><i class="fas fa-id-badge"></i> Admin ID</div>
-                        <div class="lx-finput-wrap">
-                            <input type="text" name="admin_id" id="lxAdminId"
-                                   placeholder="ADM0001"
-                                   required autocomplete="username">
-                            <i class="lx-ficon fas fa-user"></i>
-                        </div>
-                    </div>
-                    <div class="lx-fgroup">
-                        <div class="lx-flabel"><i class="fas fa-school"></i> School ID</div>
-                        <div class="lx-finput-wrap">
-                            <input type="text" name="school_id" id="lxSchoolId"
-                                   placeholder="10004"
-                                   required autocomplete="organization">
-                            <i class="lx-ficon fas fa-building"></i>
-                        </div>
+                <!-- Admin ID -->
+                <div class="lx-fgroup">
+                    <div class="lx-flabel"><i class="fas fa-id-badge"></i> Admin ID</div>
+                    <div class="lx-finput-wrap">
+                        <input type="text" name="admin_id" id="lxAdminId"
+                               placeholder="SSA0001 / ADM0001"
+                               required autocomplete="username">
+                        <i class="lx-ficon fas fa-user"></i>
                     </div>
                 </div>
 
@@ -915,9 +905,12 @@
                     <i class="fas fa-shield-halved"></i>
                     256-bit encrypted
                 </div>
-                <span class="lx-forgot" style="cursor:default;opacity:.5;" title="Contact your school administrator">
-                    Forgot password?
-                </span>
+                <a href="<?= base_url('admin_login/forgot_password') ?>" class="lx-forgot">
+                    Admin Forgot Password? <i class="fas fa-arrow-right" style="font-size:10px;"></i>
+                </a>
+                <a href="<?= base_url('admin_login/student_forgot_password') ?>" class="lx-forgot" style="margin-top:6px;">
+                    Student Forgot Password? <i class="fas fa-arrow-right" style="font-size:10px;"></i>
+                </a>
             </div>
 
         </div>

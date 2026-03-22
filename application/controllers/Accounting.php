@@ -31,8 +31,8 @@ class Accounting extends MY_Controller
     //  ROLE CONSTANTS
     // =========================================================================
 
-    private const ADMIN_ROLES   = ['Admin', 'Super Admin', 'Our Panel', 'Principal'];
-    private const FINANCE_ROLES = ['Admin', 'Super Admin', 'Our Panel', 'Accountant', 'Finance', 'Principal', 'Vice Principal'];
+    private const ADMIN_ROLES   = ['Admin', 'Super Admin', 'School Super Admin', 'Our Panel', 'Principal'];
+    private const FINANCE_ROLES = ['Admin', 'Super Admin', 'School Super Admin', 'Our Panel', 'Accountant', 'Finance', 'Principal', 'Vice Principal'];
 
     public function __construct()
     {

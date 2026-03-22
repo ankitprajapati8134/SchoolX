@@ -33,13 +33,13 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Result extends MY_Controller
 {
     /** Roles allowed to design templates, compute results, configure cumulative. */
-    private const ADMIN_ROLES = ['Super Admin', 'Admin', 'Principal', 'Academic Coordinator'];
+    private const ADMIN_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Academic Coordinator'];
 
     /** Roles allowed to enter/save marks (Teachers limited to own classes via _teacher_can_access). */
-    private const MARKS_ENTRY_ROLES = ['Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
+    private const MARKS_ENTRY_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
 
     /** Roles allowed to view results, marks, report cards. */
-    private const VIEW_ROLES = ['Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
+    private const VIEW_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
 
     public function __construct()
     {

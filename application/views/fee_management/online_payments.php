@@ -783,7 +783,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .fm-stat-amount .fm-stat-icon { background: var(--fm-navy); color: #fff; }
 .fm-stat-body { display: flex; flex-direction: column; }
 .fm-stat-value { font-size: 1.25rem; font-weight: 700; color: var(--fm-navy); line-height: 1.2; font-family: var(--fm-font-display); }
-.fm-stat-label { font-size: 11px; color: var(--fm-text-secondary); font-weight: 500; letter-spacing: .3px; text-transform: uppercase; }
+.fm-stat-label { font-size: 12.5px; color: var(--fm-text-secondary); font-weight: 500; letter-spacing: .3px; text-transform: uppercase; }
 
 /* ── Filter Bar ── */
 .fm-filter-bar {
@@ -802,7 +802,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .fm-pill-active:hover { background: var(--fm-teal-light); color: #fff; }
 .fm-filter-dates { display: flex; align-items: center; gap: 10px; }
 .fm-date-group { display: flex; align-items: center; gap: 5px; }
-.fm-date-group label { font-size: 11px; font-weight: 600; color: var(--fm-text-secondary); margin: 0; }
+.fm-date-group label { font-size: 12.5px; font-weight: 600; color: var(--fm-text-secondary); margin: 0; }
 .fm-date-input {
   padding: 5px 10px; border: 1px solid var(--fm-border); border-radius: var(--fm-radius-sm);
   font-size: 12px; font-family: var(--fm-font); color: var(--fm-text); outline: none; transition: border-color .15s;
@@ -837,7 +837,7 @@ document.addEventListener('DOMContentLoaded', function() {
   vertical-align: middle;
 }
 .fm-table tbody tr:hover { background: rgba(13,115,119,.02); }
-.fm-mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: -.2px; }
+.fm-mono { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; letter-spacing: -.2px; }
 .fm-amount { font-weight: 600; color: var(--fm-navy); white-space: nowrap; }
 
 /* ── Badges ── */
@@ -920,7 +920,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 .fm-month-check input { position: absolute; opacity: 0; width: 0; height: 0; }
 .fm-month-check span {
-  display: block; padding: 5px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  display: block; padding: 5px 8px; border-radius: 4px; font-size: 12.5px; font-weight: 600;
   border: 1px solid var(--fm-border); color: var(--fm-text-secondary); transition: all .15s;
   text-align: center; width: 100%; user-select: none;
 }
@@ -942,7 +942,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 .fm-order-response h5 { font-size: 12px; font-weight: 700; color: var(--fm-navy); margin: 0 0 8px; }
 .fm-order-response pre {
-  margin: 0; font-size: 11px; font-family: 'JetBrains Mono', monospace;
+  margin: 0; font-size: 12.5px; font-family: 'JetBrains Mono', monospace;
   color: var(--fm-text); white-space: pre-wrap; word-break: break-all;
   max-height: 200px; overflow-y: auto;
 }
@@ -1004,7 +1004,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .fm-tl-pending .fm-tl-dot { background: var(--fm-gold-dim); color: var(--fm-gold); }
 .fm-tl-content { display: flex; flex-direction: column; }
 .fm-tl-label { font-size: 13px; font-weight: 600; color: var(--fm-text); }
-.fm-tl-time { font-size: 11px; color: var(--fm-text-secondary); margin-top: 1px; }
+.fm-tl-time { font-size: 12.5px; color: var(--fm-text-secondary); margin-top: 1px; }
 
 /* ── Refund Modal ── */
 .fm-refund-msg { font-size: 13px; color: var(--fm-text); margin: 0 0 12px; }
@@ -1041,7 +1041,7 @@ document.addEventListener('DOMContentLoaded', function() {
   .fm-stats-row { grid-template-columns: 1fr; }
   .fm-stat-card { padding: 10px 12px; }
   .fm-month-grid { grid-template-columns: repeat(2, 1fr); }
-  .fm-table { font-size: 11px; }
+  .fm-table { font-size: 12.5px; }
   .fm-table thead th, .fm-table tbody td { padding: 7px 8px; }
 }
 </style>

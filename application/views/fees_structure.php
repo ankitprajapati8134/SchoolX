@@ -238,7 +238,7 @@
 
     .fm-page-title {
         font-family: 'Fraunces', serif;
-        font-size: 1.35rem;
+        font-size: 1.6rem;
         font-weight: 700;
         color: var(--fm-navy);
         display: flex;
@@ -332,7 +332,7 @@
 
     .fm-label {
         display: block;
-        font-size: .72rem;
+        font-size: .82rem;
         font-weight: 700;
         letter-spacing: .4px;
         text-transform: uppercase;
@@ -423,7 +423,7 @@
     }
 
     .fm-stat-label {
-        font-size: .68rem;
+        font-size: .8rem;
         font-weight: 700;
         letter-spacing: .6px;
         text-transform: uppercase;
@@ -462,7 +462,7 @@
         color: #fff;
         padding: 10px 14px;
         text-align: left;
-        font-size: .72rem;
+        font-size: .82rem;
         letter-spacing: .4px;
         text-transform: uppercase;
         font-weight: 700;

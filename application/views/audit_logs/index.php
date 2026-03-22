@@ -85,7 +85,7 @@
     <ol class="al-breadcrumb"><li><a href="<?= base_url('admin') ?>">Dashboard</a></li><li><a href="<?= base_url('admin_users') ?>">Admin Users</a></li><li>Audit Logs</li></ol>
 </div>
 <div style="display:flex;gap:8px;">
-    <?php if (in_array($admin_role, ['Super Admin', 'Admin'])): ?>
+    <?php if (in_array($admin_role, ['Super Admin', 'School Super Admin', 'Admin'])): ?>
     <button class="al-btn al-btn-sm al-btn-s" onclick="AL.archive()"><i class="fa fa-archive"></i> Archive Old</button>
     <?php endif; ?>
     <button class="al-btn al-btn-sm al-btn-s" onclick="AL.refresh()"><i class="fa fa-refresh"></i> Refresh</button>

@@ -75,6 +75,9 @@ class AdminUsers extends MY_Controller
     {
         parent::__construct();
         require_permission('Admin Users');
+
+        // Auto-retry pending MongoDB syncs on every AdminUsers page load (non-blocking)
+        $this->_process_pending_syncs();
     }
 
     /**
@@ -84,6 +87,61 @@ class AdminUsers extends MY_Controller
     private function _admin_base(): string
     {
         return "Users/Admin/{$this->school_code}";
+    }
+
+    /**
+     * Process pending MongoDB syncs for admins created while Auth API was down.
+     * Runs on every AdminUsers page load. Non-blocking — silently skips if API still down.
+     */
+    private function _process_pending_syncs(): void
+    {
+        try {
+            $pending = $this->firebase->get('System/PendingSync/Admins');
+            if (!is_array($pending) || empty($pending)) return;
+
+            $this->load->library('auth_client');
+            $synced = 0;
+
+            foreach ($pending as $adminId => $data) {
+                if (!is_array($data)) continue;
+
+                // Only sync admins that belong to this school (multi-tenant safe)
+                if (($data['schoolCode'] ?? '') !== $this->school_name) continue;
+
+                $result = $this->auth_client->sync_admin([
+                    'adminId'           => $adminId,
+                    'name'              => $data['name'] ?? '',
+                    'email'             => $data['email'] ?? '',
+                    'phone'             => $data['phone'] ?? '',
+                    'role'              => $data['role'] ?? '',
+                    'roleLabel'         => $data['roleLabel'] ?? '',
+                    'passwordHash'      => $data['passwordHash'] ?? '',
+                    'schoolId'          => $data['schoolId'] ?? '',
+                    'schoolCode'        => $data['schoolCode'] ?? '',
+                    'parentDbKey'       => $data['parentDbKey'] ?? '',
+                    'createdBy'         => $data['createdBy'] ?? '',
+                    'schoolDisplayName' => $data['schoolDisplayName'] ?? '',
+                ]);
+
+                if (!empty($result['success']) || !empty($result['adminId'])) {
+                    // Sync succeeded — remove from pending queue
+                    $this->firebase->delete('System/PendingSync/Admins', $adminId);
+                    $synced++;
+                    log_message('info', "PendingSync: admin {$adminId} synced to MongoDB successfully");
+                } elseif (!empty($result['unavailable'])) {
+                    // API still down — stop trying (don't hammer a dead service)
+                    break;
+                }
+                // Other errors (validation, duplicate) — keep in queue for manual review
+            }
+
+            if ($synced > 0) {
+                log_audit('AdminUsers', 'pending_sync', '', "Auto-synced {$synced} pending admin(s) to MongoDB");
+            }
+        } catch (Exception $e) {
+            // Non-blocking — never interrupt page load
+            log_message('error', 'AdminUsers::_process_pending_syncs — ' . $e->getMessage());
+        }
     }
 
     /**
@@ -201,26 +259,16 @@ class AdminUsers extends MY_Controller
 
     public function create_admin(): void
     {
-        $this->_require_role(['Super Admin', 'Admin'], 'create_admin');
+        $this->_require_role(['Super Admin', 'Admin', 'Principal'], 'create_admin');
 
-        $admin_id = trim($this->input->post('admin_id',  TRUE) ?? '');
         $name     = trim($this->input->post('name',      TRUE) ?? '');
         $email    = strtolower(trim($this->input->post('email', TRUE) ?? ''));
         $phone    = trim($this->input->post('phone',     TRUE) ?? '');
         $role     = trim($this->input->post('role',       TRUE) ?? '');
         $password = (string)($this->input->post('password', FALSE) ?? '');
 
-        if (empty($admin_id) || empty($name) || empty($email) || empty($role) || empty($password)) {
-            $this->json_error('Login ID, name, email, role, and password are required.');
-            return;
-        }
-        // Validate admin_id format (same rules as Admin_login::_is_safe_id)
-        if (!preg_match('/^[A-Za-z0-9_\-]+$/', $admin_id)) {
-            $this->json_error('Login ID must contain only letters, numbers, hyphens, and underscores.');
-            return;
-        }
-        if (strlen($admin_id) > 32) {
-            $this->json_error('Login ID must be 32 characters or less.');
+        if (empty($name) || empty($email) || empty($role) || empty($password)) {
+            $this->json_error('Name, email, role, and password are required.');
             return;
         }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -236,7 +284,6 @@ class AdminUsers extends MY_Controller
             return;
         }
 
-        $admin_id = $this->safe_path_segment($admin_id, 'admin_id');
         $role     = $this->safe_path_segment($role, 'role');
         $base     = $this->_admin_base();
         $school   = $this->school_name;
@@ -253,13 +300,6 @@ class AdminUsers extends MY_Controller
                 }
             }
 
-            // Check if admin_id already exists
-            $existing = $this->firebase->get("{$base}/{$admin_id}");
-            if (!empty($existing) && is_array($existing)) {
-                $this->json_error("An admin with Login ID '{$admin_id}' already exists.");
-                return;
-            }
-
             // Check duplicate email across all admins
             $all_admins = $this->firebase->get($base) ?? [];
             foreach ($all_admins as $a) {
@@ -269,15 +309,89 @@ class AdminUsers extends MY_Controller
                 }
             }
 
+            // Hash password ONCE — same hash goes to both MongoDB and Firebase
             $hashed_pw = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
-            $now       = time();
 
-            // Schema matches Superadmin_schools.php onboarding + Admin_login.php expectations
+            // Auto-generate ADM ID via Auth API (globally unique) + save to MongoDB
+            $admin_id    = null;
+            $mongo_synced = false;
+            try {
+                $this->load->library('auth_client');
+                $ssa_result = $this->auth_client->sync_admin([
+                    'adminId'           => '__AUTO_ADM__',
+                    'name'              => $name,
+                    'email'             => $email,
+                    'phone'             => $phone,
+                    'role'              => 'admin',
+                    'roleLabel'         => $role,
+                    'passwordHash'      => $hashed_pw,
+                    'schoolId'          => $this->school_code,
+                    'schoolCode'        => $this->school_name,
+                    'parentDbKey'       => $this->parent_db_key,
+                    'createdBy'         => $this->admin_id,
+                    'schoolDisplayName' => $this->school_display_name ?? '',
+                ]);
+                $admin_id     = $ssa_result['adminId'] ?? null;
+                $mongo_synced = !empty($admin_id);
+            } catch (Exception $e) {
+                log_message('error', 'AdminUsers::create_admin Auth API call failed: ' . $e->getMessage());
+            }
+
+            // FIXED: fallback to local ID generation when Auth API is unavailable
+            if (empty($admin_id)) {
+                $counterPath = "Users/Admin/{$this->school_code}/_Counter";
+                $counter = (int) ($this->firebase->get($counterPath) ?? 0);
+                $counter++;
+                $admin_id = 'ADM' . str_pad($counter, 4, '0', STR_PAD_LEFT);
+
+                // Verify no collision
+                $existing_check = $this->firebase->get("{$base}/{$admin_id}");
+                if (!empty($existing_check)) {
+                    // Scan for next free slot
+                    $all_keys = $this->firebase->shallow_get($base) ?? [];
+                    $maxNum = 0;
+                    if (is_array($all_keys)) {
+                        foreach ($all_keys as $k) {
+                            if (preg_match('/^ADM(\d+)$/', (string)$k, $m)) {
+                                $maxNum = max($maxNum, (int)$m[1]);
+                            }
+                        }
+                    }
+                    $counter  = $maxNum + 1;
+                    $admin_id = 'ADM' . str_pad($counter, 4, '0', STR_PAD_LEFT);
+                }
+                $this->firebase->set($counterPath, $counter);
+                log_message('info', "AdminUsers::create_admin — Auth API unavailable, generated local ID: {$admin_id}");
+
+                // Queue for MongoDB sync when Auth API comes back
+                $this->firebase->set("System/PendingSync/Admins/{$admin_id}", [
+                    'adminId'           => $admin_id,
+                    'name'              => $name,
+                    'email'             => $email,
+                    'phone'             => $phone,
+                    'role'              => 'admin',
+                    'roleLabel'         => $role,
+                    'passwordHash'      => $hashed_pw,
+                    'schoolId'          => $this->school_code,
+                    'schoolCode'        => $this->school_name,
+                    'parentDbKey'       => $this->parent_db_key,
+                    'createdBy'         => $this->admin_id,
+                    'schoolDisplayName' => $this->school_display_name ?? '',
+                    'queued_at'         => date('Y-m-d H:i:s'),
+                ]);
+            }
+            $now       = date('Y-m-d H:i:s');
+
+            // Firebase structure — same as School Super Admin
             $admin_data = [
                 'Status'      => 'Active',
                 'Role'        => $role,
                 'Name'        => $name,
-                'Credentials' => ['Password' => $hashed_pw],
+                'Email'       => $email,
+                'Credentials' => [
+                    'Id'       => $admin_id,
+                    'Password' => $hashed_pw,
+                ],
                 'Profile'     => [
                     'name'        => $name,
                     'email'       => $email,
@@ -287,18 +401,31 @@ class AdminUsers extends MY_Controller
                     'school_id'   => $this->school_code,
                     'firebase_id' => $this->school_id,
                     'created_at'  => $now,
-                    'createdBy'   => $this->admin_id,
+                    'created_by'  => $this->admin_id,
                 ],
-                'AccessHistory' => ['LoginAttempts' => 0],
+                'AccessHistory' => [
+                    'SA_LastLogin'   => null,
+                    'SA_LastLoginIP' => null,
+                    'LoginAttempts'  => 0,
+                ],
+                'Privileges'  => ['accountmanagement' => ''],
             ];
 
             $this->firebase->set("{$base}/{$admin_id}", $admin_data);
 
             log_audit('AdminUsers', 'create_admin', $admin_id, "Created admin '{$name}' with role '{$role}'");
 
+            $msg = 'Admin created successfully.';
+            if (!$mongo_synced) {
+                $msg .= ' (Note: Auth API was unavailable — admin can log in via Firebase auth only until API syncs.)';
+            }
+
             $this->json_success([
-                'message'  => "Admin '{$name}' created successfully. Login ID: {$admin_id}",
+                'message'  => $msg,
                 'admin_id' => $admin_id,
+                'name'     => $name,
+                'role'     => $role,
+                'password' => $password,
             ]);
         } catch (Exception $e) {
             log_message('error', 'AdminUsers::create_admin - ' . $e->getMessage());
@@ -365,6 +492,25 @@ class AdminUsers extends MY_Controller
                 'updatedAt' => time(),
                 'updatedBy' => $this->admin_id,
             ]);
+
+            // Sync to MongoDB credential store (best-effort, no password change)
+            try {
+                $this->load->library('auth_client');
+                $this->auth_client->sync_admin([
+                    'adminId'           => $admin_id,
+                    'schoolId'          => $this->school_code,
+                    'schoolCode'        => $this->school_name,
+                    'parentDbKey'       => $this->parent_db_key,
+                    'name'              => $name,
+                    'email'             => $email,
+                    'phone'             => $phone,
+                    'role'              => 'admin',
+                    'roleLabel'         => $role,
+                    'schoolDisplayName' => $this->school_display_name ?? '',
+                ]);
+            } catch (Exception $syncEx) {
+                log_message('error', 'AdminUsers::update_admin — auth sync failed: ' . $syncEx->getMessage());
+            }
 
             log_audit('AdminUsers', 'update_admin', $admin_id, "Updated admin '{$name}'");
 
@@ -449,6 +595,14 @@ class AdminUsers extends MY_Controller
             $name = $existing['Name'] ?? $existing['Profile']['name'] ?? $admin_id;
             $this->firebase->delete($base, $admin_id);
 
+            // Remove from MongoDB credential store (best-effort)
+            try {
+                $this->load->library('auth_client');
+                $this->auth_client->delete_admin($admin_id, $this->school_code);
+            } catch (Exception $syncEx) {
+                log_message('error', 'AdminUsers::delete_admin — auth sync failed: ' . $syncEx->getMessage());
+            }
+
             log_audit('AdminUsers', 'delete_admin', $admin_id, "Deleted admin '{$name}'");
 
             $this->json_success(['message' => "Admin '{$name}' deleted."]);
@@ -490,6 +644,14 @@ class AdminUsers extends MY_Controller
             $this->firebase->update("{$base}/{$admin_id}/Credentials", [
                 'Password' => $hashed,
             ]);
+
+            // Sync password to MongoDB (best-effort, also invalidates mobile sessions)
+            try {
+                $this->load->library('auth_client');
+                $this->auth_client->reset_password($admin_id, $this->school_code, $hashed);
+            } catch (Exception $syncEx) {
+                log_message('error', 'AdminUsers::reset_password — auth sync failed: ' . $syncEx->getMessage());
+            }
 
             $name = $existing['Name'] ?? $existing['Profile']['name'] ?? $admin_id;
 

@@ -19,8 +19,8 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Assets extends MY_Controller
 {
-    private const MANAGE_ROLES = ['Admin', 'Principal'];
-    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+    private const MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Operations Manager', 'Store Manager'];
+    private const VIEW_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Operations Manager', 'Store Manager', 'Accountant', 'Teacher'];
 
     public function __construct()
     {

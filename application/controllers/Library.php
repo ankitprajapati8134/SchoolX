@@ -22,14 +22,14 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Library extends MY_Controller
 {
     /** Roles for library management */
-    private const MANAGE_ROLES = ['Admin', 'Principal'];
+    private const MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal'];
 
     /** Roles that may view library data */
-    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+    private const VIEW_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
-    const OPS_ADMIN_ROLES  = ['Super Admin', 'Principal', 'Vice Principal'];
-    const LIB_MANAGE_ROLES = ['Super Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Librarian'];
-    const LIB_VIEW_ROLES   = ['Super Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Librarian', 'Accountant', 'Teacher'];
+    const OPS_ADMIN_ROLES  = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Vice Principal'];
+    const LIB_MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Librarian'];
+    const LIB_VIEW_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Librarian', 'Accountant', 'Teacher'];
 
     public function __construct()
     {

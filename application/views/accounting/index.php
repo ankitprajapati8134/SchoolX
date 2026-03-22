@@ -748,7 +748,7 @@ a.ac-tab.active { color: var(--ac-primary); }
     var CSRF_NAME = '<?= $this->security->get_csrf_token_name() ?>';
     var CSRF_HASH = '<?= $this->security->get_csrf_hash() ?>';
     var ADMIN_ROLE = '<?= $admin_role ?>';
-    var IS_ADMIN = ['Admin','Super Admin','Our Panel'].indexOf(ADMIN_ROLE) >= 0;
+    var IS_ADMIN = ['Admin','Super Admin','School Super Admin','Our Panel'].indexOf(ADMIN_ROLE) >= 0;
     var IS_FINANCE = IS_ADMIN || <?= json_encode(has_permission('Accounting')) ?>;
 
     var coaCache = {}; // code → account object

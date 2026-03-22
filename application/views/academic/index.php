@@ -232,7 +232,7 @@ html{font-size:16px !important}
                     <select id="saClassSelect" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--t1);font-size:12px;min-width:180px">
                         <option value="">Select Class...</option>
                     </select>
-                    <?php if (in_array($admin_role ?? '', ['Admin', 'Principal', 'Super Admin'])): ?>
+                    <?php if (in_array($admin_role ?? '', ['Admin', 'Principal', 'Super Admin', 'School Super Admin'])): ?>
                     <button class="ac-btn ac-btn-s ac-btn-sm" onclick="AC.sa.copyFrom()" title="Copy assignments from another class"><i class="fa fa-copy"></i> Copy From</button>
                     <?php endif; ?>
                     <button class="ac-btn ac-btn-s ac-btn-sm" onclick="AC.sa.load()"><i class="fa fa-refresh"></i> Refresh</button>
@@ -256,7 +256,7 @@ html{font-size:16px !important}
                     <div id="saTable" style="margin-bottom:16px"></div>
 
                     <!-- Add subject area -->
-                    <?php if (in_array($admin_role ?? '', ['Admin', 'Principal', 'Super Admin'])): ?>
+                    <?php if (in_array($admin_role ?? '', ['Admin', 'Principal', 'Super Admin', 'School Super Admin'])): ?>
                     <div style="border-top:1px solid var(--border);padding-top:14px">
                         <h4 style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:10px"><i class="fa fa-plus-circle" style="color:var(--gold)"></i> Add Subject from Catalog</h4>
                         <div id="saCatalog" style="display:flex;gap:6px;flex-wrap:wrap"></div>
@@ -284,7 +284,7 @@ html{font-size:16px !important}
                     <div id="psSummaryContent" style="font-size:12px;color:var(--t1);line-height:1.8"></div>
                 </div>
 
-                <?php if (in_array($admin_role ?? '', ['Admin', 'Principal', 'Super Admin'])): ?>
+                <?php if (in_array($admin_role ?? '', ['Admin', 'Principal', 'Super Admin', 'School Super Admin'])): ?>
                 <!-- Timing Configuration -->
                 <div style="margin-bottom:20px">
                     <h4 style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:12px"><i class="fa fa-clock-o" style="color:var(--gold);margin-right:4px"></i> School Timings</h4>
@@ -648,7 +648,7 @@ function toast(msg,ok){
 
 /* ── RBAC ── */
 var _role='<?= htmlspecialchars($admin_role ?? "Admin", ENT_QUOTES) ?>';
-var _canEdit=(_role==='Admin'||_role==='Principal'||_role==='Super Admin');
+var _canEdit=(_role==='Admin'||_role==='Principal'||_role==='Super Admin'||_role==='School Super Admin');
 
 /* ── Tab Switching ── */
 document.getElementById('acTabs').addEventListener('click',function(e){

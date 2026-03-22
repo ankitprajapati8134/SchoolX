@@ -27,49 +27,88 @@
                 <i class="fa fa-plus"></i> Add New Staff
             </a>
 
+            <?php
+            // Only show Migrate Roles if there are staff without roles assigned
+            $needsMigration = false;
+            foreach ($staff as $_s) {
+                if (empty($_s['staff_roles']) || !is_array($_s['staff_roles'])) {
+                    $needsMigration = true;
+                    break;
+                }
+            }
+            if ($needsMigration):
+            ?>
             <button type="button" class="nsa-btn nsa-btn-ghost nsa-btn-sm" id="migrateRolesBtn"
                     onclick="migrateStaffRoles()" title="Auto-assign roles to staff based on their Position field">
                 <i class="fa fa-magic"></i> Migrate Roles
             </button>
+            <?php endif; ?>
         </div>
     </div>
 
     <!-- ══ STAT STRIP ══ -->
+    <?php
+        // Compute stats server-side for accuracy
+        $totalCount    = count($staff);
+        $teachingCount = 0;
+        $nonTeachingCount = 0;
+        $deptSet = [];
+        foreach ($staff as $_s) {
+            $isTeaching = false;
+            $sRoles = $_s['staff_roles'] ?? [];
+            if (!empty($sRoles) && is_array($sRoles)) {
+                foreach ($sRoles as $_rid) {
+                    if (($staff_role_defs[$_rid]['category'] ?? '') === 'Teaching') {
+                        $isTeaching = true;
+                        break;
+                    }
+                }
+            } else {
+                $pos = $_s['Position'] ?? '';
+                $isTeaching = (stripos($pos, 'teacher') !== false || stripos($pos, 'lecturer') !== false);
+            }
+            if ($isTeaching) $teachingCount++;
+            else $nonTeachingCount++;
+
+            $d = trim($_s['Department'] ?? '');
+            if ($d !== '') $deptSet[$d] = true;
+        }
+    ?>
     <div class="nsa-stat-strip">
         <div class="nsa-stat-card">
             <div class="nsa-stat-icon" style="background:rgba(15,118,110,.12);color:var(--nsa-teal);">
                 <i class="fa fa-users"></i>
             </div>
             <div>
-                <div class="nsa-stat-num"><?= $total_staff ?? count($staff) ?></div>
+                <div class="nsa-stat-num"><?= $totalCount ?></div>
                 <div class="nsa-stat-lbl">Total Staff</div>
             </div>
         </div>
         <div class="nsa-stat-card">
             <div class="nsa-stat-icon" style="background:rgba(37,99,235,.12);color:#2563eb;">
-                <i class="fa fa-male"></i>
+                <i class="fa fa-graduation-cap"></i>
             </div>
             <div>
-                <div class="nsa-stat-num" id="statMale">—</div>
-                <div class="nsa-stat-lbl">Male</div>
-            </div>
-        </div>
-        <div class="nsa-stat-card">
-            <div class="nsa-stat-icon" style="background:rgba(219,39,119,.12);color:#db2777;">
-                <i class="fa fa-female"></i>
-            </div>
-            <div>
-                <div class="nsa-stat-num" id="statFemale">—</div>
-                <div class="nsa-stat-lbl">Female</div>
+                <div class="nsa-stat-num"><?= $teachingCount ?></div>
+                <div class="nsa-stat-lbl">Teaching</div>
             </div>
         </div>
         <div class="nsa-stat-card">
             <div class="nsa-stat-icon" style="background:rgba(217,119,6,.12);color:#d97706;">
-                <i class="fa fa-search"></i>
+                <i class="fa fa-briefcase"></i>
             </div>
             <div>
-                <div class="nsa-stat-num" id="statFiltered">—</div>
-                <div class="nsa-stat-lbl">Showing</div>
+                <div class="nsa-stat-num"><?= $nonTeachingCount ?></div>
+                <div class="nsa-stat-lbl">Non-Teaching</div>
+            </div>
+        </div>
+        <div class="nsa-stat-card">
+            <div class="nsa-stat-icon" style="background:rgba(13,122,95,.12);color:var(--nsa-green);">
+                <i class="fa fa-building-o"></i>
+            </div>
+            <div>
+                <div class="nsa-stat-num"><?= count($deptSet) ?></div>
+                <div class="nsa-stat-lbl">Departments</div>
             </div>
         </div>
     </div>
@@ -89,11 +128,15 @@
                 </button>
             </div>
             <div class="nsa-toolbar-right">
-                <select id="filterGender" class="nsa-filter-select">
-                    <option value="">All Genders</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
+                <select id="filterDept" class="nsa-filter-select">
+                    <option value="">All Departments</option>
+                    <?php
+                    $departments = array_unique(array_filter(array_column($staff, 'Department')));
+                    sort($departments);
+                    foreach ($departments as $dpt):
+                    ?>
+                    <option value="<?= htmlspecialchars($dpt) ?>"><?= htmlspecialchars($dpt) ?></option>
+                    <?php endforeach; ?>
                 </select>
                 <select id="filterPosition" class="nsa-filter-select">
                     <option value="">All Positions</option>
@@ -123,18 +166,18 @@
                         <th class="nsa-th-avatar">Photo</th>
                         <th class="nsa-sortable" data-col="3">Staff ID <i class="fa fa-sort"></i></th>
                         <th class="nsa-sortable" data-col="4">Name <i class="fa fa-sort"></i></th>
-                        <th class="nsa-sortable" data-col="5">Gender <i class="fa fa-sort"></i></th>
-                        <th class="nsa-sortable" data-col="6">Position <i class="fa fa-sort"></i></th>
-                        <th class="nsa-sortable" data-col="7">Department <i class="fa fa-sort"></i></th>
+                        <th class="nsa-sortable" data-col="5">Position / Role <i class="fa fa-sort"></i></th>
+                        <th class="nsa-sortable" data-col="6">Department <i class="fa fa-sort"></i></th>
                         <th>Phone</th>
                         <th>Email</th>
+                        <th class="nsa-sortable" data-col="9">Joining Date <i class="fa fa-sort"></i></th>
                         <th class="nsa-th-action">Action</th>
                     </tr>
                 </thead>
                 <tbody id="staffTbody">
                     <?php if (empty($staff)): ?>
                     <tr>
-                        <td colspan="11" class="nsa-empty-row">
+                        <td colspan="11" class="nsa-empty-row"><!-- 11 cols: check, sno, photo, id, name, role, dept, phone, email, joining, action -->
                             <i class="fa fa-users-slash"></i>
                             <p>No staff records found.</p>
                             <a href="<?= base_url('staff/new_staff') ?>" class="nsa-btn nsa-btn-primary nsa-btn-sm">
@@ -145,33 +188,35 @@
                     <?php else: ?>
                     <?php $i = 1; foreach ($staff as $s): ?>
                     <?php
-                        /*
-                         * Use the normalised _profilePic key set by the controller.
-                         * Falls back to default avatar if still empty.
-                         */
                         $pic = !empty($s['_profilePic'])
                              ? htmlspecialchars($s['_profilePic'])
                              : base_url('tools/dist/img/user2-160x160.jpg');
 
                         $uid      = htmlspecialchars($s['User ID']      ?? 'N/A');
                         $name     = htmlspecialchars($s['Name']         ?? 'N/A');
-                        $gender   = htmlspecialchars($s['Gender']       ?? '—');
                         $position = htmlspecialchars($s['Position']     ?? '—');
                         $dept     = htmlspecialchars($s['Department']   ?? '—');
                         $phone    = htmlspecialchars($s['Phone Number'] ?? '—');
                         $email    = htmlspecialchars($s['Email']        ?? '—');
                         $userId   = $s['User ID'] ?? '';
+                        $joinDate = $s['Joining Date'] ?? $s['joining_date'] ?? '';
+                        $joinDateFmt = $joinDate ? date('d M Y', strtotime($joinDate)) : '—';
 
-                        $genderClass = match(strtolower($gender)) {
-                            'male'   => 'nsa-badge-blue',
-                            'female' => 'nsa-badge-pink',
-                            default  => 'nsa-badge-gray',
-                        };
+                        // Role category for avatar dot color
+                        $sRolesCheck = $s['staff_roles'] ?? [];
+                        $avatarClass = 'nsa-badge-gray';
+                        if (!empty($sRolesCheck) && is_array($sRolesCheck)) {
+                            foreach ($sRolesCheck as $_rid) {
+                                $cat = $staff_role_defs[$_rid]['category'] ?? '';
+                                if ($cat === 'Teaching') { $avatarClass = 'nsa-badge-blue'; break; }
+                                elseif ($cat === 'Administrative') { $avatarClass = 'nsa-badge-amber'; break; }
+                                elseif ($cat === 'Non-Teaching') { $avatarClass = 'nsa-badge-green'; break; }
+                            }
+                        }
                     ?>
                     <tr class="nsa-staff-row"
                         data-name="<?= strtolower($name) ?>"
                         data-id="<?= strtolower($uid) ?>"
-                        data-gender="<?= $gender ?>"
                         data-position="<?= strtolower($position) ?>"
                         data-dept="<?= strtolower($dept) ?>"
                         data-phone="<?= $phone ?>"
@@ -189,7 +234,7 @@
                                      alt="<?= $name ?>"
                                      class="nsa-avatar"
                                      onerror="this.src='<?= base_url('tools/dist/img/user2-160x160.jpg') ?>'">
-                                <span class="nsa-avatar-dot <?= $genderClass ?>"></span>
+                                <span class="nsa-avatar-dot <?= $avatarClass ?>"></span>
                             </div>
                         </td>
 
@@ -202,10 +247,6 @@
                                 <strong><?= $name ?></strong>
                                 <span class="nsa-name-sub"><?= $dept ?></span>
                             </div>
-                        </td>
-
-                        <td>
-                            <span class="nsa-gender-badge <?= $genderClass ?>"><?= $gender ?></span>
                         </td>
 
                         <td>
@@ -243,6 +284,10 @@
 
                         <td class="nsa-td-email">
                             <span title="<?= $email ?>"><?= $email ?></span>
+                        </td>
+
+                        <td class="nsa-td-date">
+                            <span style="font-size:12.5px;color:var(--nsa-muted);"><?= $joinDateFmt ?></span>
                         </td>
 
                         <td class="nsa-td-action">
@@ -319,19 +364,10 @@ document.addEventListener('DOMContentLoaded', function () {
     var allRows      = Array.from(tbody ? tbody.querySelectorAll('.nsa-staff-row') : []);
     var searchInput  = document.getElementById('staffSearch');
     var clearBtn     = document.getElementById('clearSearch');
-    var filterGender = document.getElementById('filterGender');
+    var filterDept   = document.getElementById('filterDept');
     var filterPos    = document.getElementById('filterPosition');
     var noResults    = document.getElementById('noResultsMsg');
     var rowCountText = document.getElementById('rowCountText');
-    var statFiltered = document.getElementById('statFiltered');
-    var statMale     = document.getElementById('statMale');
-    var statFemale   = document.getElementById('statFemale');
-
-    /* ── Compute gender stats once ── */
-    var maleCount   = allRows.filter(function(r) { return r.dataset.gender === 'Male';   }).length;
-    var femaleCount = allRows.filter(function(r) { return r.dataset.gender === 'Female'; }).length;
-    if (statMale)   statMale.textContent   = maleCount;
-    if (statFemale) statFemale.textContent = femaleCount;
 
     /* ── Initial count ── */
     updateCounts(allRows.length);
@@ -339,7 +375,7 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ── Filter engine ── */
     function applyFilters() {
         var query   = (searchInput ? searchInput.value.toLowerCase().trim() : '');
-        var gender  = (filterGender ? filterGender.value : '');
+        var dept    = (filterDept ? filterDept.value.toLowerCase() : '');
         var pos     = (filterPos ? filterPos.value.toLowerCase() : '');
         var visible = 0;
 
@@ -353,10 +389,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 d.phone.includes(query)    ||
                 d.email.includes(query);
 
-            var matchGender = !gender || d.gender === gender;
-            var matchPos    = !pos    || d.position.includes(pos);
+            var matchDept = !dept || d.dept.includes(dept);
+            var matchPos  = !pos  || d.position.includes(pos);
 
-            var show = matchSearch && matchGender && matchPos;
+            var show = matchSearch && matchDept && matchPos;
             row.style.display = show ? '' : 'none';
 
             /* Re-number S.No. for visible rows */
@@ -377,14 +413,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function updateCounts(n) {
-        if (statFiltered) statFiltered.textContent = n;
-        if (rowCountText) rowCountText.textContent  = 'Showing ' + n + ' of ' + allRows.length + ' staff';
+        if (rowCountText) rowCountText.textContent = 'Showing ' + n + ' of ' + allRows.length + ' staff';
     }
 
     /* ── Event listeners ── */
     if (searchInput) searchInput.addEventListener('input', applyFilters);
-    if (filterGender) filterGender.addEventListener('change', applyFilters);
-    if (filterPos)    filterPos.addEventListener('change', applyFilters);
+    if (filterDept)  filterDept.addEventListener('change', applyFilters);
+    if (filterPos)   filterPos.addEventListener('change', applyFilters);
 
     if (clearBtn) {
         clearBtn.addEventListener('click', function () {
@@ -481,10 +516,10 @@ function clearSelection() {
 
 function resetAllFilters() {
     var s = document.getElementById('staffSearch');
-    var g = document.getElementById('filterGender');
+    var d = document.getElementById('filterDept');
     var p = document.getElementById('filterPosition');
     if (s) s.value = '';
-    if (g) g.value = '';
+    if (d) d.value = '';
     if (p) p.value = '';
     document.querySelectorAll('.nsa-staff-row').forEach(function(r){ r.style.display=''; });
     var noR = document.getElementById('noResultsMsg');
@@ -493,8 +528,6 @@ function resetAllFilters() {
     if (cb) cb.style.display = 'none';
     /* Recount */
     var all = document.querySelectorAll('.nsa-staff-row').length;
-    var sf = document.getElementById('statFiltered');
-    if (sf) sf.textContent = all;
     var rc = document.getElementById('rowCountText');
     if (rc) rc.textContent = 'Showing ' + all + ' of ' + all + ' staff';
     /* Re-number */
@@ -758,14 +791,6 @@ function resetAllFilters() {
 .nsa-name-cell { display: flex; flex-direction: column; gap: 2px; }
 .nsa-name-cell strong { font-size: 13.5px; color: var(--nsa-navy); }
 .nsa-name-sub { font-size: 11.5px; color: var(--nsa-muted); }
-
-/* ── Gender badge ── */
-.nsa-gender-badge {
-    display: inline-flex; align-items: center;
-    padding: 3px 10px; border-radius: 20px;
-    font-size: 11.5px; font-weight: 600;
-    color: #fff;
-}
 
 /* ── Phone link ── */
 .nsa-phone-link {

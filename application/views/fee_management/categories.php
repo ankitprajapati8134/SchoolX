@@ -5,36 +5,65 @@
         <!-- Top bar -->
         <div class="fm-topbar">
             <h1 class="fm-page-title">
-                <i class="fa fa-th-large"></i> Fee Categories
+                <i class="fa fa-th-large"></i> Fee Titles &amp; Categories
             </h1>
             <ul class="fm-breadcrumb">
                 <li><a href="<?= base_url() ?>">Dashboard</a></li>
                 <li>Fees &amp; Finance</li>
-                <li>Categories</li>
+                <li>Titles &amp; Categories</li>
             </ul>
         </div>
 
         <!-- Stats row -->
         <div class="fm-stats" id="fmCatStats">
+            <div class="fm-stat teal">
+                <div class="fm-stat-label">Monthly Titles</div>
+                <div class="fm-stat-value" id="statMonthly">--</div>
+            </div>
+            <div class="fm-stat gold">
+                <div class="fm-stat-label">Yearly Titles</div>
+                <div class="fm-stat-value" id="statYearly">--</div>
+            </div>
             <div class="fm-stat">
-                <div class="fm-stat-label">Total Categories</div>
+                <div class="fm-stat-label">Categories</div>
                 <div class="fm-stat-value" id="statTotal">--</div>
             </div>
             <div class="fm-stat teal">
                 <div class="fm-stat-label">Academic</div>
                 <div class="fm-stat-value" id="statAcademic">--</div>
             </div>
-            <div class="fm-stat gold">
-                <div class="fm-stat-label">Transport</div>
-                <div class="fm-stat-value" id="statTransport">--</div>
-            </div>
             <div class="fm-stat green">
                 <div class="fm-stat-label">Extra-curricular</div>
                 <div class="fm-stat-value" id="statExtra">--</div>
             </div>
-            <div class="fm-stat">
-                <div class="fm-stat-label">Other</div>
-                <div class="fm-stat-value" id="statOther">--</div>
+        </div>
+
+        <!-- Fee Titles Management Card -->
+        <div class="fm-card">
+            <div class="fm-card-head">
+                <i class="fa fa-tag"></i>
+                <h3>Fee Titles</h3>
+                <span class="fm-badge fm-badge-teal fm-badge-xs" id="titleCountBadge" style="margin-left:auto">0 titles</span>
+            </div>
+            <div class="fm-card-body">
+                <form id="feeTitleForm" autocomplete="off" class="fm-inline-form">
+                    <div class="fm-inline-field">
+                        <input type="text" id="new_fee_title" class="fm-input"
+                            placeholder="e.g. Tuition Fee" required>
+                    </div>
+                    <div class="fm-inline-field fm-inline-field-sm">
+                        <select id="new_fee_type" class="fm-select" required>
+                            <option value="Monthly">Monthly</option>
+                            <option value="Yearly">Yearly</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="fm-btn fm-btn-primary" id="btnAddTitle">
+                        <i class="fa fa-plus"></i> Add Title
+                    </button>
+                </form>
+                <div class="fm-title-list" id="feeTitleList">
+                    <div class="fm-loading"><i class="fa fa-spinner fa-spin"></i> Loading fee titles...</div>
+                </div>
             </div>
         </div>
 
@@ -76,46 +105,7 @@
                         <div class="fm-form-col fm-form-col-full">
                             <label class="fm-label">Fee Titles</label>
                             <div class="fm-checkbox-group" id="feeTitlesGroup">
-                                <?php if (!empty($feesStructure)): ?>
-                                    <?php if (!empty($feesStructure['Monthly'])): ?>
-                                        <div class="fm-checkbox-section">
-                                            <div class="fm-checkbox-section-head">
-                                                <i class="fa fa-calendar"></i> Monthly
-                                            </div>
-                                            <?php foreach ($feesStructure['Monthly'] as $title => $val): ?>
-                                                <label class="fm-check-label">
-                                                    <input type="checkbox" name="fee_titles[]"
-                                                        value="<?= htmlspecialchars($title) ?>"
-                                                        class="fm-check-input">
-                                                    <span class="fm-check-box"></span>
-                                                    <span class="fm-check-text"><?= htmlspecialchars($title) ?></span>
-                                                    <span class="fm-badge fm-badge-teal fm-badge-xs">Monthly</span>
-                                                </label>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php endif; ?>
-                                    <?php if (!empty($feesStructure['Yearly'])): ?>
-                                        <div class="fm-checkbox-section">
-                                            <div class="fm-checkbox-section-head">
-                                                <i class="fa fa-star"></i> Yearly
-                                            </div>
-                                            <?php foreach ($feesStructure['Yearly'] as $title => $val): ?>
-                                                <label class="fm-check-label">
-                                                    <input type="checkbox" name="fee_titles[]"
-                                                        value="<?= htmlspecialchars($title) ?>"
-                                                        class="fm-check-input">
-                                                    <span class="fm-check-box"></span>
-                                                    <span class="fm-check-text"><?= htmlspecialchars($title) ?></span>
-                                                    <span class="fm-badge fm-badge-gold fm-badge-xs">Yearly</span>
-                                                </label>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php endif; ?>
-                                <?php else: ?>
-                                    <div class="fm-empty-sm">
-                                        <i class="fa fa-info-circle"></i> No fee titles found. Add titles in Fees Structure first.
-                                    </div>
-                                <?php endif; ?>
+                                <div class="fm-loading"><i class="fa fa-spinner fa-spin"></i> Loading...</div>
                             </div>
                         </div>
                     </div>
@@ -196,10 +186,12 @@ document.addEventListener('DOMContentLoaded', function () {
     var CSRF_HASH = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
     var categoriesData = [];
+    var feeTitlesData = [];   // [{title, type}, ...]
     var editingId = null;
     var pendingDeleteId = null;
 
     /* ── Init ── */
+    loadFeeTitles();
     loadCategories();
 
     /* ── Toast ── */
@@ -250,6 +242,159 @@ document.addEventListener('DOMContentLoaded', function () {
         if (body) opts.body = body;
         return fetch(url, opts).then(function (res) { return res.json(); });
     }
+
+    /* ══════════════════════════════════════════════════════════════
+       FEE TITLES MANAGEMENT
+       ══════════════════════════════════════════════════════════════ */
+
+    /* ── Load Fee Titles ── */
+    function loadFeeTitles() {
+        ajax('GET', BASE + 'fee_management/fetch_fee_titles')
+            .then(function (r) {
+                refreshCsrf(r);
+                feeTitlesData = (r.status === 'success' && r.titles) ? r.titles : [];
+                renderFeeTitleList();
+                renderFeeTitleCheckboxes();
+                updateStats();
+            })
+            .catch(function () {
+                document.getElementById('feeTitleList').innerHTML =
+                    '<div class="fm-empty-sm"><i class="fa fa-exclamation-circle"></i> Failed to load fee titles.</div>';
+            });
+    }
+
+    /* ── Render Fee Title List ── */
+    function renderFeeTitleList() {
+        var wrap = document.getElementById('feeTitleList');
+        var badge = document.getElementById('titleCountBadge');
+        badge.textContent = feeTitlesData.length + ' title' + (feeTitlesData.length !== 1 ? 's' : '');
+
+        if (!feeTitlesData.length) {
+            wrap.innerHTML = '<div class="fm-empty-sm"><i class="fa fa-info-circle"></i> No fee titles yet. Add one above to get started.</div>';
+            return;
+        }
+
+        var html = '<table class="fm-table fm-table-compact"><thead><tr>'
+            + '<th style="width:46px">S.No</th><th>Fee Title</th><th style="width:100px">Type</th><th style="width:70px">Action</th>'
+            + '</tr></thead><tbody>';
+
+        feeTitlesData.forEach(function (t, i) {
+            var typeBadge = t.type === 'Monthly'
+                ? '<span class="fm-badge fm-badge-teal fm-badge-xs"><i class="fa fa-calendar"></i> Monthly</span>'
+                : '<span class="fm-badge fm-badge-gold fm-badge-xs"><i class="fa fa-star"></i> Yearly</span>';
+
+            html += '<tr>'
+                + '<td class="fm-cell-muted">' + (i + 1) + '</td>'
+                + '<td class="fm-cell-name">' + escHtml(t.title) + '</td>'
+                + '<td>' + typeBadge + '</td>'
+                + '<td><button class="fm-btn fm-btn-danger fm-btn-xs" onclick="window._fmDeleteTitle(\'' + escAttr(t.title) + '\',\'' + escAttr(t.type) + '\')" title="Delete"><i class="fa fa-trash-o"></i></button></td>'
+                + '</tr>';
+        });
+
+        html += '</tbody></table>';
+        wrap.innerHTML = html;
+    }
+
+    /* ── Render Fee Title Checkboxes (in category form) ── */
+    function renderFeeTitleCheckboxes() {
+        var group = document.getElementById('feeTitlesGroup');
+        if (!feeTitlesData.length) {
+            group.innerHTML = '<div class="fm-empty-sm"><i class="fa fa-info-circle"></i> No fee titles yet. Add titles in the card above first.</div>';
+            return;
+        }
+
+        var monthly = feeTitlesData.filter(function (t) { return t.type === 'Monthly'; });
+        var yearly  = feeTitlesData.filter(function (t) { return t.type === 'Yearly'; });
+        var html = '';
+
+        if (monthly.length) {
+            html += '<div class="fm-checkbox-section"><div class="fm-checkbox-section-head"><i class="fa fa-calendar"></i> Monthly</div>';
+            monthly.forEach(function (t) {
+                html += '<label class="fm-check-label">'
+                    + '<input type="checkbox" name="fee_titles[]" value="' + escAttr(t.title) + '" class="fm-check-input">'
+                    + '<span class="fm-check-box"></span>'
+                    + '<span class="fm-check-text">' + escHtml(t.title) + '</span>'
+                    + '<span class="fm-badge fm-badge-teal fm-badge-xs">Monthly</span>'
+                    + '</label>';
+            });
+            html += '</div>';
+        }
+
+        if (yearly.length) {
+            html += '<div class="fm-checkbox-section"><div class="fm-checkbox-section-head"><i class="fa fa-star"></i> Yearly</div>';
+            yearly.forEach(function (t) {
+                html += '<label class="fm-check-label">'
+                    + '<input type="checkbox" name="fee_titles[]" value="' + escAttr(t.title) + '" class="fm-check-input">'
+                    + '<span class="fm-check-box"></span>'
+                    + '<span class="fm-check-text">' + escHtml(t.title) + '</span>'
+                    + '<span class="fm-badge fm-badge-gold fm-badge-xs">Yearly</span>'
+                    + '</label>';
+            });
+            html += '</div>';
+        }
+
+        group.innerHTML = html;
+    }
+
+    /* ── Add Fee Title ── */
+    document.getElementById('feeTitleForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var titleInput = document.getElementById('new_fee_title');
+        var typeSelect = document.getElementById('new_fee_type');
+        var title = titleInput.value.trim();
+        var type  = typeSelect.value;
+
+        if (!title) {
+            showToast('Please enter a fee title.', 'error');
+            return;
+        }
+
+        var btn = document.getElementById('btnAddTitle');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Adding...';
+
+        ajax('POST', BASE + 'fee_management/save_fee_title', buildFormData({ fee_title: title, fee_type: type }))
+            .then(function (r) {
+                refreshCsrf(r);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-plus"></i> Add Title';
+                if (r.status === 'success') {
+                    showToast(r.message || 'Fee title added!', 'success');
+                    titleInput.value = '';
+                    loadFeeTitles();
+                } else {
+                    showToast(r.message || 'Failed to add fee title.', 'error');
+                }
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-plus"></i> Add Title';
+                showToast('Server error. Please try again.', 'error');
+            });
+    });
+
+    /* ── Delete Fee Title ── */
+    window._fmDeleteTitle = function (title, type) {
+        if (!confirm('Delete fee title "' + title + '" (' + type + ')? This cannot be undone.')) return;
+
+        ajax('POST', BASE + 'fee_management/delete_fee_title', buildFormData({ fee_title: title, fee_type: type }))
+            .then(function (r) {
+                refreshCsrf(r);
+                if (r.status === 'success') {
+                    showToast(r.message || 'Fee title deleted.', 'success');
+                    loadFeeTitles();
+                } else {
+                    showToast(r.message || 'Failed to delete fee title.', 'error');
+                }
+            })
+            .catch(function () {
+                showToast('Server error. Please try again.', 'error');
+            });
+    };
+
+    /* ══════════════════════════════════════════════════════════════
+       CATEGORIES
+       ══════════════════════════════════════════════════════════════ */
 
     /* ── Load Categories ── */
     function loadCategories() {
@@ -322,11 +467,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (counts.hasOwnProperty(c.category_type)) counts[c.category_type]++;
             });
         }
+        // Fee title counts
+        var monthly = 0, yearly = 0;
+        feeTitlesData.forEach(function (t) {
+            if (t.type === 'Monthly') monthly++;
+            else yearly++;
+        });
+        document.getElementById('statMonthly').textContent = monthly;
+        document.getElementById('statYearly').textContent = yearly;
         document.getElementById('statTotal').textContent = counts.total;
         document.getElementById('statAcademic').textContent = counts.Academic;
-        document.getElementById('statTransport').textContent = counts.Transport;
         document.getElementById('statExtra').textContent = counts['Extra-curricular'];
-        document.getElementById('statOther').textContent = counts.Other;
     }
 
     /* ── Save Category (Add / Update) ── */
@@ -875,7 +1026,7 @@ document.addEventListener('DOMContentLoaded', function () {
 .fm-cell-name { font-weight: 600; font-size: 13px; }
 .fm-cell-titles { max-width: 280px; }
 .fm-cell-actions { white-space: nowrap; }
-.fm-muted-text { color: var(--fm-muted); font-size: 11px; font-style: italic; }
+.fm-muted-text { color: var(--fm-muted); font-size: 12.5px; font-style: italic; }
 
 /* ── Badge ── */
 .fm-badge {
@@ -1008,6 +1159,20 @@ document.addEventListener('DOMContentLoaded', function () {
     background: var(--fm-sky);
 }
 
+/* ── Inline form (fee titles) ── */
+.fm-inline-form {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    margin-bottom: 16px;
+}
+.fm-inline-field { flex: 1; }
+.fm-inline-field-sm { flex: 0 0 130px; }
+.fm-title-list { margin-top: 4px; }
+.fm-table-compact th,
+.fm-table-compact td { padding: 7px 12px; }
+.fm-table-compact { font-size: .78rem; }
+
 /* ── Responsive ── */
 @media (max-width: 767px) {
     .fm-wrap { padding: 16px 12px 50px; }
@@ -1021,6 +1186,10 @@ document.addEventListener('DOMContentLoaded', function () {
     .fm-cell-titles { max-width: 160px; }
 }
 
+@media (max-width: 560px) {
+    .fm-inline-form { flex-direction: column; }
+    .fm-inline-field-sm { flex: auto; }
+}
 @media (max-width: 479px) {
     .fm-stats { flex-direction: column; }
     .fm-stat { min-width: unset; }

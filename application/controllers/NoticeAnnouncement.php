@@ -3,10 +3,10 @@
 class NoticeAnnouncement extends MY_Controller
 {
     /** Roles for notice management */
-    private const MANAGE_ROLES = ['Admin', 'Principal', 'Teacher'];
+    private const MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
     /** Roles that may view notices */
-    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+    private const VIEW_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
     public function __construct()
     {

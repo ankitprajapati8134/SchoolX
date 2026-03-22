@@ -24,13 +24,13 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Hr extends MY_Controller
 {
     /** Roles for payroll and salary management */
-    private const ADMIN_ROLES = ['Admin', 'Principal'];
+    private const ADMIN_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'HR Manager'];
 
     /** Roles for HR operations (departments, recruitment, leave mgmt) */
-    private const HR_ROLES    = ['Admin', 'Principal'];
+    private const HR_ROLES    = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'HR Manager'];
 
     /** Roles that may view HR data */
-    private const VIEW_ROLES  = ['Admin', 'Principal', 'Teacher'];
+    private const VIEW_ROLES  = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'HR Manager', 'Teacher'];
 
     public function __construct()
     {

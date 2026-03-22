@@ -140,49 +140,50 @@ class Superadmin_login extends CI_Controller
         // Type B: School Super Admin   → any other school_id, Role must = "Super Admin"
         $isDevPanel = (trim($schoolId) === 'Our Panel');
 
-        // ── Fetch admin record from Firebase ─────────────────────────────────
-        $adminData = null;
-        try {
-            $raw = $this->firebase->get("Users/Admin/{$schoolId}/{$adminId}");
-            $adminData = is_array($raw) ? $raw : null;
-        } catch (Exception $e) {
-            log_message('error', 'SA Login: Firebase error — ' . $e->getMessage());
-            $this->_json(['status' => 'error', 'message' => 'Authentication service unavailable. Please try again.']);
-            return;
-        }
+        // ── Authenticate via MongoDB (Node.js Auth API) ──────────────────
+        $adminData     = null;
+        $valid         = false;
+        $authSource    = 'mongodb';
+        $firebaseProfile = null;
 
-        // ── Timing-safe password check ───────────────────────────────────────
-        // Developers may store password directly as 'Password' or nested under 'Credentials/Password'
-        $storedHash = self::DUMMY_HASH;
-        if ($adminData !== null) {
-            $storedHash = (string) ($adminData['Credentials']['Password']
-                       ?? $adminData['Password']
-                       ?? self::DUMMY_HASH);
-        }
+        $this->load->library('auth_client');
+        $result = $this->auth_client->web_login($adminId, '', $password, $ip);
 
-        $valid = password_verify($password, $storedHash);
-
-        // Plain-text password support + auto-upgrade to bcrypt
-        // Guard: only allow plaintext match if stored value is NOT a bcrypt hash
-        if (!$valid && $adminData !== null
-            && strlen($storedHash) !== 60
-            && strpos($storedHash, '$2y$') !== 0
-            && strpos($storedHash, '$2a$') !== 0
-            && $password === $storedHash) {
-            $newHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
-            try {
-                if (isset($adminData['Credentials']['Password'])) {
-                    $this->firebase->update("Users/Admin/{$schoolId}/{$adminId}/Credentials", ['Password' => $newHash]);
-                } else {
-                    $this->firebase->update("Users/Admin/{$schoolId}/{$adminId}", ['Password' => $newHash]);
-                }
-            } catch (Exception $e) {
-                log_message('error', 'SA Login: Password upgrade failed — ' . $e->getMessage());
-            }
+        if (!empty($result['success'])) {
             $valid = true;
+            $userData = $result['user'] ?? [];
+            $firebaseProfile = $result['firebaseProfile'] ?? [];
+
+            $adminData = [
+                'Name'   => $userData['name'] ?? $firebaseProfile['Name'] ?? $adminId,
+                'Email'  => $userData['email'] ?? $firebaseProfile['Email'] ?? '',
+                'Role'   => $firebaseProfile['Role'] ?? $userData['role'] ?? 'Super Admin',
+                'Status' => $firebaseProfile['Status'] ?? 'Active',
+                'Credentials' => $firebaseProfile['Credentials'] ?? [],
+                'Profile'     => $firebaseProfile['Profile'] ?? [],
+                'AccessHistory' => $firebaseProfile['AccessHistory'] ?? [],
+            ];
+        } else if (!empty($result['unavailable'])) {
+            // Auth API down — fall back to Firebase
+            $authSource = 'firebase';
+            try {
+                $raw = $this->firebase->get("Users/Admin/{$schoolId}/{$adminId}");
+                $adminData = is_array($raw) ? $raw : null;
+            } catch (Exception $e) {
+                log_message('error', 'SA Login: Firebase error — ' . $e->getMessage());
+            }
+
+            if ($adminData !== null) {
+                $storedHash = (string) ($adminData['Credentials']['Password']
+                           ?? $adminData['Password']
+                           ?? self::DUMMY_HASH);
+                $valid = password_verify($password, $storedHash);
+            } else {
+                password_verify($password, self::DUMMY_HASH);
+            }
         }
 
-        if (!$adminData || !$valid) {
+        if (!$valid) {
             $this->_record_fail($ip, $now);
             $this->_json(['status' => 'error', 'message' => 'Invalid credentials.']);
             return;
@@ -190,7 +191,6 @@ class Superadmin_login extends CI_Controller
 
         // ── Role / namespace check ────────────────────────────────────────────
         if (!$isDevPanel) {
-            // School admin path — must have Role: "Super Admin"
             $role = (string) ($adminData['Role'] ?? '');
             if (strtolower(trim($role)) !== 'super admin') {
                 $this->_record_fail($ip, $now);
@@ -199,7 +199,7 @@ class Superadmin_login extends CI_Controller
             }
         }
 
-        // ── Account status check (if field exists) ───────────────────────────
+        // ── Account status check ─────────────────────────────────────────────
         $status = (string) ($adminData['Status'] ?? 'Active');
         if (!empty($adminData['Status']) && $status !== 'Active') {
             $this->_json(['status' => 'error', 'message' => 'Account is inactive. Contact support.']);
@@ -243,6 +243,92 @@ class Superadmin_login extends CI_Controller
         } catch (Exception $e) { /* non-critical */ }
 
         $this->_json(['status' => 'success', 'redirect' => base_url('superadmin/dashboard')]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET  /superadmin/login/forgot_password
+    // ─────────────────────────────────────────────────────────────────────────
+    public function forgot_password()
+    {
+        $this->load->view('superadmin/forgot_password');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // POST  /superadmin/login/send_otp
+    // ─────────────────────────────────────────────────────────────────────────
+    public function send_otp()
+    {
+        if ($this->input->method() !== 'post') { redirect('superadmin/login'); return; }
+
+        $adminId = trim((string) $this->input->post('admin_id', TRUE));
+        if (empty($adminId)) {
+            $this->_json(['status' => 'error', 'message' => 'Admin ID is required.']);
+            return;
+        }
+
+        $this->load->library('auth_client');
+        $result = $this->auth_client->forgot_password($adminId);
+
+        $this->_json([
+            'status'       => !empty($result['success']) ? 'success' : 'error',
+            'message'      => $result['message'] ?? 'Request failed.',
+            'email_masked' => $result['email_masked'] ?? '',
+        ]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // POST  /superadmin/login/verify_otp
+    // ─────────────────────────────────────────────────────────────────────────
+    public function verify_otp()
+    {
+        if ($this->input->method() !== 'post') { redirect('superadmin/login'); return; }
+
+        $adminId = trim((string) $this->input->post('admin_id', TRUE));
+        $otp     = trim((string) $this->input->post('otp', TRUE));
+
+        if (empty($adminId) || empty($otp)) {
+            $this->_json(['status' => 'error', 'message' => 'Admin ID and OTP are required.']);
+            return;
+        }
+
+        $this->load->library('auth_client');
+        $result = $this->auth_client->verify_otp($adminId, $otp);
+
+        $this->_json([
+            'status'      => !empty($result['success']) ? 'success' : 'error',
+            'message'     => $result['message'] ?? 'Verification failed.',
+            'resetToken'  => $result['resetToken'] ?? '',
+        ]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // POST  /superadmin/login/reset_password
+    // ─────────────────────────────────────────────────────────────────────────
+    public function reset_password()
+    {
+        if ($this->input->method() !== 'post') { redirect('superadmin/login'); return; }
+
+        $adminId      = trim((string) $this->input->post('admin_id', TRUE));
+        $resetToken   = trim((string) $this->input->post('reset_token', TRUE));
+        $newPassword  = (string) $this->input->post('new_password', FALSE);
+
+        if (empty($adminId) || empty($resetToken) || empty($newPassword)) {
+            $this->_json(['status' => 'error', 'message' => 'All fields are required.']);
+            return;
+        }
+
+        if (strlen($newPassword) < 8) {
+            $this->_json(['status' => 'error', 'message' => 'Password must be at least 8 characters.']);
+            return;
+        }
+
+        $this->load->library('auth_client');
+        $result = $this->auth_client->reset_password_otp($adminId, $resetToken, $newPassword);
+
+        $this->_json([
+            'status'  => !empty($result['success']) ? 'success' : 'error',
+            'message' => $result['message'] ?? 'Password reset failed.',
+        ]);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

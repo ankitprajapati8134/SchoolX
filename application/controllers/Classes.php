@@ -3,8 +3,8 @@ defined('BASEPATH') or exit('No direct script access allowed');
 
 class Classes extends MY_Controller
 {
-    private const MANAGE_ROLES = ['Admin', 'Principal'];
-    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+    private const MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal'];
+    private const VIEW_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
     public function __construct()
     {

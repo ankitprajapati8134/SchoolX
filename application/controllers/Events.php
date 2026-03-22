@@ -14,13 +14,13 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Events extends MY_Controller
 {
     /** Roles for event management */
-    private const MANAGE_ROLES = ['Admin', 'Principal', 'Teacher'];
+    private const MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
     /** Roles that may view events */
-    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+    private const VIEW_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
-    const ADMIN_ROLES   = ['Super Admin', 'Principal', 'Vice Principal', 'Admin'];
-    const TEACHER_ROLES = ['Super Admin', 'Principal', 'Vice Principal', 'Admin', 'Teacher'];
+    const ADMIN_ROLES   = ['Super Admin', 'School Super Admin', 'Principal', 'Vice Principal', 'Admin'];
+    const TEACHER_ROLES = ['Super Admin', 'School Super Admin', 'Principal', 'Vice Principal', 'Admin', 'Teacher'];
 
     const ALLOWED_CATEGORIES = ['event', 'cultural', 'sports'];
     const ALLOWED_STATUSES   = ['scheduled', 'ongoing', 'completed', 'cancelled'];

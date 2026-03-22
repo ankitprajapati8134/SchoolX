@@ -81,7 +81,8 @@ function dobInWords($dob) {
     $ones  = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
               'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
               'Seventeen', 'Eighteen', 'Nineteen'];
-    $tens  = ['', '', 'Twenty', 'Thirty'];
+    // FIXED: was missing Forty–Ninety → crash for DOB years like 1945, 1998, etc.
+    $tens  = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
     $dayWord = ($day < 20) ? $ones[$day] : $tens[intval($day / 10)] . ' ' . $ones[$day % 10];
 

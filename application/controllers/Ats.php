@@ -15,10 +15,10 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Ats extends MY_Controller
 {
     /** Roles that can manage ATS (move stages, add reviews, convert) */
-    const ADMIN_ROLES = ['Super Admin', 'Principal', 'Vice Principal', 'Admin'];
+    const ADMIN_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Vice Principal', 'HR Manager'];
 
     /** Roles that can view the pipeline */
-    const VIEW_ROLES  = ['Super Admin', 'Principal', 'Vice Principal', 'Admin', 'Teacher', 'HR Manager'];
+    const VIEW_ROLES  = ['Super Admin', 'School Super Admin', 'Principal', 'Vice Principal', 'Admin', 'Teacher', 'HR Manager'];
 
     /** Ordered hiring stages */
     const STAGES = ['Applied', 'Shortlisted', 'Interviewed', 'Selected', 'Hired'];

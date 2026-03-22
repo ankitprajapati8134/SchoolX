@@ -283,26 +283,43 @@ function clearSelection() {
     updateBulkBar();
 }
 
-function bulkDelete() {
+// FIXED: sequential delete with proper error handling (was parallel fire-and-forget)
+async function bulkDelete() {
     var checked = document.querySelectorAll('.row-cb:checked');
     if (checked.length === 0) return;
     var names = Array.from(checked).map(cb => cb.dataset.name).slice(0, 5).join(', ');
     if (checked.length > 5) names += '... and ' + (checked.length - 5) + ' more';
     if (!confirm('Delete ' + checked.length + ' student(s)?\n' + names)) return;
+
     var ids = Array.from(checked).map(cb => cb.value);
-    var completed = 0;
-    ids.forEach(function(id) {
-        var body = new URLSearchParams({ user_id: id });
+    var succeeded = 0, failed = 0, errors = [];
+
+    for (var i = 0; i < ids.length; i++) {
+        var body = new URLSearchParams({ user_id: ids[i] });
         body.append(csrfName, csrfToken);
-        fetch('<?= base_url("sis/delete_student/") ?>' + encodeURIComponent(id), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
-            body: body.toString(),
-        }).then(() => {
-            completed++;
-            if (completed === ids.length) { alert('Deleted ' + ids.length + ' student(s).'); loadStudents(currentPage); }
-        });
-    });
+        try {
+            var resp = await fetch('<?= base_url("sis/delete_student/") ?>' + encodeURIComponent(ids[i]), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+                body: body.toString(),
+            });
+            var data = await resp.json();
+            if (data.status === 'success') {
+                succeeded++;
+            } else {
+                failed++;
+                errors.push(ids[i] + ': ' + (data.message || 'Unknown error'));
+            }
+        } catch (e) {
+            failed++;
+            errors.push(ids[i] + ': Network error');
+        }
+    }
+
+    var msg = 'Deleted ' + succeeded + ' of ' + ids.length + ' student(s).';
+    if (failed > 0) msg += '\nFailed: ' + failed + '\n' + errors.slice(0, 5).join('\n');
+    alert(msg);
+    loadStudents(currentPage);
 }
 
 // Initial load — show all enrolled students on page open

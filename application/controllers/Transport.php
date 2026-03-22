@@ -18,14 +18,14 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Transport extends MY_Controller
 {
     /** Roles for transport management */
-    private const MANAGE_ROLES = ['Admin', 'Principal'];
+    private const MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal'];
 
     /** Roles that may view transport data */
-    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+    private const VIEW_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
-    const OPS_ADMIN_ROLES  = ['Super Admin', 'Principal', 'Vice Principal'];
-    const TRN_MANAGE_ROLES = ['Super Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Transport Manager'];
-    const TRN_VIEW_ROLES   = ['Super Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Transport Manager', 'Accountant', 'Teacher'];
+    const OPS_ADMIN_ROLES  = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Vice Principal'];
+    const TRN_MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Transport Manager'];
+    const TRN_VIEW_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Transport Manager', 'Accountant', 'Teacher'];
 
     public function __construct()
     {

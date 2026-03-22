@@ -18,7 +18,8 @@ function ic_dob(string $raw): string {
 
 $students     = $students     ?? [];
 $session_year = $session_year ?? '';
-$school_name  = $school_name  ?? 'School';
+// FIXED: use display name from school_profile instead of raw Firebase key (SCH_XXXXXX)
+$school_name  = $school_profile['school_name'] ?? $school_name ?? 'School';
 
 /* Pre-compute unique classes & sections for filter dropdowns */
 $filterClasses  = [];

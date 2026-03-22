@@ -271,6 +271,23 @@ $accounts          = $accounts          ?? [];
                             </div>
                         </div>
 
+                        <!-- Quick payment buttons -->
+                        <div class="fc-quick-pay" id="quickPayBtns" style="display:none;">
+                            <button type="button" class="fc-btn fc-btn-primary fc-btn-sm" onclick="FC_payFull()">
+                                <i class="fa fa-check-circle"></i> Pay Full Due
+                            </button>
+                            <button type="button" class="fc-btn fc-btn-amber fc-btn-sm" onclick="FC_payCustom()">
+                                <i class="fa fa-pencil"></i> Custom Amount
+                            </button>
+                        </div>
+
+                        <!-- Live allocation preview -->
+                        <div class="fc-alloc-preview" id="allocPreview" style="display:none;">
+                            <div class="fc-alloc-title"><i class="fa fa-list-ol"></i> Payment Allocation Preview</div>
+                            <div class="fc-alloc-list" id="allocList"></div>
+                            <div class="fc-alloc-advance" id="allocAdvance" style="display:none;"></div>
+                        </div>
+
                         <div class="fc-action-bar">
                             <button type="button" class="fc-btn fc-btn-ghost"
                                 onclick="location.href='<?= site_url('fees/fees_counter') ?>'">
@@ -412,9 +429,40 @@ $accounts          = $accounts          ?? [];
     </div>
 </div>
 
+<!-- ══ MODAL: Confirm Payment ══ -->
+<div class="fc-overlay" id="confirmModal">
+    <div class="fc-modal" style="max-width:480px;">
+        <div class="fc-modal-head" style="background:linear-gradient(135deg,var(--fc-teal),#134e4a);">
+            <h4 style="color:#fff"><i class="fa fa-shield"></i> Confirm Payment</h4>
+            <button class="fc-modal-close" onclick="closeModal('confirmModal')" style="color:#fff">&times;</button>
+        </div>
+        <div class="fc-modal-body" id="confirmBody" style="padding:20px;"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;padding:14px 20px;border-top:1px solid var(--fc-border);">
+            <button class="fc-btn fc-btn-ghost" onclick="closeModal('confirmModal')">Cancel</button>
+            <button class="fc-btn fc-btn-submit" id="confirmSubmitBtn"><i class="fa fa-paper-plane"></i> Confirm & Submit</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ MODAL: Payment Success ══ -->
+<div class="fc-overlay" id="successModal">
+    <div class="fc-modal" style="max-width:440px;">
+        <div class="fc-modal-body" style="text-align:center;padding:30px 24px;">
+            <div style="width:64px;height:64px;border-radius:50%;background:var(--fc-sky);display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;">
+                <i class="fa fa-check-circle" style="font-size:32px;color:var(--fc-teal);"></i>
+            </div>
+            <h3 style="margin:0 0 6px;font-size:18px;color:var(--fc-navy);">Payment Successful</h3>
+            <p id="successMsg" style="font-size:13px;color:var(--fc-muted);margin:0 0 16px;"></p>
+            <div id="successDetail" style="text-align:left;font-size:13px;background:var(--fc-sky);border-radius:8px;padding:14px;margin-bottom:16px;"></div>
+            <div style="display:flex;gap:10px;justify-content:center;">
+                <a id="successPrintBtn" href="#" target="_blank" class="fc-btn fc-btn-primary"><i class="fa fa-print"></i> Print Receipt</a>
+                <button class="fc-btn fc-btn-ghost" onclick="closeModal('successModal');location.href='<?= site_url('fees/fees_counter') ?>'"><i class="fa fa-file-o"></i> New Receipt</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="fcToastWrap" class="fc-toast-wrap"></div>
-
-
 
 <script>
     /* ================================================================
@@ -507,14 +555,15 @@ $accounts          = $accounts          ?? [];
         }, 3500);
     }
 
-    function showAlert(msg, type) {
+    function showAlert(msg, type, persistent) {
         var box = document.getElementById('fcAlertBox');
         box.className = 'fc-alert fc-alert-' + (type || 'info');
-        box.innerHTML = '<i class="fa fa-exclamation-triangle"></i> ' + msg;
+        box.innerHTML = '<i class="fa fa-exclamation-triangle"></i> <div style="flex:1">' + msg + '</div>'
+            + '<button onclick="this.parentElement.style.display=\'none\'" style="background:none;border:none;color:inherit;font-size:18px;cursor:pointer;padding:0 4px;opacity:.7">&times;</button>';
         box.style.display = 'flex';
-        setTimeout(function() {
-            box.style.display = 'none';
-        }, 6000);
+        if (!persistent) {
+            setTimeout(function() { box.style.display = 'none'; }, 6000);
+        }
     }
 
     /*
@@ -616,6 +665,63 @@ $accounts          = $accounts          ?? [];
         document.getElementById('sumFine').textContent = fmtRs(fine);
         document.getElementById('sumPayable').textContent = fmtRs(schoolFee + fine);
         document.getElementById('discountDisplay').value = '₹ ' + fmtNum(FC.discountAmt);
+    }
+
+    /* ── Allocation Preview ── */
+    function updateAllocationPreview() {
+        var amt = parseFloat(document.getElementById('submitSchoolFees').value) || 0;
+        var container = document.getElementById('allocPreview');
+        var list = document.getElementById('allocList');
+        var advEl = document.getElementById('allocAdvance');
+        var qpEl = document.getElementById('quickPayBtns');
+
+        if (!FC.selectedMonths.length || amt <= 0 || !Object.keys(FC.monthFeeMap).length) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = '';
+        if (qpEl) qpEl.style.display = '';
+        var remaining = amt;
+        var html = '';
+
+        FC.selectedMonths.forEach(function(m) {
+            var monthDue = parseFloat(FC.monthFeeMap[m]) || 0;
+            if (monthDue <= 0) return;
+            var allocated = Math.min(remaining, monthDue);
+            remaining -= allocated;
+            var isCleared = (allocated >= monthDue - 0.01);
+            var cls = isCleared ? 'cleared' : 'partial';
+            var tag = isCleared
+                ? '<span class="alloc-tag cleared-tag">Cleared</span>'
+                : '<span class="alloc-tag partial-tag">Partial</span>';
+            html += '<div class="fc-alloc-item ' + cls + '">'
+                + '<span class="alloc-month">' + m + '</span>'
+                + '<span class="alloc-amount">₹ ' + fmtNum(allocated) + ' / ' + fmtNum(monthDue) + '</span>'
+                + tag + '</div>';
+        });
+        list.innerHTML = html;
+
+        if (remaining > 0.01) {
+            advEl.innerHTML = '<i class="fa fa-info-circle"></i> ₹ ' + fmtNum(remaining) + ' will be stored as advance (overpayment).';
+            advEl.style.display = '';
+        } else {
+            advEl.style.display = 'none';
+        }
+    }
+
+    function FC_payFull() {
+        var due = Math.max(0, FC.grandTotal - FC.discountAmt - FC.overpaidAmt);
+        document.getElementById('submitSchoolFees').value = due.toFixed(2);
+        recalc();
+        updateAllocationPreview();
+    }
+
+    function FC_payCustom() {
+        var el = document.getElementById('submitSchoolFees');
+        el.value = '';
+        el.focus();
+        el.select();
     }
 
     /* ── Month Tiles ── */
@@ -798,7 +904,28 @@ $accounts          = $accounts          ?? [];
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fa fa-refresh"></i> Fetch Fee Details';
                 if (d.error) {
-                    showAlert('Fee detail error: ' + d.error, 'error');
+                    if (d.error === 'no_fee_structure') {
+                        // Show toast notification
+                        showToast('No fee structure found. Set up Fee Titles & Chart first.', 'error');
+                        // Show guidance card in the breakdown area
+                        document.getElementById('breakdownCard').style.display = '';
+                        document.getElementById('breakdownCard').querySelector('.fc-card-body').innerHTML =
+                            '<div style="text-align:center;padding:28px 20px">'
+                            + '<div style="width:56px;height:56px;border-radius:50%;background:rgba(220,38,38,.08);display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px">'
+                            + '<i class="fa fa-exclamation-triangle" style="font-size:24px;color:#dc2626"></i></div>'
+                            + '<h3 style="font-size:15px;font-weight:700;color:var(--fc-navy,#1a2940);margin:0 0 6px">No Fee Structure Found</h3>'
+                            + '<p style="font-size:13px;color:var(--fc-muted,#64748b);margin:0 0 16px;max-width:360px;display:inline-block">'
+                            + (d.message || 'Please set up fee titles and chart for this class/section before collecting fees.') + '</p>'
+                            + '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
+                            + '<a href="' + SITE_URL + '/fee_management/categories" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;background:var(--fc-teal,#0f766e);color:#fff;text-decoration:none;font-size:13px;font-weight:600">'
+                            + '<i class="fa fa-list"></i> Fee Categories</a>'
+                            + '<a href="' + SITE_URL + '/fees/fees_chart" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:1.5px solid var(--fc-teal,#0f766e);color:var(--fc-teal,#0f766e);background:transparent;text-decoration:none;font-size:13px;font-weight:600">'
+                            + '<i class="fa fa-table"></i> Fee Chart</a>'
+                            + '</div></div>';
+                        document.getElementById('paymentCard').style.display = 'none';
+                    } else {
+                        showToast(d.message || d.error, 'error');
+                    }
                     return;
                 }
                 applyFetchedData(d);
@@ -840,6 +967,7 @@ $accounts          = $accounts          ?? [];
 
         buildExpandModal(d.feeRecord, d.selectedMonths, d.monthTotals, d.grandTotal);
         recalc();
+        updateAllocationPreview();
         showToast('Fee details loaded!', 'success');
         document.getElementById('breakdownCard').scrollIntoView({
             behavior: 'smooth',
@@ -932,28 +1060,42 @@ $accounts          = $accounts          ?? [];
 
     /* ── Submit Fees ── */
     function submitFees() {
-        if (!FC.userId) {
-            showAlert('Please select a student.', 'error');
-            return;
-        }
-        if (!FC.selectedMonths.length) {
-            showAlert('Please select at least one month.', 'error');
-            return;
-        }
-
+        // Validate first
+        if (!FC.userId) { showAlert('Please select a student.', 'error'); return; }
+        if (!FC.selectedMonths.length) { showAlert('Please select at least one month.', 'error'); return; }
         var paymentMode = document.getElementById('accountSelect').value;
-        if (!paymentMode) {
-            showAlert('Please select a payment mode.', 'error');
-            return;
-        }
-
+        if (!paymentMode) { showAlert('Please select a payment mode.', 'error'); return; }
         var schoolFees = parseFloat(document.getElementById('submitSchoolFees').value) || 0;
-        if (schoolFees <= 0) {
-            showAlert('Please enter the fee amount.', 'error');
-            return;
-        }
+        if (schoolFees <= 0) { showAlert('Please enter the fee amount.', 'error'); return; }
 
+        // Show confirmation modal instead of submitting directly
         var fineAmt = parseFloat(document.getElementById('fineAmount').value) || 0;
+        var due = Math.max(0, FC.grandTotal - FC.discountAmt - FC.overpaidAmt);
+        var acctText = document.getElementById('accountSelect').options[document.getElementById('accountSelect').selectedIndex].text;
+
+        var ch = '<div style="font-size:13px;line-height:1.7;color:var(--fc-navy,#1a2940)">';
+        ch += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--fc-border)"><span>Student</span><strong>' + (FC.studentName || '—') + '</strong></div>';
+        ch += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--fc-border)"><span>Class</span><strong>' + getDisplayClassSection() + '</strong></div>';
+        ch += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--fc-border)"><span>Months</span><strong>' + FC.selectedMonths.join(', ') + '</strong></div>';
+        ch += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--fc-border)"><span>Payment Mode</span><strong>' + acctText + '</strong></div>';
+        ch += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--fc-border)"><span>Total Fee</span><strong>₹ ' + fmtNum(FC.grandTotal) + '</strong></div>';
+        if (FC.discountAmt > 0) ch += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--fc-border);color:var(--fc-green)"><span>Discount</span><strong>- ₹ ' + fmtNum(FC.discountAmt) + '</strong></div>';
+        if (FC.overpaidAmt > 0) ch += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--fc-border);color:var(--fc-green)"><span>Advance Applied</span><strong>- ₹ ' + fmtNum(FC.overpaidAmt) + '</strong></div>';
+        if (fineAmt > 0) ch += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--fc-border);color:var(--fc-red)"><span>Fine</span><strong>+ ₹ ' + fmtNum(fineAmt) + '</strong></div>';
+        ch += '<div style="display:flex;justify-content:space-between;padding:10px 0;font-size:16px"><span style="font-weight:700">Amount to Collect</span><strong style="color:var(--fc-teal);font-size:18px">₹ ' + fmtNum(schoolFees + fineAmt) + '</strong></div>';
+        ch += '</div>';
+
+        document.getElementById('confirmBody').innerHTML = ch;
+        openModal('confirmModal');
+
+        // Bind the confirm button
+        document.getElementById('confirmSubmitBtn').onclick = function() {
+            closeModal('confirmModal');
+            doActualSubmit(paymentMode, schoolFees, fineAmt);
+        };
+    }
+
+    function doActualSubmit(paymentMode, schoolFees, fineAmt) {
         var reference = document.getElementById('reference').value.trim() || 'Fees Submitted';
 
         var btn = document.getElementById('submitFeesBtn');
@@ -999,13 +1141,20 @@ $accounts          = $accounts          ?? [];
                 if (resp.status === 'success') {
                     showToast('Fees submitted successfully!', 'success');
 
-                    /* Open printable receipt in new tab */
-                    if (resp.receipt_no) {
-                        window.open(SITE_URL + '/fees/print_receipt/' + resp.receipt_no, '_blank');
-                    }
+                    // Show success modal with receipt preview
+                    var rn = resp.receipt_no || RECEIPT_NO;
+                    document.getElementById('successMsg').textContent = 'Receipt #' + rn + ' — ₹ ' + fmtNum(parseFloat(document.getElementById('submitSchoolFees').value)||0) + ' collected from ' + FC.studentName;
+                    document.getElementById('successDetail').innerHTML =
+                        '<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Student</span><strong>' + FC.studentName + '</strong></div>'
+                        + '<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Months</span><strong>' + FC.selectedMonths.join(', ') + '</strong></div>'
+                        + '<div style="display:flex;justify-content:space-between"><span>Receipt No.</span><strong>#' + rn + '</strong></div>';
+                    document.getElementById('successPrintBtn').href = SITE_URL + '/fees/print_receipt/' + rn;
+                    openModal('successModal');
 
                     document.getElementById('breakdownCard').style.display = 'none';
                     document.getElementById('paymentCard').style.display = 'none';
+                    document.getElementById('allocPreview').style.display = 'none';
+                    document.getElementById('quickPayBtns').style.display = 'none';
                     document.querySelectorAll('.fc-month-tile').forEach(function(t) {
                         t.classList.remove('selected');
                     });
@@ -1205,7 +1354,7 @@ $accounts          = $accounts          ?? [];
 
         ['submitSchoolFees', 'fineAmount'].forEach(function(id) {
             var el = document.getElementById(id);
-            if (el) el.addEventListener('input', recalc);
+            if (el) el.addEventListener('input', function() { recalc(); updateAllocationPreview(); });
         });
 
         var acctEl = document.getElementById('accountSelect');
@@ -1327,7 +1476,7 @@ $accounts          = $accounts          ?? [];
     }
 
     .fc-receipt-label {
-        font-size: 10px;
+        font-size: 12px;
         font-weight: 700;
         letter-spacing: .6px;
         text-transform: uppercase;
@@ -1404,7 +1553,7 @@ $accounts          = $accounts          ?? [];
     }
 
     .fc-stat-label {
-        font-size: 10.5px;
+        font-size: 12px;
         font-weight: 700;
         letter-spacing: .5px;
         text-transform: uppercase;
@@ -1484,7 +1633,7 @@ $accounts          = $accounts          ?? [];
     }
 
     .fc-head-hint {
-        font-size: 11.5px;
+        font-size: 12.5px;
         color: var(--fc-muted);
         font-weight: 400;
         margin-left: 4px;
@@ -1527,7 +1676,7 @@ $accounts          = $accounts          ?? [];
     }
 
     .fc-label {
-        font-size: 11px;
+        font-size: 12.5px;
         font-weight: 700;
         letter-spacing: .5px;
         text-transform: uppercase;
@@ -1592,7 +1741,7 @@ $accounts          = $accounts          ?? [];
         top: 50%;
         transform: translateY(-50%);
         color: var(--fc-muted);
-        font-size: 10px;
+        font-size: 12px;
         pointer-events: none;
     }
 
@@ -1699,7 +1848,7 @@ $accounts          = $accounts          ?? [];
     }
 
     .fc-month-status {
-        font-size: 10px;
+        font-size: 12px;
         color: var(--fc-muted);
     }
 
@@ -1766,7 +1915,7 @@ $accounts          = $accounts          ?? [];
     }
 
     .fc-due-label {
-        font-size: 10px;
+        font-size: 12px;
         font-weight: 700;
         letter-spacing: .5px;
         text-transform: uppercase;
@@ -1806,7 +1955,7 @@ $accounts          = $accounts          ?? [];
 
     .fc-table thead th {
         padding: 9px 12px;
-        font-size: 11px;
+        font-size: 12.5px;
         font-weight: 700;
         letter-spacing: .5px;
         text-transform: uppercase;
@@ -1877,6 +2026,61 @@ $accounts          = $accounts          ?? [];
         justify-content: flex-end;
         flex-wrap: wrap;
     }
+
+    /* Quick pay buttons */
+    .fc-quick-pay {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+    }
+
+    /* Allocation preview */
+    .fc-alloc-preview {
+        background: var(--fc-sky);
+        border: 1px solid var(--fc-border);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin-bottom: 14px;
+    }
+    .fc-alloc-title {
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--fc-teal);
+        margin-bottom: 8px;
+    }
+    .fc-alloc-list { display: flex; flex-direction: column; gap: 6px; }
+    .fc-alloc-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 7px 10px;
+        border-radius: 6px;
+        background: var(--fc-white);
+        border: 1px solid var(--fc-border);
+        font-size: 13px;
+    }
+    .fc-alloc-item.cleared { border-left: 3px solid var(--fc-teal); }
+    .fc-alloc-item.partial { border-left: 3px solid #d97706; }
+    .fc-alloc-item .alloc-month { font-weight: 600; color: var(--fc-navy); }
+    .fc-alloc-item .alloc-amount { font-weight: 700; font-family: var(--font-m); }
+    .fc-alloc-item .alloc-tag {
+        font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px;
+        text-transform: uppercase; letter-spacing: .5px;
+    }
+    .fc-alloc-item .alloc-tag.cleared-tag { background: rgba(15,118,110,.1); color: var(--fc-teal); }
+    .fc-alloc-item .alloc-tag.partial-tag { background: rgba(217,119,6,.1); color: #d97706; }
+    .fc-alloc-advance {
+        margin-top: 8px; padding: 8px 12px; border-radius: 6px;
+        background: rgba(15,118,110,.08); border: 1px solid rgba(15,118,110,.2);
+        font-size: 12.5px; color: var(--fc-teal); font-weight: 600;
+    }
+
+    /* Month tile overdue highlight */
+    .fc-month-tile.overdue {
+        border-color: #ef4444 !important;
+        background: rgba(239,68,68,.06) !important;
+    }
+    .fc-month-tile.overdue .fc-month-name { color: #dc2626 !important; }
 
     /* Buttons */
     .fc-btn {

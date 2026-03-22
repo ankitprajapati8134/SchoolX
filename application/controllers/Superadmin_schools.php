@@ -134,9 +134,7 @@ class Superadmin_schools extends MY_Superadmin_Controller
         $phone       = trim($this->input->post('phone',       TRUE) ?? '');
         $logo_url    = trim($this->input->post('logo_url',    TRUE) ?? '');
 
-        // Step 2 — Admin Account
-        $school_code = strtoupper(trim($this->input->post('school_code',    TRUE) ?? ''));
-        $admin_id    = trim($this->input->post('admin_login_id', TRUE) ?? '');
+        // Step 2 — Admin Account (School Code + SSA ID are auto-generated)
         $admin_name  = trim($this->input->post('admin_name',     TRUE) ?? '');
         $admin_email = strtolower(trim($this->input->post('admin_email',    TRUE) ?? ''));
         $admin_pass  = (string)($this->input->post('admin_password', FALSE) ?? ''); // raw — no XSS filter on passwords
@@ -147,7 +145,7 @@ class Superadmin_schools extends MY_Superadmin_Controller
         $session_yr = trim($this->input->post('session_year', TRUE) ?? '');
 
         // ── Validation ────────────────────────────────────────────────────────
-        if (empty($name) || empty($email) || empty($school_code) || empty($admin_id) ||
+        if (empty($name) || empty($email) ||
             empty($admin_name) || empty($admin_email) || empty($admin_pass) ||
             empty($plan_id) || empty($expiry) || empty($session_yr)) {
             $this->json_error('All required fields must be filled.'); return;
@@ -161,11 +159,12 @@ class Superadmin_schools extends MY_Superadmin_Controller
         if (!filter_var($admin_email, FILTER_VALIDATE_EMAIL)) {
             $this->json_error('Invalid admin email address.'); return;
         }
-        if (!preg_match('/^[A-Z0-9]{3,10}$/', $school_code)) {
-            $this->json_error('School code must be 3–10 uppercase letters/digits.'); return;
-        }
-        if (!preg_match('/^[A-Za-z0-9_\-\.@]+$/', $admin_id) || strlen($admin_id) > 30) {
-            $this->json_error('Admin login ID contains invalid characters (letters, digits, _ - . @ allowed).'); return;
+
+        // Auto-generate school code via Auth API (race-safe sequential)
+        $this->load->library('auth_client');
+        $school_code = $this->auth_client->generate_id('SCHCODE');
+        if (empty($school_code)) {
+            $this->json_error('Failed to generate school code. Is the Auth API running?'); return;
         }
         if (!preg_match('/^[A-Za-z0-9_\-]+$/', $plan_id)) {
             $this->json_error('Invalid plan identifier.'); return;
@@ -190,10 +189,7 @@ class Superadmin_schools extends MY_Superadmin_Controller
             if (!empty($existingByName)) {
                 $this->json_error("A school named '{$name}' already exists."); return;
             }
-            $existingCode = $this->firebase->get("Indexes/School_codes/{$school_code}");
-            if (!empty($existingCode)) {
-                $this->json_error("School code '{$school_code}' is already taken."); return;
-            }
+            // School code is auto-generated — no need to check availability
         } catch (Exception $e) {
             log_message('error', 'SA onboard: Availability check failed — ' . $e->getMessage());
             $this->json_error('Unable to verify availability. Please try again.'); return;
@@ -316,25 +312,69 @@ class Superadmin_schools extends MY_Superadmin_Controller
             $this->json_error('Failed to write school identifiers. Please try again.'); return;
         }
 
-        // ── 6. Users/Admin/{code}/{admin_id}  (first admin account) ──────────
-        // First admin of a newly onboarded school MUST be Super Admin.
-        // This is enforced server-side — any role sent from the client is ignored.
+        // ── 6. Auto-generate SSA ID and create admin in Firebase + MongoDB ──────────
+        // SSA ID is auto-generated via Node.js Auth API (race-safe atomic counter).
+        $ssa_result = $this->auth_client->sync_admin([
+            'adminId'           => '__AUTO_SSA__',
+            'name'              => $admin_name,
+            'email'             => $admin_email,
+            'phone'             => $phone,
+            'role'              => 'school_super_admin',
+            'roleLabel'         => 'School Super Admin',
+            'passwordHash'      => $hashed_pw,
+            'schoolId'          => $school_code,
+            'schoolCode'        => $school_id,
+            'parentDbKey'       => $school_code,
+            'createdBy'         => $this->sa_id,
+            'schoolDisplayName' => $school_name ?? '',
+        ]);
+
+        // If Auth API is unavailable, generate SSA ID locally from Firebase
+        if (!empty($ssa_result['adminId'])) {
+            $admin_id = $ssa_result['adminId'];
+        } else {
+            // Fallback: scan existing SSA IDs in Firebase to find next
+            $all_schools_admins = $this->firebase->get('Users/Admin') ?? [];
+            $max_ssa = 0;
+            foreach ($all_schools_admins as $key => $admins) {
+                if (!is_array($admins)) continue;
+                foreach (array_keys($admins) as $aid) {
+                    if (preg_match('/^SSA(\d+)$/', $aid, $m)) {
+                        $num = (int) $m[1];
+                        if ($num > $max_ssa) $max_ssa = $num;
+                    }
+                }
+            }
+            $admin_id = 'SSA' . str_pad($max_ssa + 1, 4, '0', STR_PAD_LEFT);
+        }
+
         try {
             $result = $this->firebase->set("Users/Admin/{$school_code}/{$admin_id}", [
                 'Status'      => 'Active',
-                'Role'        => 'Super Admin',
+                'Role'        => 'School Super Admin',
                 'Name'        => $admin_name,
-                'Credentials' => ['Password' => $hashed_pw],
+                'Email'       => $admin_email,
+                'Credentials' => [
+                    'Id'       => $admin_id,
+                    'Password' => $hashed_pw,
+                ],
                 'Profile'     => [
                     'name'        => $admin_name,
                     'email'       => $admin_email,
-                    'role'        => 'Super Admin',
-                    'school'      => $name,         // human-readable school name
-                    'school_id'   => $school_code,  // login code (Users/Admin path key)
-                    'firebase_id' => $school_id,    // SCH_XXXXXX Firebase key
+                    'phone'       => $phone,
+                    'role'        => 'school_super_admin',
+                    'school'      => $name,
+                    'school_id'   => $school_code,
+                    'firebase_id' => $school_id,
                     'created_at'  => $now,
+                    'created_by'  => $this->sa_id,
                 ],
-                'AccessHistory' => ['LoginAttempts' => 0],
+                'AccessHistory' => [
+                    'SA_LastLogin'   => null,
+                    'SA_LastLoginIP' => null,
+                    'LoginAttempts'  => 0,
+                ],
+                'Privileges'  => ['accountmanagement' => ''],
             ]);
             if ($result === false) {
                 throw new \Exception("Failed to write to Users/Admin/{$school_code}/{$admin_id}");
@@ -344,6 +384,24 @@ class Superadmin_schools extends MY_Superadmin_Controller
             log_message('error', 'SA onboard: Admin account creation failed — ' . $e->getMessage());
             $this->_rollback_onboard($rollbackPaths);
             $this->json_error('Failed to create admin account. Please try again.'); return;
+        }
+
+        // Sync SSA to MongoDB (best-effort) — only if Auth API didn't already create it
+        if (empty($ssa_result['adminId'])) {
+            $this->auth_client->sync_admin([
+                'adminId'           => $admin_id,
+                'name'              => $admin_name,
+                'email'             => $admin_email,
+                'phone'             => $phone,
+                'role'              => 'school_super_admin',
+                'roleLabel'         => 'School Super Admin',
+                'passwordHash'      => $hashed_pw,
+                'schoolId'          => $school_code,
+                'schoolCode'        => $school_id,
+                'parentDbKey'       => $school_code,
+                'createdBy'         => $this->sa_id,
+                'schoolDisplayName' => $school_name ?? '',
+            ]);
         }
 
         $this->_initialize_default_data($school_id, $session_yr, $plan_data);
@@ -374,7 +432,8 @@ class Superadmin_schools extends MY_Superadmin_Controller
             'school_name' => $name,
             'school_id'   => $school_id,
             'school_code' => $school_code,
-            'message'     => "School '{$name}' onboarded successfully. School ID: {$school_id}. Admin login — School Code: {$school_code}, Admin ID: {$admin_id}.",
+            'admin_id'    => $admin_id,
+            'message'     => "School '{$name}' onboarded successfully. School ID: {$school_id}. SSA Login — School Code: {$school_code}, SSA ID: {$admin_id}.",
         ]);
     }
 

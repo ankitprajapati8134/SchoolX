@@ -988,6 +988,9 @@ class Superadmin_plans extends MY_Superadmin_Controller
         if (!preg_match('/^PLAN_[A-Z0-9]+$/', $plan_id)) {
             $this->json_error('Invalid plan ID format.'); return;
         }
+        if ($status === 'paid' && !empty($paid_date) && !empty($invoice_date) && $paid_date < $invoice_date) {
+            $this->json_error('Paid date cannot be before invoice date.'); return;
+        }
 
         $plan_data = [];
         try { $plan_data = $this->firebase->get("System/Plans/{$plan_id}") ?? []; } catch (Exception $e) {}

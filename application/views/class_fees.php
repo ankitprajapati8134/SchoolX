@@ -276,6 +276,20 @@ function loadDueFees() {
             return;
         }
 
+        // Handle structured error (no fee structure)
+        if (data && data.error === 'no_fee_structure') {
+            tbody.innerHTML = '<tr><td colspan="9" class="cf-empty-res">'
+                + '<div style="text-align:center;padding:20px 0">'
+                + '<i class="fa fa-exclamation-triangle" style="font-size:28px;color:#d97706;display:block;margin-bottom:10px"></i>'
+                + '<strong style="font-size:14px;color:var(--t1)">No Fee Structure Found</strong>'
+                + '<p style="font-size:12.5px;color:var(--t3);margin:6px 0 14px">' + (data.message || 'Set up fee titles and chart first.') + '</p>'
+                + '<a href="' + SITE_URL + '/fee_management/categories" style="display:inline-block;padding:7px 16px;border-radius:6px;background:var(--gold,#0f766e);color:#fff;text-decoration:none;font-size:12px;font-weight:600;margin-right:8px"><i class="fa fa-list"></i> Fee Categories</a>'
+                + '<a href="' + SITE_URL + '/fees/fees_chart" style="display:inline-block;padding:7px 16px;border-radius:6px;border:1.5px solid var(--gold,#0f766e);color:var(--gold,#0f766e);text-decoration:none;font-size:12px;font-weight:600"><i class="fa fa-table"></i> Fee Chart</a>'
+                + '</div></td></tr>';
+            cfToast('No fee structure found. Set up Fee Titles & Chart first.', 'error');
+            return;
+        }
+
         if (!Array.isArray(data) || data.length === 0) {
             tbody.innerHTML = '<tr><td colspan="9" class="cf-empty-res"><i class="fa fa-users"></i><p>No students found in ' + cls + ' ' + sec + '.</p></td></tr>';
             updateStats([], 0, 0, 0, 0);
@@ -558,7 +572,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     .cf-page-title {
         font-family: 'Playfair Display', serif;
-        font-size: 1.35rem;
+        font-size: 1.6rem;
         font-weight: 700;
         color: var(--fc-navy);
         display: flex;
@@ -669,7 +683,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     .cf-stat-label {
-        font-size: 10.5px;
+        font-size: 12px;
         font-weight: 700;
         letter-spacing: .5px;
         text-transform: uppercase;
@@ -686,7 +700,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     .cf-stat-sub {
-        font-size: 11.5px;
+        font-size: 12.5px;
         color: var(--fc-muted);
         margin-top: 2px;
     }
@@ -755,7 +769,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     .cf-label {
-        font-size: 11.5px;
+        font-size: 12.5px;
         font-weight: 700;
         letter-spacing: .4px;
         text-transform: uppercase;
@@ -793,7 +807,7 @@ document.addEventListener('DOMContentLoaded', function() {
         top: 50%;
         transform: translateY(-50%);
         color: var(--fc-muted);
-        font-size: 11px;
+        font-size: 12.5px;
         pointer-events: none;
     }
 
@@ -936,7 +950,7 @@ document.addEventListener('DOMContentLoaded', function() {
         background: var(--fc-navy);
         color: rgba(255, 255, 255, .88);
         padding: 10px 14px;
-        font-size: 10.5px;
+        font-size: 12px;
         font-weight: 700;
         letter-spacing: .4px;
         text-transform: uppercase;
@@ -1025,7 +1039,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     .cf-father-name {
-        font-size: 11.5px;
+        font-size: 12.5px;
         color: var(--fc-muted);
     }
 
@@ -1062,7 +1076,7 @@ document.addEventListener('DOMContentLoaded', function() {
         gap: 5px;
         padding: 3px 10px;
         border-radius: 20px;
-        font-size: 11px;
+        font-size: 12.5px;
         font-weight: 700;
         letter-spacing: .3px;
         text-transform: uppercase;
@@ -1126,7 +1140,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     .cf-progress-pct {
-        font-size: 10.5px;
+        font-size: 12px;
         color: var(--fc-muted);
         margin-top: 2px;
         text-align: right;

@@ -598,8 +598,9 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
             discBtn.disabled = true;
             discBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Applying...';
 
+            // FIXED: use global csrfName/csrfToken from header meta tags instead of hardcoded PHP values
             var payload = new URLSearchParams();
-            payload.append('<?= $this->security->get_csrf_token_name() ?>', '<?= $this->security->get_csrf_hash() ?>');
+            payload.append(csrfName, csrfToken);
             payload.append('userId',  '<?= htmlspecialchars($student['User Id'] ?? '', ENT_QUOTES) ?>');
             payload.append('class',   '<?= htmlspecialchars($class ?? '', ENT_QUOTES) ?>');
             payload.append('section', '<?= htmlspecialchars($section ?? '', ENT_QUOTES) ?>');
@@ -607,13 +608,13 @@ if (!empty($student['Doc']) && is_array($student['Doc'])) {
 
             fetch('<?= base_url("fees/submit_discount") ?>', {
                 method:  'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
                 body:    payload
             })
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (data.success) { alert('Discount applied!'); window.location.reload(); }
-                else { alert('Error: ' + data.message); }
+                if (data.status === 'success') { alert('Discount applied!'); window.location.reload(); }
+                else { alert('Error: ' + (data.message || 'Unknown error')); }
             })
             .catch(function () { alert('Failed to apply discount.'); })
             .finally(function () {

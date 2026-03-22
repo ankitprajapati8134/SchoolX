@@ -22,12 +22,12 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Operations extends MY_Controller
 {
     /** Roles for operations overview */
-    private const VIEW_ROLES = ['Admin', 'Principal'];
+    private const VIEW_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Operations Manager'];
 
     // ── Role Constants (shared across all Operations sub-modules) ────
-    const OPS_ADMIN_ROLES = ['Super Admin', 'Principal', 'Vice Principal'];
-    const OPS_MANAGE_ROLES = ['Super Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Librarian', 'Warden', 'Transport Manager', 'Store Manager'];
-    const OPS_VIEW_ROLES = ['Super Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Librarian', 'Warden', 'Transport Manager', 'Store Manager', 'Accountant', 'Teacher'];
+    const OPS_ADMIN_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Vice Principal'];
+    const OPS_MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Librarian', 'Warden', 'Transport Manager', 'Store Manager'];
+    const OPS_VIEW_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Vice Principal', 'Operations Manager', 'Librarian', 'Warden', 'Transport Manager', 'Store Manager', 'Accountant', 'Teacher'];
 
     public function __construct()
     {

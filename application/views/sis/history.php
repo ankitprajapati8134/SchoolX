@@ -83,9 +83,10 @@ html { font-size: 16px !important; }
                 <?php if (!empty($h['metadata']) && is_array($h['metadata'])): ?>
                 <details style="margin-top:8px;">
                     <summary style="font-size:.84rem;color:var(--t3);cursor:pointer;">Details</summary>
+                    <?php // FIXED: array_map('strval') crashes on nested arrays (e.g. Address) — encode directly ?>
                     <pre style="font-size:.84rem;color:var(--t3);margin-top:6px;overflow:auto;white-space:pre-wrap;word-break:break-all;"><?= htmlspecialchars(
                         json_encode(
-                            array_map('strval', $h['metadata']),
+                            $h['metadata'],
                             JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE
                         ),
                         ENT_QUOTES,

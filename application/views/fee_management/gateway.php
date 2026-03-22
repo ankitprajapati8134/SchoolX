@@ -535,7 +535,7 @@ document.addEventListener('DOMContentLoaded', function() {
     letter-spacing: .3px;
 }
 .fm-req { color: var(--fm-red); }
-.fm-opt { color: var(--fm-muted); font-weight: 400; font-size: 11px; }
+.fm-opt { color: var(--fm-muted); font-weight: 400; font-size: 12.5px; }
 .fm-input {
     width: 100%;
     padding: 9px 12px;

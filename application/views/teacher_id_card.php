@@ -352,37 +352,37 @@ ksort($filterPosns);
   /* ── Card CSS (screen card + print window) ───────────────────── */
   function getCardCSS(forPrint) {
     return [
-      '.ic-card{width:260px;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.18);font-family:Arial,sans-serif;background:#fff;display:flex;flex-direction:column;align-items:center;}',
-      '.ic-card-hd{width:100%;background:linear-gradient(135deg,#0f766e 0%,#134e4a 100%);padding:12px 14px;position:relative;overflow:hidden;box-sizing:border-box;}',
+      '.ic-card{width:280px;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.18);font-family:Arial,sans-serif;background:#fff;display:flex;flex-direction:column;align-items:center;}',
+      '.ic-card-hd{width:100%;background:linear-gradient(135deg,#0f766e 0%,#134e4a 100%);padding:10px 12px;position:relative;overflow:hidden;box-sizing:border-box;}',
       '.ic-hd-pattern{position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0,rgba(255,255,255,.04) 1px,transparent 1px,transparent 8px);}',
       '.ic-hd-content{position:relative;display:flex;align-items:center;gap:8px;}',
-      '.ic-logo-circle{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.72rem;font-weight:700;letter-spacing:.05em;flex-shrink:0;}',
-      '.ic-logo-img{width:36px;height:36px;border-radius:50%;object-fit:cover;border:1.5px solid rgba(255,255,255,.5);flex-shrink:0;background:#fff;}',
-      '.ic-school-nm{color:#fff;font-size:.85rem;font-weight:700;letter-spacing:.04em;line-height:1.25;overflow:hidden;text-overflow:ellipsis;max-width:180px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;}',
-      '.ic-session-nm{color:rgba(255,255,255,.75);font-size:.68rem;margin-top:2px;}',
-      '.ic-photo-ring{width:88px;height:88px;border-radius:50%;border:3px solid #0f766e;box-shadow:0 2px 12px rgba(15,118,110,.3);margin-top:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#e6f4f1;flex-shrink:0;}',
+      '.ic-logo-circle{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.7rem;font-weight:700;letter-spacing:.05em;flex-shrink:0;}',
+      '.ic-logo-img{width:34px;height:34px;border-radius:50%;object-fit:cover;border:1.5px solid rgba(255,255,255,.5);flex-shrink:0;background:#fff;}',
+      '.ic-school-nm{color:#fff;font-size:.82rem;font-weight:700;letter-spacing:.04em;line-height:1.25;overflow:hidden;text-overflow:ellipsis;max-width:200px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;}',
+      '.ic-session-nm{color:rgba(255,255,255,.75);font-size:.65rem;margin-top:2px;}',
+      '.ic-photo-ring{width:80px;height:80px;border-radius:50%;border:3px solid #0f766e;box-shadow:0 2px 12px rgba(15,118,110,.3);margin-top:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#e6f4f1;flex-shrink:0;}',
       '.ic-photo{width:100%;height:100%;object-fit:cover;}',
-      '.ic-photo-fb{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.8rem;font-weight:700;color:#0f766e;background:#e6f4f1;}',
-      '.ic-staff-nm{font-size:.95rem;font-weight:700;color:#111;text-align:center;margin:8px 10px 4px;line-height:1.3;}',
+      '.ic-photo-fb{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:700;color:#0f766e;background:#e6f4f1;}',
+      '.ic-staff-nm{font-size:.9rem;font-weight:700;color:#111;text-align:center;margin:7px 10px 3px;line-height:1.3;}',
       '.ic-barcode-wrap{width:85%;text-align:center;margin:2px auto 0;padding:0 4px;}',
-      '.ic-barcode{width:100%;height:28px;}',
-      '.ic-badges{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;margin-bottom:6px;padding:0 8px;}',
-      '.ic-badge{font-size:.66rem;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.04em;text-transform:uppercase;}',
+      '.ic-barcode{width:100%;height:24px;}',
+      '.ic-badges{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;margin-bottom:5px;padding:0 8px;}',
+      '.ic-badge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:20px;letter-spacing:.04em;text-transform:uppercase;}',
       '.ic-badge-dept{background:#ccfbf1;color:#0f766e;}',
       '.ic-badge-posn{background:#d1fae5;color:#065f46;}',
       '.ic-badge-blood{background:#fee2e2;color:#dc2626;}',
-      '.ic-divider{width:85%;height:1px;background:linear-gradient(90deg,transparent,#0f766e55,transparent);margin:2px 0 6px;}',
-      '.ic-info{width:100%;padding:0 16px 10px;box-sizing:border-box;}',
-      '.ic-info-row{display:flex;align-items:center;gap:6px;padding:3.5px 0;border-bottom:1px solid #f0f9f8;}',
+      '.ic-divider{width:85%;height:1px;background:linear-gradient(90deg,transparent,#0f766e55,transparent);margin:2px 0 5px;}',
+      '.ic-info{width:100%;padding:0 14px 8px;box-sizing:border-box;}',
+      '.ic-info-row{display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid #f0f9f8;}',
       '.ic-info-row:last-child{border-bottom:none;}',
-      '.ic-info-ico{color:#0f766e;font-size:.78rem;width:16px;text-align:center;flex-shrink:0;}',
-      '.ic-info-lbl{font-size:.68rem;color:#6b7280;font-weight:600;width:42px;flex-shrink:0;text-transform:uppercase;letter-spacing:.03em;}',
-      '.ic-info-val{font-size:.78rem;color:#1f2937;font-weight:500;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+      '.ic-info-ico{color:#0f766e;font-size:.72rem;width:14px;text-align:center;flex-shrink:0;}',
+      '.ic-info-lbl{font-size:.65rem;color:#6b7280;font-weight:600;width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.03em;}',
+      '.ic-info-val{font-size:.72rem;color:#1f2937;font-weight:500;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.ic-uid{color:#0f766e;font-weight:700;}',
       '.ic-phone{color:#0369a1;font-weight:600;}',
-      '.ic-card-ft{width:100%;background:linear-gradient(135deg,#0f766e,#134e4a);padding:7px 14px;display:flex;justify-content:space-between;align-items:center;margin-top:auto;box-sizing:border-box;}',
-      '.ic-ft-title{color:#fff;font-size:.66rem;font-weight:700;letter-spacing:.1em;}',
-      '.ic-ft-valid{color:rgba(255,255,255,.75);font-size:.62rem;}',
+      '.ic-card-ft{width:100%;background:linear-gradient(135deg,#0f766e,#134e4a);padding:6px 12px;display:flex;justify-content:space-between;align-items:center;margin-top:auto;box-sizing:border-box;}',
+      '.ic-ft-title{color:#fff;font-size:.62rem;font-weight:700;letter-spacing:.1em;}',
+      '.ic-ft-valid{color:rgba(255,255,255,.75);font-size:.58rem;}',
       forPrint ? '.ic-print-body{margin:0;padding:0;background:#fff;}' : ''
     ].join('');
   }
@@ -412,13 +412,13 @@ ksort($filterPosns);
   margin-bottom: 20px;
 }
 .ic-page-title {
-  font-size: 1.45rem;
+  font-size: 1.7rem;
   font-weight: 700;
   color: var(--t1);
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 0 4px;
+  margin: 0 0 6px;
 }
 .ic-page-title i { color: var(--gold); }
 
@@ -428,7 +428,7 @@ ksort($filterPosns);
   padding: 0;
   display: flex;
   gap: 6px;
-  font-size: .82rem;
+  font-size: .95rem;
   color: var(--t3);
 }
 .ic-breadcrumb li + li::before { content: '›'; margin-right: 6px; }
@@ -441,10 +441,10 @@ ksort($filterPosns);
 .ic-btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 20px;
+  gap: 8px;
+  padding: 10px 22px;
   border-radius: 8px;
-  font-size: .88rem;
+  font-size: .95rem;
   font-weight: 600;
   cursor: pointer;
   border: none;
@@ -466,11 +466,11 @@ ksort($filterPosns);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 12px 16px;
+  padding: 14px 18px;
   margin-bottom: 24px;
   box-shadow: var(--sh);
 }
@@ -482,21 +482,21 @@ ksort($filterPosns);
 }
 .ic-search-ico {
   position: absolute;
-  left: 11px;
+  left: 12px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--t3);
-  font-size: .85rem;
+  font-size: .95rem;
   pointer-events: none;
 }
 .ic-search-input {
   width: 100%;
-  padding: 8px 12px 8px 32px;
+  padding: 10px 14px 10px 36px;
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--bg3);
   color: var(--t1);
-  font-size: .88rem;
+  font-size: .95rem;
   box-sizing: border-box;
   transition: border-color .18s, box-shadow .18s;
 }
@@ -507,14 +507,14 @@ ksort($filterPosns);
 }
 
 .ic-select {
-  padding: 8px 12px;
+  padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--bg3);
   color: var(--t1);
-  font-size: .88rem;
+  font-size: .95rem;
   cursor: pointer;
-  min-width: 150px;
+  min-width: 160px;
 }
 .ic-select:focus { outline: none; border-color: var(--gold); }
 
@@ -547,7 +547,7 @@ ksort($filterPosns);
 
 /* ── THE ID CARD ─────────────────────────────────────────────── */
 .ic-card {
-  width: 260px;
+  width: 270px;
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 6px 28px rgba(0, 0, 0, .14);
@@ -591,8 +591,8 @@ ksort($filterPosns);
   gap: 8px;
 }
 .ic-logo-circle {
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   background: rgba(255,255,255,.18);
   border: 1.5px solid rgba(255,255,255,.5);
@@ -600,14 +600,14 @@ ksort($filterPosns);
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: .72rem;
+  font-size: .85rem;
   font-weight: 700;
   letter-spacing: .05em;
   flex-shrink: 0;
 }
 .ic-logo-img {
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   object-fit: cover;
   border: 1.5px solid rgba(255,255,255,.5);
@@ -616,13 +616,13 @@ ksort($filterPosns);
 }
 .ic-school-nm {
   color: #fff;
-  font-size: .85rem;
+  font-size: 1rem;
   font-weight: 700;
   letter-spacing: .04em;
   line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
+  max-width: 220px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -630,14 +630,14 @@ ksort($filterPosns);
 }
 .ic-session-nm {
   color: rgba(255,255,255,.75);
-  font-size: .68rem;
+  font-size: .8rem;
   margin-top: 2px;
 }
 
 /* Photo ring */
 .ic-photo-ring {
-  width: 88px;
-  height: 88px;
+  width: 96px;
+  height: 96px;
   border-radius: 50%;
   border: 3px solid var(--gold);
   box-shadow: 0 2px 14px rgba(15,118,110,.28);
@@ -671,11 +671,11 @@ ksort($filterPosns);
 
 /* Name */
 .ic-staff-nm {
-  font-size: .95rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--t1);
   text-align: center;
-  margin: 9px 10px 4px;
+  margin: 10px 12px 5px;
   line-height: 1.3;
 }
 
@@ -704,9 +704,9 @@ ksort($filterPosns);
   padding: 0 8px 6px;
 }
 .ic-badge {
-  font-size: .66rem;
+  font-size: .78rem;
   font-weight: 700;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 20px;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -739,22 +739,22 @@ ksort($filterPosns);
 .ic-info-row:last-child { border-bottom: none; }
 .ic-info-ico {
   color: var(--gold);
-  font-size: .78rem;
-  width: 16px;
+  font-size: .9rem;
+  width: 18px;
   text-align: center;
   flex-shrink: 0;
 }
 .ic-info-lbl {
-  font-size: .68rem;
+  font-size: .8rem;
   color: var(--t3);
   font-weight: 600;
-  width: 42px;
+  width: 48px;
   flex-shrink: 0;
   text-transform: uppercase;
   letter-spacing: .03em;
 }
 .ic-info-val {
-  font-size: .78rem;
+  font-size: .9rem;
   color: var(--t1);
   font-weight: 500;
   flex: 1;
@@ -778,13 +778,13 @@ ksort($filterPosns);
 }
 .ic-ft-title {
   color: #fff;
-  font-size: .66rem;
+  font-size: .78rem;
   font-weight: 700;
   letter-spacing: .1em;
 }
 .ic-ft-valid {
   color: rgba(255,255,255,.75);
-  font-size: .62rem;
+  font-size: .74rem;
 }
 
 /* ── Print button below each card ────────────────────────────── */

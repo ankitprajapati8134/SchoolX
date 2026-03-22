@@ -417,6 +417,42 @@
         .table>tbody>tr>td{border-color:var(--border) !important;vertical-align:middle !important;}
         .table-striped>tbody>tr:nth-of-type(odd){background:rgba(15,118,110,.03) !important;}
         .table-hover>tbody>tr:hover{background:var(--gold-dim) !important;}
+        /* ── Fees module font-size floor — prevents tiny text across all fee views ── */
+        .fc-wrap,.fm-wrap,.sfr-page,.fr-wrap,.cf-wrap,.fd-wrap,
+        .fm-page,[class*="fee_management"]{font-size:14px !important;}
+        /* Page titles */
+        .fc-wrap .fc-title,.fm-wrap .fm-page-title,.sfr-page h1,.fr-wrap h1,.cf-wrap h1,.fd-wrap h1,
+        .fc-wrap h1,.fm-wrap h1{font-size:1.6rem !important;}
+        /* Breadcrumbs */
+        .fc-wrap .fc-breadcrumb,.fm-wrap .fm-breadcrumb,.sfr-page .breadcrumb,.fr-wrap .breadcrumb,.cf-wrap .breadcrumb{font-size:13px !important;}
+        /* Tables: header + body */
+        .fc-wrap table th,.fm-wrap table th,.sfr-page table th,.fr-wrap table th,.cf-wrap table th,.fd-wrap table th{font-size:12px !important;}
+        .fc-wrap table td,.fm-wrap table td,.sfr-page table td,.fr-wrap table td,.cf-wrap table td,.fd-wrap table td{font-size:13px !important;}
+        /* Buttons */
+        .fc-wrap .btn,.fc-wrap button,.fm-wrap .btn,.fm-wrap button,
+        .fr-wrap .btn,.cf-wrap .btn,.fd-wrap .btn{font-size:13px !important;}
+        /* Form labels & inputs */
+        .fc-wrap label,.fm-wrap label,.fr-wrap label,.cf-wrap label,.fd-wrap label{font-size:12.5px !important;}
+        .fc-wrap input,.fc-wrap select,.fm-wrap input,.fm-wrap select,
+        .fr-wrap input,.fr-wrap select,.cf-wrap input,.cf-wrap select{font-size:13.5px !important;}
+        /* Stat cards / amounts */
+        .fc-wrap .fc-stat-value,.fd-wrap .fd-stat-val{font-size:20px !important;}
+        /* Badge / pill text */
+        .fc-wrap .badge,.fm-wrap .badge,.fr-wrap .badge,.cf-wrap .badge{font-size:11.5px !important;}
+        /* Fix critically small rem values in student_fees */
+        .sfr-page table td{font-size:13px !important;}
+        .sfr-page table th{font-size:12px !important;}
+        .sfr-page .sfr-student-name{font-size:14px !important;}
+        .sfr-page .sfr-amount,.sfr-page .sfr-balance{font-size:14px !important;}
+        /* fee_management suite */
+        .fm-page .fm-page-title{font-size:1.5rem !important;}
+        .fm-page table td{font-size:13px !important;}
+        .fm-page table th{font-size:12px !important;}
+        .fm-page label{font-size:12.5px !important;}
+        .fm-page input,.fm-page select,.fm-page textarea{font-size:13.5px !important;}
+        .fm-page .fm-stat-label{font-size:12px !important;}
+        .fm-page .fm-stat-value{font-size:18px !important;}
+
         .modal-content{background:var(--bg2) !important;border:1px solid var(--brd2) !important;border-radius:14px !important;color:var(--t1) !important;}
         .modal-header{border-bottom:1px solid var(--border) !important;}
         .modal-title{font-family:var(--font-d) !important;font-size:16px !important;font-weight:700 !important;color:var(--t1) !important;}
@@ -619,7 +655,7 @@
                             </li>
                             <?php endforeach; ?>
                         </ul>
-                        <?php if (($admin_role ?? '') === 'Super Admin'): ?>
+                        <?php if (in_array(($admin_role ?? ''), ['Super Admin', 'School Super Admin'])): ?>
                         <div class="g-sess-ft">
                             <button class="g-sess-new-btn" id="gSessNewBtn">
                                 <i class="fa fa-plus"></i> New Session
@@ -655,7 +691,7 @@
 </header>
 
 <!-- ── Create Session Modal — at body level so Bootstrap stacking works ── -->
-<?php if (($admin_role ?? '') === 'Super Admin'): ?>
+<?php if (in_array(($admin_role ?? ''), ['Super Admin', 'School Super Admin'])): ?>
 <div class="modal fade" id="gCreateSessModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-sm" role="document">
         <div class="modal-content">
@@ -741,7 +777,7 @@
         $rp = isset($rbac_permissions) && is_array($rbac_permissions) ? $rbac_permissions : [];
         $can = function(string $module) use ($rp, $admin_role) {
             // Bypass roles always see everything
-            if (isset($admin_role) && in_array($admin_role, ['Super Admin', 'Admin'], true)) return true;
+            if (isset($admin_role) && in_array($admin_role, ['Super Admin', 'School Super Admin', 'Admin'], true)) return true;
             return in_array($module, $rp, true);
         };
         ?>
@@ -755,7 +791,7 @@
                 <a href="<?= base_url('admin') ?>"><i class="fa fa-th-large"></i><span>Dashboard</span></a>
             </li>
 
-            <?php if (isset($school_features) && in_array('School Management', $school_features)): ?>
+            <?php if (isset($school_features) && in_array('School Management', $school_features) && $can('Configuration')): ?>
             <li class="sidebar-single">
                 <a href="<?= base_url('schools/schoolProfile') ?>"><i class="fa fa-building-o"></i><span>School Profile</span></a>
             </li>
@@ -765,12 +801,15 @@
             <li class="sidebar-single">
                 <a href="<?= base_url('school_config') ?>"><i class="fa fa-university"></i><span>Academic Setup</span></a>
             </li>
+            <li class="sidebar-single">
+                <a href="<?= base_url('school_config/admission_payment') ?>"><i class="fa fa-credit-card"></i><span>Admission Payment</span></a>
+            </li>
             <?php endif; ?>
 
             <!-- ═══════════════════════════════════════════════════════════
                  ACADEMICS — classes, subjects, students, exams, results
                  ═══════════════════════════════════════════════════════════ -->
-            <?php if (isset($school_features) && (in_array('Student Management',$school_features)||in_array('Staff Management',$school_features)||in_array('Class Management',$school_features)||in_array('Subject Management',$school_features)||in_array('Exam Management',$school_features))): ?>
+            <?php if (isset($school_features) && (in_array('Student Management',$school_features)||in_array('Staff Management',$school_features)||in_array('Class Management',$school_features)||in_array('Subject Management',$school_features)||in_array('Exam Management',$school_features)) && ($can('Academic') || $can('LMS') || $can('Examinations') || $can('Results'))): ?>
             <li class="g-sec">Academics</li>
             <?php endif; ?>
 
@@ -822,7 +861,7 @@
             <!-- ═══════════════════════════════════════════════════════════
                  PEOPLE — students, staff, attendance, HR, admissions
                  ═══════════════════════════════════════════════════════════ -->
-            <?php if (isset($school_features) && (in_array('Student Management',$school_features)||in_array('Staff Management',$school_features))): ?>
+            <?php if (isset($school_features) && (in_array('Student Management',$school_features)||in_array('Staff Management',$school_features)) && ($can('SIS') || $can('HR') || $can('Attendance') || $can('Certificates'))): ?>
             <li class="g-sec">People</li>
             <?php endif; ?>
 
@@ -843,11 +882,13 @@
                 <a href="#"><i class="fa fa-funnel-dollar fa-filter"></i><span>Admission CRM</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
                     <li><a href="<?= base_url('sis/crm') ?>"><i class="fa fa-circle-o"></i>CRM Dashboard</a></li>
+                    <li><a href="<?= base_url('sis/admission_leads') ?>"><i class="fa fa-circle-o"></i>Admission Leads</a></li>
                     <li><a href="<?= base_url('sis/inquiries') ?>"><i class="fa fa-circle-o"></i>Inquiries</a></li>
                     <li><a href="<?= base_url('sis/applications') ?>"><i class="fa fa-circle-o"></i>Applications</a></li>
                     <li><a href="<?= base_url('sis/pipeline') ?>"><i class="fa fa-circle-o"></i>Pipeline</a></li>
                     <li><a href="<?= base_url('sis/waitlist') ?>"><i class="fa fa-circle-o"></i>Waiting List</a></li>
                     <li><a href="<?= base_url('sis/crm_settings') ?>"><i class="fa fa-circle-o"></i>CRM Settings</a></li>
+                    <li><a href="<?= base_url('sis/admission_analytics') ?>"><i class="fa fa-circle-o"></i>Analytics</a></li>
                 </ul>
             </li>
             <?php endif; ?>
@@ -865,7 +906,7 @@
             </li>
             <?php endif; ?>
 
-            <?php if (isset($school_features) && in_array('Staff Management', $school_features)): ?>
+            <?php if (isset($school_features) && in_array('Staff Management', $school_features) && ($can('HR') || $can('SIS'))): ?>
             <li class="treeview">
                 <a href="#"><i class="fa fa-user-o"></i><span>Staff</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
@@ -908,7 +949,7 @@
             <!-- ═══════════════════════════════════════════════════════════
                  FINANCE — fees, accounts, accounting
                  ═══════════════════════════════════════════════════════════ -->
-            <?php if (isset($school_features) && (in_array('Fees Management',$school_features)||in_array('Account Management',$school_features))): ?>
+            <?php if (isset($school_features) && (in_array('Fees Management',$school_features)||in_array('Account Management',$school_features)) && ($can('Fees') || $can('Accounting'))): ?>
             <li class="g-sec">Finance</li>
             <?php endif; ?>
 
@@ -916,17 +957,21 @@
             <li class="treeview">
                 <a href="#"><i class="fa fa-inr"></i><span>Fees</span><span class="pull-right-container"><i class="fa fa-angle-left pull-right"></i></span></a>
                 <ul class="treeview-menu">
+                    <li><a href="<?= base_url('fees/dashboard') ?>"><i class="fa fa-dashboard"></i>Dashboard</a></li>
                     <li><a href="<?= base_url('fees/fees_counter') ?>"><i class="fa fa-circle-o"></i>Fee Counter</a></li>
-                    <li><a href="<?= base_url('fees/fees_structure') ?>"><i class="fa fa-circle-o"></i>Structure</a></li>
-                    <li><a href="<?= base_url('fee_management/categories') ?>"><i class="fa fa-circle-o"></i>Categories</a></li>
+                    <li><a href="<?= base_url('fee_management/categories') ?>"><i class="fa fa-circle-o"></i>Titles &amp; Categories</a></li>
                     <li><a href="<?= base_url('fees/fees_chart') ?>"><i class="fa fa-circle-o"></i>Chart</a></li>
                     <li><a href="<?= base_url('fees/fees_records') ?>"><i class="fa fa-circle-o"></i>Records</a></li>
+                    <li><a href="<?= base_url('fees/student_ledger') ?>"><i class="fa fa-circle-o"></i>Student Ledger</a></li>
+                    <li><a href="<?= base_url('fees/defaulter_report') ?>"><i class="fa fa-circle-o"></i>Defaulters</a></li>
                     <li><a href="<?= base_url('fee_management/discounts') ?>"><i class="fa fa-circle-o"></i>Discounts</a></li>
                     <li><a href="<?= base_url('fee_management/scholarships') ?>"><i class="fa fa-circle-o"></i>Scholarships</a></li>
                     <li><a href="<?= base_url('fee_management/refunds') ?>"><i class="fa fa-circle-o"></i>Refunds</a></li>
                     <li><a href="<?= base_url('fee_management/reminders') ?>"><i class="fa fa-circle-o"></i>Reminders</a></li>
                     <li><a href="<?= base_url('fee_management/gateway') ?>"><i class="fa fa-circle-o"></i>Payment Gateway</a></li>
                     <li><a href="<?= base_url('fee_management/online_payments') ?>"><i class="fa fa-circle-o"></i>Online Payments</a></li>
+                    <li><a href="<?= base_url('fees/transaction_audit') ?>"><i class="fa fa-shield"></i>Transaction Audit</a></li>
+                    <li><a href="<?= base_url('fee_management/payment_reconciliation') ?>"><i class="fa fa-balance-scale"></i>Reconciliation</a></li>
                 </ul>
             </li>
             <?php endif; ?>
@@ -962,7 +1007,7 @@
             <!-- ═══════════════════════════════════════════════════════════
                  CAMPUS — communication, events, gallery, operations
                  ═══════════════════════════════════════════════════════════ -->
-            <?php if (isset($school_features) && (in_array('Notice and Announcement',$school_features)||in_array('School Management',$school_features))): ?>
+            <?php if (isset($school_features) && (in_array('Notice and Announcement',$school_features)||in_array('School Management',$school_features)) && ($can('Communication') || $can('Events') || $can('Operations'))): ?>
             <li class="g-sec">Campus</li>
             <?php endif; ?>
 
@@ -995,7 +1040,7 @@
             </li>
             <?php endif; ?>
 
-            <?php if (isset($school_features) && in_array('School Management', $school_features)): ?>
+            <?php if (isset($school_features) && in_array('School Management', $school_features) && $can('Events')): ?>
             <li class="sidebar-single">
                 <a href="<?= base_url('schools/schoolgallery') ?>"><i class="fa fa-picture-o"></i><span>Gallery</span></a>
             </li>
@@ -1018,7 +1063,9 @@
             <!-- ═══════════════════════════════════════════════════════════
                  SETTINGS & SYSTEM
                  ═══════════════════════════════════════════════════════════ -->
+            <?php if ($can('Admin Users') || $can('Reports')): ?>
             <li class="g-sec">Settings</li>
+            <?php endif; ?>
 
             <?php if ($can('Admin Users')): ?>
             <li class="sidebar-single"><a href="<?= base_url('admin_users') ?>"><i class="fa fa-user-circle-o"></i><span>Admin Users</span></a></li>
@@ -1026,7 +1073,9 @@
             <li class="sidebar-single"><a href="<?= base_url('school_backup') ?>"><i class="fa fa-cloud-download"></i><span>Backup</span></a></li>
             <?php endif; ?>
 
+            <?php if ($can('Admin Users')): ?>
             <li class="sidebar-single"><a href="<?= base_url('health_check') ?>"><i class="fa fa-heartbeat"></i><span>Health Check</span></a></li>
+            <?php endif; ?>
 
             <!-- SA Panel link removed from school admin sidebar.
                  The SA panel is a separate platform-level tool accessed via /superadmin/login.
@@ -1117,7 +1166,9 @@
         if($panel&&wrap&&!wrap.contains(e.target))$panel.classList.remove('open');
     });
 
+    var _hasCommunication = <?= json_encode(has_permission('Communication')) ?>;
     function fetchBell(){
+        if(!_hasCommunication){ if($list) $list.innerHTML='<div class="g-bell-empty">No notifications</div>'; return; }
         fetch('<?= base_url("NoticeAnnouncement/fetch_recent_notices") ?>',{cache:'no-store'})
             .then(function(r){return r.json();})
             .then(function(d){bData=Array.isArray(d)?d:[];renderBell();updateBadge();})

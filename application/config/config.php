@@ -153,8 +153,10 @@ $config['csrf_exclude_uris'] = [
     'superadmin/backups(.*)',
     'superadmin/debug(.*)',
     'superadmin/migration(.*)',
+    'superadmin/admins(.*)',
     'superadmin/login(.*)',
     'superadmin/csrf_token',
+    'fee_management/payment_webhook',
 ];
 
 $config['compress_output'] = FALSE;

@@ -18,10 +18,10 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Account extends MY_Controller
 {
     /** Roles allowed to create/edit/delete accounts and vouchers. */
-    private const MANAGE_ROLES = ['Admin', 'Principal', 'Accountant'];
+    private const MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Accountant'];
 
     /** Roles allowed to view accounting data. */
-    private const VIEW_ROLES = ['Admin', 'Principal', 'Accountant'];
+    private const VIEW_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Accountant'];
 
     public function __construct()
     {

@@ -4,10 +4,10 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Schools extends MY_Controller
 {
     /** Roles for school management */
-    private const ADMIN_ROLES = ['Admin', 'Principal'];
+    private const ADMIN_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal'];
 
     /** Roles that may view school data */
-    private const VIEW_ROLES  = ['Admin', 'Principal', 'Teacher'];
+    private const VIEW_ROLES  = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
     public function __construct()
     {
@@ -65,7 +65,7 @@ class Schools extends MY_Controller
     // ── Delete School (Super Admin only) ────────────────────────────────
     public function delete_school($schoolId = null)
     {
-        if ($this->admin_role !== 'Super Admin') {
+        if (!in_array($this->admin_role, ['Super Admin', 'School Super Admin'])) {
             show_error('Access denied. Super Admin only.', 403);
             return;
         }
@@ -99,7 +99,7 @@ class Schools extends MY_Controller
     // ── Edit School (Super Admin only) ──────────────────────────────────
     public function edit_school($schoolId = null)
     {
-        if ($this->admin_role !== 'Super Admin') {
+        if (!in_array($this->admin_role, ['Super Admin', 'School Super Admin'])) {
             show_error('Access denied. Super Admin only.', 403);
             return;
         }
@@ -440,7 +440,7 @@ class Schools extends MY_Controller
     // ── Manage Schools (Super Admin only — list + add) ─────────────────
     public function manage_school()
     {
-        if ($this->admin_role !== 'Super Admin') {
+        if (!in_array($this->admin_role, ['Super Admin', 'School Super Admin'])) {
             show_error('Access denied. Super Admin only.', 403);
             return;
         }

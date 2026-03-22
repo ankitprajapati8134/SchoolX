@@ -341,7 +341,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 .fr-page-title {
     font-family: 'Playfair Display', serif;
-    font-size: 1.35rem;
+    font-size: 1.6rem;
     font-weight: 700;
     color: var(--fc-navy);
     display: flex;
@@ -452,7 +452,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .fr-stat-label {
-    font-size: 10.5px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: .5px;
     text-transform: uppercase;
@@ -473,7 +473,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .fr-stat-sub {
-    font-size: 11.5px;
+    font-size: 12.5px;
     color: var(--fc-muted);
     margin-top: 2px;
 }
@@ -518,7 +518,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .fr-head-hint {
-    font-size: 11.5px;
+    font-size: 12.5px;
     color: var(--fc-muted);
     background: rgba(14, 116, 144, .07);
     border-radius: 20px;
@@ -602,7 +602,7 @@ document.addEventListener('DOMContentLoaded', function() {
     background: var(--fc-navy);
     color: rgba(255, 255, 255, .88);
     padding: 10px 12px;
-    font-size: 10.5px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: .4px;
     text-transform: uppercase;

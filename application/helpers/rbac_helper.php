@@ -29,7 +29,7 @@ define('RBAC_MODULES', [
 /**
  * Roles that bypass all permission checks (automatic full access).
  */
-define('RBAC_BYPASS_ROLES', ['Super Admin', 'Admin']);
+define('RBAC_BYPASS_ROLES', ['Super Admin', 'School Super Admin', 'Admin']);
 
 // ─── Core functions ──────────────────────────────────────────────────────────
 

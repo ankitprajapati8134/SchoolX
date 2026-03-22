@@ -28,19 +28,28 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 class Sis extends MY_Controller
 {
     /** Roles for student information management */
-    private const MANAGE_ROLES = ['Admin', 'Principal'];
+    private const MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal'];
 
     /** Roles that may view student information */
-    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+    private const VIEW_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
     /** CRM base Firebase path */
     private $crm_base;
 
+    /** Methods accessible without SIS RBAC permission (e.g., public-facing admission form) */
+    private const PUBLIC_METHODS = ['online_form', 'submit_online_form'];
+
     public function __construct()
     {
         parent::__construct();
-        require_permission('SIS');
+        // FIXED: online_form/submit_online_form must be accessible to any logged-in user,
+        // not just those with SIS module permission (e.g., parents filling admission form)
+        $method = $this->router->fetch_method();
+        if (!in_array($method, self::PUBLIC_METHODS, true)) {
+            require_permission('SIS');
+        }
         $this->crm_base = "Schools/{$this->school_name}/CRM/Admissions";
+        $this->load->helper('notification');
     }
 
     /* ══════════════════════════════════════════════════════════════════════
@@ -182,9 +191,8 @@ class Sis extends MY_Controller
             }
         }
 
-        // Auto-generate student ID
-        $userId = $this->_nextStudentId($school_id);
-        if (!$userId) $userId = 'STU0001';
+        // Preview next student ID (read-only — does NOT increment counter)
+        $userId = $this->_peekNextStudentId($school_id);
 
         // Fee structure for exemptions
         $feesStructurePath = "Schools/{$school_name}/{$session}/Accounts/Fees/Fees Structure";
@@ -195,6 +203,9 @@ class Sis extends MY_Controller
         $data['school_name']   = $school_name;
         $data['user_Id']       = $userId;
         $data['exemptedFees']  = $exemptedFees;
+
+        // LEAD SYSTEM — pass lead_id to view for prefill via AJAX
+        $data['lead_id'] = trim($this->input->get('lead_id') ?? '');
 
         $this->load->view('include/header');
         $this->load->view('studentAdmission', $data);
@@ -237,6 +248,11 @@ class Sis extends MY_Controller
         $category    = trim($this->input->post('category')      ?? '');
         $bloodGroup  = trim($this->input->post('blood_group')   ?? '');
         $religion    = trim($this->input->post('religion')      ?? '');
+        // FIXED: "Other" religion should use the custom value (matches edit_student logic)
+        if ($religion === 'Other') {
+            $otherReligion = trim($this->input->post('other_religion') ?? '');
+            if ($otherReligion !== '') $religion = $otherReligion;
+        }
         $nationality = trim($this->input->post('nationality')   ?? '');
 
         // ── Family ──────────────────────────────────────────────────
@@ -269,16 +285,12 @@ class Sis extends MY_Controller
         $this->safe_path_segment($classOrd, 'class');
         $this->safe_path_segment($section, 'section');
 
-        // Auto-generate userId with retry/verify pattern (avoids race condition)
-        if (empty($userId)) {
-            $generated = $this->_nextStudentId($school_id);
-            if (!$generated) {
-                return $this->json_error('Failed to generate student ID. Please try again.');
-            }
-            $userId = $generated;
-        } else {
-            $this->safe_path_segment($userId, 'User ID');
+        // Always generate userId at save time (counter increments only here, not on page load)
+        $generated = $this->_nextStudentId($school_id);
+        if (!$generated) {
+            return $this->json_error('Failed to generate student ID. Please try again.');
         }
+        $userId = $generated;
 
         // Check for duplicate — ensures no existing profile is overwritten
         $existing = $this->firebase->get("Users/Parents/{$school_id}/{$userId}");
@@ -478,6 +490,79 @@ class Sis extends MY_Controller
                     $exemptedData
                 );
             }
+        }
+
+        // ── Sync student credentials to MongoDB (with retry) ──────────
+        try {
+            $this->load->library('auth_client');
+            $syncPayload = [
+                'studentId'          => $userId,
+                'name'               => $name,
+                'email'              => $email,
+                'phone'              => $phone,
+                'password'           => $password,        // Raw — Node.js will bcrypt it
+                'schoolId'           => $this->school_code,   // Login code (e.g. 10005)
+                'schoolCode'         => $this->school_name,   // Firebase key (e.g. SCH_XXXXXX)
+                'parentDbKey'        => $this->parent_db_key, // Firebase Users/Parents key
+                'parentPhone'        => $guardContact ?: $phone,
+                'createdBy'          => $this->session->userdata('admin_id') ?: 'system',
+                'className'          => $classOrd,
+                'section'            => $section,
+                'rollNo'             => $rollNo,
+                'fatherName'         => $father,
+                'motherName'         => $mother,
+                'dob'                => $dob,
+                'admissionDate'      => $admDate,
+                'gender'             => $gender,
+                'profilePic'         => $profilePicUrl,
+                'schoolDisplayName'  => $this->school_display_name ?? '',
+                'deviceBindingMethod'=> 'otp',  // Mobile login requires OTP to bind new devices
+            ];
+
+            $syncResult = null;
+            $maxAttempts = 2;
+            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+                $syncResult = $this->auth_client->sync_student($syncPayload);
+                if (!empty($syncResult['success'])) break;
+                if ($attempt < $maxAttempts) usleep(500000); // 500ms before retry
+            }
+
+            if (empty($syncResult['success'])) {
+                log_message('error', "SIS MongoDB sync failed for {$userId} after {$maxAttempts} attempts: "
+                    . ($syncResult['message'] ?? 'unknown')
+                    . ' | payload=' . json_encode(['studentId' => $userId, 'schoolId' => $this->school_code, 'schoolCode' => $this->school_name]));
+            }
+        } catch (Exception $e) {
+            log_message('error', "SIS MongoDB sync exception for {$userId}: " . $e->getMessage());
+        }
+
+        // LEAD SYSTEM — mark lead as admitted if this admission came from a lead
+        $leadId = trim($this->input->post('lead_id') ?? '');
+        if ($leadId !== '' && preg_match('/^[A-Za-z0-9_]+$/', $leadId)) {
+            $now = date('Y-m-d H:i:s');
+            $leadPath = "{$this->crm_base}/Applications/{$leadId}";
+            $lead = $this->firebase->get($leadPath);
+            if (is_array($lead)) {
+                $history = $lead['history'] ?? [];
+                $history[] = [
+                    'action'    => "Converted to student {$userId}",
+                    'by'        => $this->admin_name,
+                    'timestamp' => $now,
+                ];
+                $this->firebase->update($leadPath, [
+                    'status'     => 'admitted',
+                    'stage'      => 'enrolled',
+                    'student_id' => $userId,
+                    'updated_at' => $now,
+                    'history'    => $history,
+                ]);
+                log_audit('CRM', 'convert_lead', $leadId, "Lead converted to student {$userId}");
+            }
+        }
+
+        // LEAD SYSTEM — notify parent of confirmed admission (fire-and-forget)
+        if ($phone !== '') {
+            notify_admission_confirmed($phone, $this->school_display_name ?? $this->school_name, $userId, $name);
         }
 
         return $this->json_success(['message' => 'Student admitted successfully.', 'user_id' => $userId]);
@@ -1318,12 +1403,16 @@ class Sis extends MY_Controller
 
         $storagePath = "Students/{$school_id}/{$userId}/docs/{$docLabel}";
         try {
-            $url      = $this->firebase->uploadFile($storagePath, $_FILES['document']['tmp_name'],
-                            $mime);
+            // FIXED: args were swapped (localPath, remotePath) and return is bool not URL
+            $uploaded = $this->firebase->uploadFile($_FILES['document']['tmp_name'], $storagePath);
+            if (!$uploaded) {
+                return $this->json_error('Failed to upload file to storage.');
+            }
+            $url      = $this->firebase->getDownloadUrl($storagePath);
             $thumbUrl = '';
-            // Generate thumbnail for images
-            if (strpos($_FILES['document']['type'], 'image/') === 0) {
-                $thumbUrl = $url; // use same URL (or generate thumb separately)
+            // FIXED: use validated $mime instead of untrusted $_FILES type
+            if (strpos($mime, 'image/') === 0) {
+                $thumbUrl = $url;
             }
 
             $this->firebase->update(
@@ -1446,9 +1535,19 @@ class Sis extends MY_Controller
             return strcmp($a['Name'] ?? '', $b['Name'] ?? '');
         });
 
-        $data['students']     = $students;
-        $data['session_year'] = $session_year;
-        $data['school_name']  = $school_name;
+        // FIXED: fetch school profile so view can display real school name, address, logo
+        $profile = $this->firebase->get("Schools/{$school_name}/Config/Profile");
+        if (!is_array($profile)) $profile = [];
+
+        $data['students']       = $students;
+        $data['session_year']   = $session_year;
+        $data['school_name']    = $school_name;
+        $data['school_profile'] = [
+            'school_name' => $profile['display_name'] ?? $this->school_display_name,
+            'address'     => $profile['address'] ?? '',
+            'logo'        => $profile['logo'] ?? '',
+            'phone'       => $profile['phone'] ?? '',
+        ];
 
         $this->load->view('include/header');
         $this->load->view('student_id_card', $data);
@@ -1800,46 +1899,38 @@ class Sis extends MY_Controller
     }
 
     /**
-     * Generate next student ID with retry/verify pattern to avoid race conditions.
-     * Format: STU0001, STU0002, etc.
+     * Preview the next student ID (read-only, does NOT increment).
+     * Calls Auth API to peek at the next STU counter value.
+     * Globally unique across all schools.
+     */
+    private function _peekNextStudentId(string $schoolId): string
+    {
+        try {
+            $this->load->library('auth_client');
+            $id = $this->auth_client->generate_id('STU_PEEK');
+            if ($id) return $id;
+        } catch (Exception $e) {
+            log_message('error', 'peekNextStudentId Auth API failed: ' . $e->getMessage());
+        }
+        // Fallback: show placeholder if Auth API is down
+        return 'STU****';
+    }
+
+    /**
+     * Generate the next student ID via Auth API (atomic MongoDB counter).
+     * Globally unique — no two students anywhere share the same ID.
+     * Only call this when actually saving a student (not on page load).
      */
     private function _nextStudentId(string $schoolId): ?string
     {
-        $path = "Users/Parents/{$schoolId}/Count";
-        $maxRetries = 5;
-
-        for ($i = 0; $i < $maxRetries; $i++) {
-            $current = $this->firebase->get($path);
-            $current = !empty($current) ? (int)$current : 0;
-            $next    = $current + 1;
-            $userId  = 'STU' . str_pad($next, 4, '0', STR_PAD_LEFT);
-
-            // Write the incremented counter
-            $this->firebase->set($path, $next);
-
-            // Verify the counter wasn't overwritten by a concurrent request
-            $verify = $this->firebase->get($path);
-            if ((int)$verify !== $next) {
-                usleep(50000 * ($i + 1));
-                continue;
-            }
-
-            // Verify no existing student profile at this ID
-            $existing = $this->firebase->get("Users/Parents/{$schoolId}/{$userId}");
-            if (!empty($existing)) {
-                // ID already taken — bump counter and retry
-                usleep(50000 * ($i + 1));
-                continue;
-            }
-
-            return $userId;
+        try {
+            $this->load->library('auth_client');
+            $userId = $this->auth_client->generate_id('STU');
+            if ($userId) return $userId;
+        } catch (Exception $e) {
+            log_message('error', 'nextStudentId Auth API failed: ' . $e->getMessage());
         }
-
-        // Fallback: timestamp-based ID to avoid blocking admission
-        $fallback = (int)(microtime(true) * 1000) % 999999;
-        $userId   = 'STU' . str_pad($fallback, 6, '0', STR_PAD_LEFT);
-        $this->firebase->set($path, $fallback);
-        return $userId;
+        return null;
     }
 
     /**
@@ -1875,18 +1966,25 @@ class Sis extends MY_Controller
 
         if ($classOrd === '' || $sectionLtr === '') return $result;
 
+        // FIXED: use $sectionLtr directly (consistent with Fees.php and other SIS methods)
+        $classKey    = "Class {$classOrd}";
+        $sectionKey  = "Section {$sectionLtr}";
+
         // Read the student's month-wise payment status
-        $sectionPath = "Section " . strtoupper($sectionLtr);
         $studentFees = $this->firebase->get(
-            "Schools/{$school_name}/{$session}/Class {$classOrd}/{$sectionPath}/Students/{$userId}/Month Fee"
+            "Schools/{$school_name}/{$session}/{$classKey}/{$sectionKey}/Students/{$userId}/Month Fee"
         );
         if (!is_array($studentFees)) $studentFees = [];
 
         // Read the class fee structure to calculate amounts
         $classFees = $this->firebase->get(
-            "Schools/{$school_name}/{$session}/Accounts/Fees/Classes Fees/Class {$classOrd}/{$sectionPath}"
+            "Schools/{$school_name}/{$session}/Accounts/Fees/Classes Fees/{$classKey}/{$sectionKey}"
         );
-        if (!is_array($classFees)) $classFees = [];
+        if (!is_array($classFees)) {
+            // FIXED: no fee chart configured yet — count unpaid months but can't calculate amount
+            log_message('debug', "_check_outstanding_dues: no fee chart for {$classKey}/{$sectionKey}, userId={$userId}");
+            $classFees = [];
+        }
 
         $months = [
             'April','May','June','July','August','September',
@@ -2139,8 +2237,8 @@ class Sis extends MY_Controller
             $error   = 0;
             $skipped = [];
 
-            $studentIdCount = $this->CM->get_data("Users/Parents/{$school_id}/Count");
-            if (!$studentIdCount) $studentIdCount = 1;
+            // Load Auth API for globally unique student IDs
+            $this->load->library('auth_client');
 
             $subjectCache = [];
 
@@ -2170,7 +2268,14 @@ class Sis extends MY_Controller
 
                 $className = $classNumber . $suffix;
                 $combinedClass = "Class {$className}/Section {$section}";
-                $studentId = 'STU' . str_pad($studentIdCount, 4, '0', STR_PAD_LEFT);
+
+                // Generate globally unique student ID from central counter
+                $studentId = $this->_nextStudentId($school_id);
+                if (!$studentId) {
+                    $skipped[] = "Row " . ($success + $error + count($skipped) + 1) . ": {$studentName} — ID generation failed";
+                    $error++;
+                    continue;
+                }
 
                 $formattedDOB = '';
                 if (!empty($rowData['DOB'])) $formattedDOB = date('d-m-Y', strtotime($rowData['DOB']));
@@ -2205,14 +2310,6 @@ class Sis extends MY_Controller
                         "Transfer Certificate" => ["thumbnail" => "", "url" => ""],
                     ],
                 ];
-
-                // Check for duplicate — ensures no existing profile is overwritten
-                $existing = $this->firebase->get("Users/Parents/{$school_id}/{$studentId}");
-                if (!empty($existing)) {
-                    $skipped[] = "Row " . ($success + $error + count($skipped) + 1) . ": {$studentName} — ID {$studentId} already exists";
-                    $studentIdCount++;
-                    continue;
-                }
 
                 $this->firebase->update("Users/Parents/{$school_id}/{$studentId}", $studentData);
                 $this->CM->addKey_pair_data("Schools/{$school_name}/{$session_year}/{$combinedClass}/Students/", [$studentId => ['Name' => $studentName]]);
@@ -2275,11 +2372,43 @@ class Sis extends MY_Controller
                     $this->firebase->set("Schools/{$school_name}/{$session_year}/{$combinedClass}/Students/{$studentId}/Additional Subjects", $subjectCache[$classNumber]['additionalSubjects']);
                 }
 
-                $studentIdCount++;
+                // Sync to MongoDB (best-effort, don't block import on failure)
+                try {
+                    $email   = trim($rowData['Email'] ?? '');
+                    $phone   = trim($rowData['Phone Number'] ?? '');
+                    $father  = trim($rowData['Father Name'] ?? '');
+                    $mother  = trim($rowData['Mother Name'] ?? '');
+                    $guardPh = trim($rowData['Guard Contact'] ?? '');
+                    $this->auth_client->sync_student([
+                        'studentId'          => $studentId,
+                        'name'               => $studentName,
+                        'email'              => $email,
+                        'phone'              => $phone,
+                        'password'           => $password,
+                        'schoolId'           => $this->school_code,
+                        'schoolCode'         => $this->school_name,
+                        'parentDbKey'        => $this->parent_db_key,
+                        'parentPhone'        => $guardPh ?: $phone,
+                        'createdBy'          => $this->session->userdata('admin_id') ?: 'system',
+                        'className'          => $className,
+                        'section'            => $section,
+                        'rollNo'             => trim($rowData['Roll No'] ?? ''),
+                        'fatherName'         => $father,
+                        'motherName'         => $mother,
+                        'dob'                => $formattedDOB,
+                        'admissionDate'      => $formattedAdmDate,
+                        'gender'             => trim($rowData['Gender'] ?? ''),
+                        'profilePic'         => '',
+                        'schoolDisplayName'  => $this->school_display_name ?? '',
+                        'deviceBindingMethod'=> 'otp',
+                    ]);
+                } catch (Exception $e) {
+                    log_message('error', "SIS import MongoDB sync failed for {$studentId}: " . $e->getMessage());
+                }
+
                 $success++;
             }
 
-            $this->CM->addKey_pair_data("Users/Parents/{$school_id}/", ['Count' => $studentIdCount]);
             $msg = "Imported Successfully: {$success} | Failed: {$error}";
             if (!empty($skipped)) {
                 $msg .= " | Skipped (ID collision): " . count($skipped) . " — " . implode('; ', $skipped);
@@ -2320,6 +2449,8 @@ class Sis extends MY_Controller
         }
         $className = $this->safe_path_segment($className, 'class_name');
         $keys = $this->firebase->shallow_get("Schools/{$school_name}/{$session_year}/{$className}");
+        // FIXED: shallow_get can return null/false if path doesn't exist — guard against foreach on non-array
+        if (!is_array($keys)) $keys = [];
         $sections = [];
         foreach ($keys as $key) {
             if (strpos($key, 'Section ') === 0) $sections[] = str_replace('Section ', '', $key);
@@ -2521,35 +2652,66 @@ class Sis extends MY_Controller
     public function delete_student($id)
     {
         $this->_require_role(self::MANAGE_ROLES);
-        if ($this->input->method() !== 'post') { redirect('sis/all_student'); return; }
-        if (empty($id) || !preg_match('/^[A-Za-z0-9_]+$/', $id)) { redirect('sis/all_student'); return; }
+        // FIXED: return JSON for AJAX requests instead of redirect (was breaking bulk delete)
+        $isAjax = $this->input->is_ajax_request();
+        if ($this->input->method() !== 'post') {
+            if ($isAjax) return $this->json_error('POST required');
+            redirect('sis/students'); return;
+        }
+        if (empty($id) || !preg_match('/^[A-Za-z0-9_]+$/', $id)) {
+            if ($isAjax) return $this->json_error('Invalid student ID');
+            redirect('sis/students'); return;
+        }
 
-        $school_id = $this->parent_db_key;
-        $school_name = $this->school_name;
+        $school_id    = $this->parent_db_key;
+        $school_name  = $this->school_name;
         $session_year = $this->session_year;
         $student = $this->CM->select_data("Users/Parents/{$school_id}/{$id}");
-        if (!$student) { redirect('sis/all_student'); return; }
+        if (!$student) {
+            if ($isAjax) return $this->json_error('Student not found');
+            redirect('sis/students'); return;
+        }
 
         $phoneNumber = $student['Phone Number'] ?? '';
-        $class = $student['Class'] ?? '';
-        $section = $student['Section'] ?? '';
+        $class       = $student['Class']   ?? '';
+        $section     = $student['Section'] ?? '';
         if (!$class || !$section) {
+            if ($isAjax) return $this->json_error('Class or Section missing from student profile');
             $this->session->set_flashdata('error', 'Class or Section missing');
-            redirect('sis/all_student');
-            return;
+            redirect('sis/students'); return;
         }
         $combinedClassPath = "Class {$class}/Section {$section}";
 
-        $this->CM->delete_folder_from_firebase_storage("{$school_name}/Students/Class {$class}/{$id}");
+        // FIXED: storage path now includes Section (was "Class X/{id}", should be "Class X/Section Y/{id}")
+        $this->CM->delete_folder_from_firebase_storage("{$school_name}/Students/{$combinedClassPath}/{$id}");
+        // Also clean upload_document() storage path (uses school_id not school_name)
+        $this->CM->delete_folder_from_firebase_storage("Students/{$school_id}/{$id}");
+
+        // Remove from class roster
         $this->CM->delete_data("Schools/{$school_name}/{$session_year}/{$combinedClassPath}/Students", $id);
         $this->CM->delete_data("Schools/{$school_name}/{$session_year}/{$combinedClassPath}/Students/List", $id);
+
+        // FIXED: delete student profile from Users/Parents (was never deleted — orphaned data)
+        $this->CM->delete_data("Users/Parents/{$school_id}", $id);
+
+        // FIXED: delete from Students_Index (was never deleted — orphaned index entry)
+        $this->firebase->delete("Schools/{$school_name}/SIS/Students_Index", $id);
+
+        // Clean phone indexes
         if (!empty($phoneNumber)) {
             $this->CM->delete_data("Schools/{$school_name}/Phone_Index", $phoneNumber);
             $this->CM->delete_data('User_ids_pno', $phoneNumber);
             $this->CM->delete_data('Exits', $phoneNumber);
         }
-        $this->session->set_flashdata('success', 'Student removed from class successfully');
-        redirect('sis/all_student');
+
+        log_audit('SIS', 'delete_student', $id, "Deleted student '{$student['Name']}' from Class {$class} Section {$section}");
+
+        // FIXED: return JSON for AJAX, redirect for direct form POST
+        if ($isAjax) {
+            return $this->json_success(['message' => 'Student deleted successfully.']);
+        }
+        $this->session->set_flashdata('success', 'Student deleted successfully');
+        redirect('sis/students');
     }
 
     /* ══════════════════════════════════════════════════════════════════════
@@ -2720,6 +2882,180 @@ class Sis extends MY_Controller
             $studentsData[] = ["userId" => $studentId, "name" => $displayName, "attendance" => $attendanceArray];
         }
         echo json_encode(["students" => $studentsData, "daysInMonth" => $daysInMonth, "sundays" => $sundays, "month" => $month, "year" => $year]);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       LEAD SYSTEM — Public admission leads management
+       View, filter, and convert public form leads into student admissions
+    ══════════════════════════════════════════════════════════════════════ */
+
+    // LEAD SYSTEM — List all public admission leads
+    public function admission_leads()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_view');
+        $data['session_year'] = $this->session_year;
+        $data['school_name']  = $this->school_name;
+        $this->load->view('include/header');
+        $this->load->view('sis/admission_leads', $data);
+        $this->load->view('include/footer');
+    }
+
+    // LEAD SYSTEM — AJAX: fetch leads data
+    public function fetch_leads()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_view');
+        $applications = $this->firebase->get("{$this->crm_base}/Applications") ?? [];
+        if (!is_array($applications)) $applications = [];
+
+        $session = $this->session_year;
+        $leads = [];
+        foreach ($applications as $id => $app) {
+            if (!is_array($app)) continue;
+            // Show all leads for current session (both public and CRM)
+            if (($app['session'] ?? '') !== $session) continue;
+            $app['id'] = $id;
+            $leads[] = $app;
+        }
+        // Newest first
+        usort($leads, fn($a, $b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
+        return $this->json_success(['leads' => $leads]);
+    }
+
+    // LEAD SYSTEM — Single lead detail (AJAX)
+    public function admission_lead()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_view');
+        $leadId = trim($this->input->get_post('lead_id') ?? '');
+        if ($leadId === '') return $this->json_error('Lead ID required.');
+        $leadId = $this->safe_path_segment($leadId, 'lead_id');
+
+        $lead = $this->firebase->get("{$this->crm_base}/Applications/{$leadId}");
+        if (!is_array($lead)) return $this->json_error('Lead not found.');
+        $lead['id'] = $leadId;
+        return $this->json_success(['lead' => $lead]);
+    }
+
+    // LEAD SYSTEM — Update lead status (AJAX)
+    public function update_lead_status()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'crm_manage');
+        $leadId = trim($this->input->post('lead_id') ?? '');
+        $status = trim($this->input->post('status') ?? '');
+        if ($leadId === '' || $status === '') return $this->json_error('Lead ID and status required.');
+        $leadId = $this->safe_path_segment($leadId, 'lead_id');
+
+        $allowed = ['new', 'contacted', 'interested', 'approved', 'rejected', 'enrolled', 'admitted'];
+        if (!in_array($status, $allowed, true)) return $this->json_error('Invalid status.');
+
+        $lead = $this->firebase->get("{$this->crm_base}/Applications/{$leadId}");
+        if (!is_array($lead)) return $this->json_error('Lead not found.');
+
+        $now = date('Y-m-d H:i:s');
+        $history = $lead['history'] ?? [];
+        $history[] = ['action' => "Status changed to {$status}", 'by' => $this->admin_name, 'timestamp' => $now];
+
+        $this->firebase->update("{$this->crm_base}/Applications/{$leadId}", [
+            'status'     => $status,
+            'updated_at' => $now,
+            'history'    => $history,
+        ]);
+        log_audit('CRM', 'update_lead_status', $leadId, "Lead status changed to '{$status}' for " . ($lead['student_name'] ?? ''));
+        return $this->json_success(['message' => 'Status updated.']);
+    }
+
+    // LEAD SYSTEM — Fetch lead data for admission form prefill
+    public function get_lead_data()
+    {
+        $this->_require_role(self::MANAGE_ROLES, 'sis_admission');
+        $leadId = trim($this->input->get('lead_id') ?? '');
+        if ($leadId === '') return $this->json_error('Lead ID required.');
+        $leadId = $this->safe_path_segment($leadId, 'lead_id');
+
+        $lead = $this->firebase->get("{$this->crm_base}/Applications/{$leadId}");
+        if (!is_array($lead)) return $this->json_error('Lead not found.');
+        $lead['id'] = $leadId;
+        return $this->json_success(['lead' => $lead]);
+    }
+
+    // LEAD SYSTEM — Admission analytics dashboard (single Firebase read, all PHP computation)
+    public function admission_analytics()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'crm_view');
+        $session = $this->session_year;
+
+        // Single read — fetch all applications once
+        $applications = $this->firebase->get("{$this->crm_base}/Applications") ?? [];
+        if (!is_array($applications)) $applications = [];
+
+        // Filter to current session + compute all metrics in one pass
+        $total = 0;
+        $byStatus = ['new'=>0,'contacted'=>0,'interested'=>0,'approved'=>0,'admitted'=>0,'enrolled'=>0,'rejected'=>0];
+        $byClass  = [];
+        $bySource = ['public_form'=>0,'manual'=>0,'crm'=>0];
+        $byMonth  = [];  // month label → count
+        $recentLeads = [];
+
+        foreach ($applications as $id => $app) {
+            if (!is_array($app)) continue;
+            if (($app['session'] ?? '') !== $session) continue;
+
+            $total++;
+            $status = strtolower($app['status'] ?? 'new');
+            if (isset($byStatus[$status])) $byStatus[$status]++;
+            else $byStatus[$status] = 1;
+
+            $cls = $app['class'] ?? 'Unknown';
+            $byClass[$cls] = ($byClass[$cls] ?? 0) + 1;
+
+            $src = $app['source'] ?? 'crm';
+            if ($src === 'public_form') $bySource['public_form']++;
+            else $bySource['crm']++;
+
+            // Monthly trend from created_at
+            $created = $app['created_at'] ?? '';
+            if ($created !== '') {
+                $ts = strtotime($created);
+                if ($ts) {
+                    $monthKey = date('Y-m', $ts);
+                    $byMonth[$monthKey] = ($byMonth[$monthKey] ?? 0) + 1;
+                }
+            }
+
+            // Collect recent 10 for quick-view table
+            if (count($recentLeads) < 10) {
+                $recentLeads[] = [
+                    'id'     => $id,
+                    'name'   => $app['student_name'] ?? '',
+                    'class'  => $cls,
+                    'status' => $status,
+                    'source' => $src,
+                    'date'   => substr($created, 0, 10),
+                ];
+            }
+        }
+
+        // Sort class keys naturally
+        uksort($byClass, 'strnatcmp');
+        ksort($byMonth);
+
+        $admitted = ($byStatus['admitted'] ?? 0) + ($byStatus['enrolled'] ?? 0);
+        $conversionRate = $total > 0 ? round(($admitted / $total) * 100, 1) : 0;
+
+        $data = [
+            'session_year'    => $session,
+            'total'           => $total,
+            'admitted'        => $admitted,
+            'conversion_rate' => $conversionRate,
+            'by_status'       => $byStatus,
+            'by_class'        => $byClass,
+            'by_source'       => $bySource,
+            'by_month'        => $byMonth,
+            'recent_leads'    => $recentLeads,
+        ];
+
+        $this->load->view('include/header');
+        $this->load->view('sis/admission_analytics', $data);
+        $this->load->view('include/footer');
     }
 
     /* ══════════════════════════════════════════════════════════════════════
@@ -3068,9 +3404,11 @@ class Sis extends MY_Controller
         $school_id = $this->parent_db_key;
         $school_name = $this->school_name;
         $session = $this->session_year;
-        $studentIdCount = (int)($this->firebase->get("Users/Parents/{$school_id}/Count") ?? 0);
-        if ($studentIdCount === 0) $studentIdCount = 1;
-        $studentId = 'STU000' . $studentIdCount;
+        // FIXED: use _nextStudentId() for duplicate-safe ID with retry loop (was inline with no check)
+        $studentId = $this->_nextStudentId($school_id);
+        if (!$studentId) {
+            return $this->json_error('Failed to generate unique student ID. Please try again.');
+        }
         $className = trim($app['class'] ?? '');
         $section = trim($app['section'] ?? 'A');
         if ($className === '') return $this->json_error('Class not specified in application');
@@ -3100,7 +3438,7 @@ class Sis extends MY_Controller
         $this->firebase->set("Users/Parents/{$school_id}/{$studentId}", $studentData);
         $this->firebase->update("Schools/{$school_name}/{$session}/{$combinedPath}/Students", [$studentId => ['Name'=>$app['student_name']??'']]);
         $this->firebase->update("Schools/{$school_name}/{$session}/{$combinedPath}/Students/List", [$studentId => $app['student_name']??'']);
-        $this->firebase->set("Users/Parents/{$school_id}/Count", $studentIdCount + 1);
+        // Counter already incremented inside _nextStudentId() — no manual write needed
 
         $phone = trim($app['phone'] ?? '');
         if ($phone !== '') {
@@ -3121,6 +3459,38 @@ class Sis extends MY_Controller
         $history = $app['history'] ?? [];
         $history[] = ['action'=>"Enrolled as {$studentId} in Class {$className} Section {$section}",'by'=>$this->admin_name,'timestamp'=>$now];
         $this->firebase->update("{$this->crm_base}/Applications/{$id}", ['status'=>'enrolled','stage'=>'enrolled','student_id'=>$studentId,'enrolled_at'=>$now,'enrolled_by'=>$this->admin_name,'updated_at'=>$now,'history'=>$history]);
+
+        // ── Sync student credentials to MongoDB (best-effort) ──────────
+        try {
+            $this->load->library('auth_client');
+            $password = $studentData['Password'] ?? '';
+            $this->auth_client->sync_student([
+                'studentId'          => $studentId,
+                'name'               => $app['student_name'] ?? '',
+                'email'              => $app['email'] ?? '',
+                'phone'              => $phone,
+                'password'           => $password,
+                'schoolId'           => $this->school_code,
+                'schoolCode'         => $this->school_name,
+                'parentDbKey'        => $this->parent_db_key,
+                'parentPhone'        => $app['guardian_phone'] ?? $phone,
+                'createdBy'          => $this->session->userdata('admin_id') ?: 'system',
+                'className'          => $className,
+                'section'            => $section,
+                'rollNo'             => '',
+                'fatherName'         => $app['father_name'] ?? '',
+                'motherName'         => $app['mother_name'] ?? '',
+                'dob'                => $studentData['DOB'] ?? '',
+                'admissionDate'      => $studentData['Admission Date'] ?? '',
+                'gender'             => $app['gender'] ?? '',
+                'profilePic'         => '',
+                'schoolDisplayName'  => $this->school_display_name ?? '',
+                'deviceBindingMethod'=> 'otp',
+            ]);
+        } catch (Exception $e) {
+            log_message('error', "SIS enroll MongoDB sync exception for {$studentId}: " . $e->getMessage());
+        }
+
         return $this->json_success(['student_id'=>$studentId,'class'=>$className,'section'=>$section]);
     }
 

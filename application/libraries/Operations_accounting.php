@@ -544,6 +544,487 @@ class Operations_accounting
     }
 
     // ====================================================================
+    //  FEE HEAD → ACCOUNT CODE MAPPING
+    // ====================================================================
+
+    /**
+     * Load the fee head → account code mapping from Firebase config.
+     *
+     * Path: Schools/{school}/Accounts/Fee_Account_Map/{sanitized_head}
+     *       = { fee_head: "Tuition Fee", account_code: "4010" }
+     *
+     * If no config exists, uses intelligent keyword-based defaults:
+     *   Tuition/School Fee → 4010 (Tuition Fees)
+     *   Admission/Registration → 4020 (Admission Fees)
+     *   Exam/Test → 4030 (Exam Fees)
+     *   Transport/Bus → 4040 (Transport Fees)
+     *   Hostel/Boarding → 4050 (Hostel Fees)
+     *   Late/Fine/Penalty → 4060 (Late Fees/Fines)
+     *   Lab/Computer/Library → 4010 (mapped to Tuition as sub-head)
+     *   Sport/Game → 4010
+     *   Everything else → 4010 (safest default: Tuition Fees)
+     *
+     * @param array $coa  Full Chart of Accounts (already fetched)
+     * @return array       [lowercase_fee_head => account_code]
+     */
+    public function get_fee_account_map(array $coa): array
+    {
+        // 1. Try configured map from Firebase
+        $mapPath = "Schools/{$this->school_name}/Accounts/Fee_Account_Map";
+        $configMap = $this->firebase->get($mapPath);
+        $map = [];
+
+        if (is_array($configMap)) {
+            foreach ($configMap as $key => $entry) {
+                if (!is_array($entry)) continue;
+                $head = strtolower(trim($entry['fee_head'] ?? $key));
+                $code = trim($entry['account_code'] ?? '');
+                // Only use mapping if account exists and is active
+                if ($code !== '' && isset($coa[$code]) && ($coa[$code]['status'] ?? '') === 'active') {
+                    $map[$head] = $code;
+                }
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Resolve the account code for a fee head.
+     *
+     * Priority: configured map → keyword matching → default 4010.
+     *
+     * @param string $feeHead     Fee head name (e.g. "Tuition Fee")
+     * @param array  $configMap   Config map from get_fee_account_map()
+     * @param array  $coa         Full Chart of Accounts
+     * @return string             Account code (e.g. "4010")
+     */
+    public function resolve_fee_account(string $feeHead, array $configMap, array $coa): string
+    {
+        $headLower = strtolower(trim($feeHead));
+
+        // 1. Exact match in config
+        if (isset($configMap[$headLower])) {
+            return $configMap[$headLower];
+        }
+
+        // 2. Keyword-based matching (common Indian school fee heads)
+        $keywords = [
+            '4020' => ['admission', 'registration', 'enrol'],
+            '4030' => ['exam', 'test', 'assessment'],
+            '4040' => ['transport', 'bus', 'conveyance', 'vehicle'],
+            '4050' => ['hostel', 'boarding', 'mess', 'accommodation'],
+            '4060' => ['late', 'fine', 'penalty', 'overdue'],
+        ];
+
+        foreach ($keywords as $code => $terms) {
+            // Only use if account exists in CoA
+            if (!isset($coa[$code]) || ($coa[$code]['status'] ?? '') !== 'active') continue;
+            foreach ($terms as $term) {
+                if (strpos($headLower, $term) !== false) {
+                    return $code;
+                }
+            }
+        }
+
+        // 3. Default: Tuition Fees (4010)
+        return '4010';
+    }
+
+    // ====================================================================
+    //  GRANULAR FEE JOURNAL ENTRY (DEMAND-BASED)
+    // ====================================================================
+
+    /**
+     * Create a multi-line journal entry using fee demand allocations.
+     *
+     * Instead of a simple Dr Cash / Cr 4010, this creates:
+     *   Dr Cash/Bank ₹total
+     *   Cr 4010 Tuition   ₹X   (per allocation's fee head → account mapping)
+     *   Cr 4040 Transport ₹Y
+     *   Cr 4060 Late Fee  ₹Z   (if fine > 0)
+     *
+     * Falls back to create_fee_journal() if allocations are empty.
+     *
+     * @param array $params Standard params (school_name, session_year, date, amount,
+     *                      payment_mode, bank_code, receipt_no, student_name, student_id,
+     *                      class, admin_id)
+     * @param array $allocations Demand allocations from submit_fees():
+     *                           [{demand_id, fee_head, category, period, amount, ...}, ...]
+     * @param float $fineAmount  Fine/late fee collected (separate from allocations)
+     * @param float $discountAmount  Discount applied (for contra entry)
+     * @return string|null Entry ID or null on failure
+     */
+    public function create_fee_journal_granular(
+        array $params,
+        array $allocations,
+        float $fineAmount = 0,
+        float $discountAmount = 0
+    ): ?string {
+        // If no allocations, fall back to simple 2-line journal
+        if (empty($allocations)) {
+            return $this->create_fee_journal($params);
+        }
+
+        $school   = $params['school_name'];
+        $session  = $params['session_year'];
+        $date     = $params['date'] ?? date('Y-m-d');
+        $amount   = round((float) ($params['amount'] ?? 0), 2);
+        $payMode  = strtolower(trim($params['payment_mode'] ?? 'cash'));
+        $bankCode = trim($params['bank_code'] ?? '');
+        $receipt  = $params['receipt_no'] ?? '';
+        $student  = $params['student_name'] ?? '';
+        $stuId    = $params['student_id'] ?? '';
+        $class    = $params['class'] ?? '';
+        $adminId  = $params['admin_id'] ?? $this->admin_id;
+
+        if ($amount <= 0) return null;
+
+        // Single fetch: full CoA
+        $coaPath = "Schools/{$school}/Accounts/ChartOfAccounts";
+        $coa = $this->firebase->get($coaPath);
+        if (!is_array($coa) || empty($coa)) return null;
+
+        // ── Resolve cash/bank debit account ──
+        if ($bankCode && isset($coa[$bankCode])) {
+            $cashBankCode = $bankCode;
+        } elseif (in_array($payMode, ['bank', 'cheque', 'upi', 'neft', 'rtgs', 'online'])) {
+            $cashBankCode = '1010';
+            foreach ($coa as $code => $acct) {
+                if (!empty($acct['is_bank']) && ($acct['status'] ?? '') === 'active') {
+                    $cashBankCode = $code;
+                    break;
+                }
+            }
+        } else {
+            $cashBankCode = '1010'; // Cash in Hand
+        }
+
+        // Validate cash/bank account
+        $cashAcct = $coa[$cashBankCode] ?? null;
+        if (!is_array($cashAcct) || ($cashAcct['status'] ?? '') !== 'active') {
+            log_message('error', "Granular fee journal: cash/bank account {$cashBankCode} missing/inactive");
+            return null;
+        }
+
+        // ── Load fee head → account mapping ──
+        $configMap = $this->get_fee_account_map($coa);
+
+        // ── Build credit lines from allocations (grouped by account code) ──
+        // Multiple fee heads may map to the same account code; aggregate them.
+        $creditsByAccount = []; // account_code => { amount, heads[] }
+
+        foreach ($allocations as $alloc) {
+            $feeHead    = $alloc['fee_head'] ?? '';
+            $allocAmt   = round((float) ($alloc['amount'] ?? 0), 2);
+            if ($allocAmt <= 0 || $feeHead === '') continue;
+
+            $acctCode = $this->resolve_fee_account($feeHead, $configMap, $coa);
+
+            if (!isset($creditsByAccount[$acctCode])) {
+                $creditsByAccount[$acctCode] = ['amount' => 0, 'heads' => []];
+            }
+            $creditsByAccount[$acctCode]['amount'] += $allocAmt;
+            $creditsByAccount[$acctCode]['heads'][] = $feeHead;
+        }
+
+        // ── Add fine as separate credit line to Late Fee Income (4060) ──
+        $fineAmount = round($fineAmount, 2);
+        if ($fineAmount > 0) {
+            $fineCode = '4060'; // Late Fees/Fines
+            if (!isset($coa[$fineCode]) || ($coa[$fineCode]['status'] ?? '') !== 'active') {
+                // Fall back to 4010 if 4060 doesn't exist
+                $fineCode = '4010';
+            }
+            if (!isset($creditsByAccount[$fineCode])) {
+                $creditsByAccount[$fineCode] = ['amount' => 0, 'heads' => []];
+            }
+            $creditsByAccount[$fineCode]['amount'] += $fineAmount;
+            $creditsByAccount[$fineCode]['heads'][] = 'Late Fee';
+        }
+
+        // ── Validate all credit accounts exist ──
+        $validCredits   = [];
+        $fallbackAmount = 0; // amounts from invalid accounts fall back to 4010
+
+        foreach ($creditsByAccount as $code => $data) {
+            $acct = $coa[$code] ?? null;
+            if (is_array($acct) && ($acct['status'] ?? '') === 'active' && empty($acct['is_group'])) {
+                $validCredits[$code] = $data;
+            } else {
+                log_message('info', "Granular fee journal: account {$code} unavailable, amount " . $data['amount'] . " falls back to 4010");
+                $fallbackAmount += $data['amount'];
+            }
+        }
+
+        // Add fallback to 4010 if any accounts were invalid
+        if ($fallbackAmount > 0) {
+            if (!isset($validCredits['4010'])) {
+                $validCredits['4010'] = ['amount' => 0, 'heads' => []];
+            }
+            $validCredits['4010']['amount'] += $fallbackAmount;
+            $validCredits['4010']['heads'][] = '(fallback)';
+        }
+
+        // ── Safety: if no valid credits, fall back to simple journal ──
+        if (empty($validCredits)) {
+            log_message('error', "Granular fee journal: no valid credit accounts, falling back to simple");
+            return $this->create_fee_journal($params);
+        }
+
+        // ══════════════════════════════════════════════════════════
+        //  DISCOUNT ACCOUNTING (proper double-entry)
+        //
+        //  Gross fee income is credited at full value (allocations).
+        //  Discount is recorded as a separate debit to an Expense account.
+        //  This keeps income statements accurate and discount visible.
+        //
+        //  Journal structure when discount exists:
+        //    Dr 1010 Cash/Bank       ₹net_received (amount)
+        //    Dr 5190 Discount Allowed ₹discount
+        //    Cr 4010 Tuition Fee      ₹gross_tuition
+        //    Cr 4040 Transport Fee    ₹gross_transport
+        //    Cr 4060 Late Fee         ₹fine
+        //
+        //  When no discount: Dr Cash = Cr total (simple).
+        // ══════════════════════════════════════════════════════════
+
+        $discountAmount = round($discountAmount, 2);
+        $narration = "Fee payment: {$student} ({$stuId}) - {$class}" . ($receipt ? " Rcpt#{$receipt}" : '');
+        $lines     = [];
+        $affected  = [];
+
+        // ── DEBIT SIDE ──
+
+        // 1. Dr Cash/Bank = amount actually received
+        $cashDebit = $amount;
+        $lines[] = [
+            'account_code' => $cashBankCode,
+            'account_name' => $cashAcct['name'] ?? $cashBankCode,
+            'dr'           => round($cashDebit, 2),
+            'cr'           => 0,
+            'narration'    => $narration,
+        ];
+        $affected[$cashBankCode] = ['dr' => round($cashDebit, 2), 'cr' => 0];
+
+        // 2. Dr Discount Allowed (Expense) = discount amount
+        //    Account 5190 "Discount Allowed" — create if needed via keyword match
+        if ($discountAmount > 0) {
+            $discountAcctCode = '5190'; // Discount Allowed (Expense)
+            // Check if 5190 exists; if not, try to find any "discount" expense account
+            if (!isset($coa[$discountAcctCode]) || ($coa[$discountAcctCode]['status'] ?? '') !== 'active') {
+                $discountAcctCode = null;
+                foreach ($coa as $dc => $da) {
+                    if (!is_array($da)) continue;
+                    if (($da['category'] ?? '') === 'Expense'
+                        && ($da['status'] ?? '') === 'active'
+                        && empty($da['is_group'])
+                        && stripos($da['name'] ?? '', 'discount') !== false) {
+                        $discountAcctCode = $dc;
+                        break;
+                    }
+                }
+            }
+
+            if ($discountAcctCode !== null) {
+                $discAcct = $coa[$discountAcctCode];
+                $lines[] = [
+                    'account_code' => $discountAcctCode,
+                    'account_name' => $discAcct['name'] ?? 'Discount Allowed',
+                    'dr'           => round($discountAmount, 2),
+                    'cr'           => 0,
+                    'narration'    => "Discount — {$student}",
+                ];
+                if (!isset($affected[$discountAcctCode])) {
+                    $affected[$discountAcctCode] = ['dr' => 0, 'cr' => 0];
+                }
+                $affected[$discountAcctCode]['dr'] += round($discountAmount, 2);
+            } else {
+                // No discount account available — reduce income side instead (legacy behavior)
+                log_message('info', "Granular journal: No discount expense account found, reducing income");
+                $discountAmount = 0; // treat as if no discount for journal balancing
+            }
+        }
+
+        // Total debit = cash + discount
+        $totalDebit = round($cashDebit + $discountAmount, 2);
+
+        // ── CREDIT SIDE ──
+        // Credits should equal total debit (gross fee income)
+        // Adjust credit totals to match debit side
+        $totalCredits = 0;
+        foreach ($validCredits as $data) {
+            $totalCredits += $data['amount'];
+        }
+
+        // The allocations are net amounts (after discount). If discount is separately debited,
+        // the credit side needs to represent gross income = allocations + discount.
+        // Distribute discount proportionally across credit accounts to show gross income.
+        if ($discountAmount > 0 && $totalCredits > 0) {
+            foreach ($validCredits as $code => &$data) {
+                $proportion = $data['amount'] / $totalCredits;
+                $data['amount'] = round($data['amount'] + ($discountAmount * $proportion), 2);
+            }
+            unset($data);
+            // Recalculate
+            $totalCredits = 0;
+            foreach ($validCredits as $data) {
+                $totalCredits += $data['amount'];
+            }
+        }
+
+        // Rounding adjustment: ensure Dr = Cr exactly
+        $diff = round($totalDebit - $totalCredits, 2);
+        if (abs($diff) > 0.005 && abs($diff) <= 1.00) {
+            $maxCode = '';
+            $maxAmt  = 0;
+            foreach ($validCredits as $code => $data) {
+                if ($data['amount'] > $maxAmt) { $maxAmt = $data['amount']; $maxCode = $code; }
+            }
+            if ($maxCode !== '') {
+                $validCredits[$maxCode]['amount'] = round($validCredits[$maxCode]['amount'] + $diff, 2);
+            }
+        } elseif (abs($diff) > 1.00) {
+            log_message('error', "Granular fee journal: debit/credit mismatch of {$diff}, falling back");
+            return $this->create_fee_journal($params);
+        }
+
+        // Credit lines: one per fee income account
+        foreach ($validCredits as $code => $data) {
+            $creditAmt = round($data['amount'], 2);
+            if ($creditAmt <= 0) continue;
+
+            $headNames = implode(', ', array_unique($data['heads']));
+            $acctName  = $coa[$code]['name'] ?? $code;
+
+            $lines[] = [
+                'account_code' => $code,
+                'account_name' => $acctName,
+                'dr'           => 0,
+                'cr'           => $creditAmt,
+                'narration'    => "{$headNames} — {$student}",
+            ];
+
+            if (!isset($affected[$code])) {
+                $affected[$code] = ['dr' => 0, 'cr' => 0];
+            }
+            $affected[$code]['cr'] += $creditAmt;
+        }
+
+        // ── Final Dr = Cr check ──
+        $totalDr = 0;
+        $totalCr = 0;
+        foreach ($lines as $ln) {
+            $totalDr += $ln['dr'];
+            $totalCr += $ln['cr'];
+        }
+        if (abs($totalDr - $totalCr) > 0.01) {
+            log_message('error', "Granular fee journal: UNBALANCED Dr={$totalDr} Cr={$totalCr}, falling back");
+            return $this->create_fee_journal($params);
+        }
+
+        // ── Generate voucher number ──
+        $bp = "Schools/{$school}/{$session}";
+        $counterPath = "{$bp}/Accounts/Voucher_counters/Fee";
+        $voucherNo   = '';
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $seq = (int) ($this->firebase->get($counterPath) ?? 0) + 1;
+            $this->firebase->set($counterPath, $seq);
+            $verify = $this->firebase->get($counterPath);
+            if ((int) $verify === $seq) {
+                $voucherNo = 'FV-' . str_pad($seq, 6, '0', STR_PAD_LEFT);
+                break;
+            }
+            usleep(50000 * $attempt);
+        }
+        if ($voucherNo === '') {
+            $seq = (int) ($this->firebase->get($counterPath) ?? 0) + 1;
+            $this->firebase->set($counterPath, $seq);
+            $voucherNo = 'FV-' . str_pad($seq, 6, '0', STR_PAD_LEFT) . '_' . substr(bin2hex(random_bytes(2)), 0, 4);
+        }
+
+        // ── Generate entry ID ──
+        $entryId = 'FE_' . date('YmdHis') . '_' . substr(bin2hex(random_bytes(4)), 0, 8);
+
+        $entry = [
+            'date'         => $date,
+            'voucher_no'   => $voucherNo,
+            'voucher_type' => 'Fee',
+            'narration'    => $narration,
+            'lines'        => array_values($lines),
+            'total_dr'     => round($totalDr, 2),
+            'total_cr'     => round($totalCr, 2),
+            'source'       => 'fee_payment',
+            'source_ref'   => $receipt,
+            'is_finalized' => false,
+            'status'       => 'active',
+            'created_by'   => $adminId,
+            'created_at'   => date('c'),
+        ];
+
+        // ── Write ledger entry ──
+        $this->firebase->set("{$bp}/Accounts/Ledger/{$entryId}", $entry);
+
+        // ── Write indices ──
+        $this->firebase->set("{$bp}/Accounts/Ledger_index/by_date/{$date}/{$entryId}", true);
+        foreach (array_keys($affected) as $acCode) {
+            $this->firebase->set("{$bp}/Accounts/Ledger_index/by_account/{$acCode}/{$entryId}", true);
+        }
+
+        // ── Update closing balances ──
+        $balPath = "{$bp}/Accounts/Closing_balances";
+        foreach ($affected as $ac => $amounts) {
+            for ($retry = 0; $retry < 3; $retry++) {
+                $cur = $this->firebase->get("{$balPath}/{$ac}");
+                if (!is_array($cur)) $cur = ['period_dr' => 0, 'period_cr' => 0];
+                $newBal = [
+                    'period_dr'     => round((float) ($cur['period_dr'] ?? 0) + $amounts['dr'], 2),
+                    'period_cr'     => round((float) ($cur['period_cr'] ?? 0) + $amounts['cr'], 2),
+                    'last_computed' => date('c'),
+                ];
+                $this->firebase->set("{$balPath}/{$ac}", $newBal);
+                $verify = $this->firebase->get("{$balPath}/{$ac}");
+                if (is_array($verify)
+                    && abs((float) ($verify['period_dr'] ?? 0) - $newBal['period_dr']) < 0.01
+                    && abs((float) ($verify['period_cr'] ?? 0) - $newBal['period_cr']) < 0.01) {
+                    break;
+                }
+                usleep(50000 * ($retry + 1));
+                if ($retry === 2) {
+                    log_message('error', "Granular fee closing balance verify failed for {$ac} (entry {$entryId})");
+                }
+            }
+        }
+
+        return $entryId;
+    }
+
+    // ====================================================================
+    //  FEE ACCOUNT MAP MANAGEMENT
+    // ====================================================================
+
+    /**
+     * Save a fee head → account code mapping.
+     *
+     * Called by admin to configure which fee heads map to which income accounts.
+     * Path: Schools/{school}/Accounts/Fee_Account_Map/{sanitized_key}
+     *
+     * @param string $feeHead     Fee head name (e.g. "Tuition Fee")
+     * @param string $accountCode Account code (e.g. "4010")
+     */
+    public function save_fee_account_mapping(string $feeHead, string $accountCode): void
+    {
+        $key = strtoupper(preg_replace('/[^A-Z0-9]+/', '_', strtolower(trim($feeHead))));
+        $key = trim($key, '_');
+        $path = "Schools/{$this->school_name}/Accounts/Fee_Account_Map/{$key}";
+        $this->firebase->set($path, [
+            'fee_head'     => trim($feeHead),
+            'account_code' => trim($accountCode),
+            'updated_at'   => date('c'),
+        ]);
+    }
+
+    // ====================================================================
     //  REFUND JOURNAL ENTRY
     // ====================================================================
 
@@ -614,6 +1095,127 @@ class Operations_accounting
             return $this->create_journal($narration, $lines, 'fee_refund', $refId);
         } catch (\Exception $e) {
             log_message('error', 'create_refund_journal failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    // ====================================================================
+    //  GRANULAR REFUND JOURNAL (DEMAND-BASED)
+    // ====================================================================
+
+    /**
+     * Create a multi-line refund reversal journal using receipt allocations.
+     *
+     * Reverses the original fee journal:
+     *   Dr 4010 Tuition Fee     ₹X   (reverse each income credit)
+     *   Dr 4040 Transport Fee   ₹Y
+     *   Cr 1010 Cash/Bank       ₹total (refund paid out)
+     *
+     * Falls back to create_refund_journal() if allocations empty.
+     *
+     * @param array $params     Standard refund params
+     * @param array $allocations Original receipt allocations to reverse
+     * @return string|null      Entry ID or null on failure
+     */
+    public function create_refund_journal_granular(array $params, array $allocations): ?string
+    {
+        if (empty($allocations)) {
+            return $this->create_refund_journal($params);
+        }
+
+        $amount     = round((float) ($params['amount'] ?? 0), 2);
+        $refundMode = strtolower(trim($params['refund_mode'] ?? 'cash'));
+        $student    = $params['student_name'] ?? '';
+        $stuId      = $params['student_id'] ?? '';
+        $class      = $params['class'] ?? '';
+        $refId      = $params['refund_id'] ?? '';
+        $origRcpt   = $params['receipt_no'] ?? '';
+
+        if ($amount <= 0) return null;
+
+        $coaPath = "Schools/{$this->school_name}/Accounts/ChartOfAccounts";
+        $coa = $this->firebase->get($coaPath);
+        if (!is_array($coa) || empty($coa)) return null;
+
+        // Resolve cash/bank account
+        if (in_array($refundMode, ['bank_transfer', 'cheque', 'online', 'upi', 'neft'])) {
+            $cashBankCode = '1010';
+            foreach ($coa as $code => $acct) {
+                if (!empty($acct['is_bank']) && ($acct['status'] ?? '') === 'active') {
+                    $cashBankCode = $code;
+                    break;
+                }
+            }
+        } else {
+            $cashBankCode = '1010';
+        }
+
+        $configMap = $this->get_fee_account_map($coa);
+        $narration = "Fee refund: {$student} ({$stuId}) - {$class}"
+            . ($origRcpt ? " OrigRcpt#{$origRcpt}" : '')
+            . " Ref#{$refId}";
+
+        // Build debit lines (reverse income accounts) grouped by account code
+        $debitsByAccount = [];
+        foreach ($allocations as $alloc) {
+            $feeHead  = $alloc['fee_head'] ?? '';
+            $allocAmt = round((float) ($alloc['amount'] ?? 0), 2);
+            if ($allocAmt <= 0 || $feeHead === '') continue;
+
+            $acctCode = $this->resolve_fee_account($feeHead, $configMap, $coa);
+            if (!isset($debitsByAccount[$acctCode])) {
+                $debitsByAccount[$acctCode] = ['amount' => 0, 'heads' => []];
+            }
+            $debitsByAccount[$acctCode]['amount'] += $allocAmt;
+            $debitsByAccount[$acctCode]['heads'][] = $feeHead;
+        }
+
+        // Build journal lines
+        $lines = [];
+
+        // Dr lines: reverse fee income per account
+        $totalDr = 0;
+        foreach ($debitsByAccount as $code => $data) {
+            $drAmt = round($data['amount'], 2);
+            if ($drAmt <= 0) continue;
+            $acct = $coa[$code] ?? null;
+            if (!is_array($acct) || ($acct['status'] ?? '') !== 'active') {
+                $code = '4010'; // fallback
+                $acct = $coa['4010'] ?? null;
+            }
+            $headNames = implode(', ', array_unique($data['heads']));
+            $lines[] = [
+                'account_code' => $code,
+                'account_name' => is_array($acct) ? ($acct['name'] ?? $code) : $code,
+                'dr'           => $drAmt,
+                'cr'           => 0,
+                'narration'    => "Refund: {$headNames} — {$student}",
+            ];
+            $totalDr += $drAmt;
+        }
+
+        // Rounding: ensure total Dr = refund amount
+        $diff = round($amount - $totalDr, 2);
+        if (abs($diff) > 0.005 && abs($diff) <= 1.00 && !empty($lines)) {
+            $lines[0]['dr'] = round($lines[0]['dr'] + $diff, 2);
+            $totalDr = $amount;
+        } elseif (abs($diff) > 1.00) {
+            return $this->create_refund_journal($params);
+        }
+
+        // Cr line: Cash/Bank (refund paid out)
+        $lines[] = [
+            'account_code' => $cashBankCode,
+            'account_name' => $coa[$cashBankCode]['name'] ?? $cashBankCode,
+            'dr'           => 0,
+            'cr'           => round($amount, 2),
+            'narration'    => $narration,
+        ];
+
+        try {
+            return $this->create_journal($narration, $lines, 'fee_refund', $refId);
+        } catch (\Exception $e) {
+            log_message('error', 'create_refund_journal_granular failed: ' . $e->getMessage());
             return null;
         }
     }

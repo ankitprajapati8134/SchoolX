@@ -27,7 +27,7 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class School_config extends MY_Controller
 {
     /** Only Admin/Principal may configure school settings */
-    private const ADMIN_ROLES = ['Admin', 'Principal'];
+    private const ADMIN_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal'];
 
     public function __construct()
     {
@@ -1950,5 +1950,84 @@ class School_config extends MY_Controller
         }
 
         $this->json_success(['message' => 'Report card template saved.', 'template' => $template]);
+    }
+
+    // ── Admission Payment Configuration ────────────────────────────────
+
+    /**
+     * Render the admission payment configuration page.
+     * Reads Schools/{school}/Config/AdmissionFee
+     */
+    public function admission_payment_config()
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'admission_payment_config');
+        $school = $this->school_name;
+
+        $config = $this->firebase->get("Schools/{$school}/Config/AdmissionFee");
+        if (!is_array($config)) $config = [];
+
+        $data = [
+            'config'       => $config,
+            'school_name'  => $school,
+            'school_id'    => $this->school_id,
+            'session_year' => $this->session_year,
+            'public_form_url' => base_url('admission/form/' . urlencode($school)),
+        ];
+
+        $this->load->view('include/header');
+        $this->load->view('school_config/admission_payment', $data);
+        $this->load->view('include/footer');
+    }
+
+    /**
+     * Save admission payment configuration (AJAX POST).
+     * Writes to Schools/{school}/Config/AdmissionFee
+     */
+    public function save_admission_payment_config()
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'save_admission_payment_config');
+        $school = $this->school_name;
+
+        $enabled  = $this->input->post('enabled') === 'true' || $this->input->post('enabled') === '1';
+        $amount   = (float) ($this->input->post('amount') ?? 0);
+        $currency = trim($this->input->post('currency') ?? 'INR');
+        $label    = trim($this->input->post('label') ?? 'Admission Fee');
+
+        // Validate
+        if ($enabled && $amount <= 0) {
+            return $this->json_error('Amount must be greater than 0 when payment is enabled.');
+        }
+        if ($amount > 500000) {
+            return $this->json_error('Amount exceeds maximum allowed (5,00,000).');
+        }
+
+        $allowedCurrencies = ['INR', 'USD', 'GBP', 'EUR'];
+        if (!in_array($currency, $allowedCurrencies, true)) {
+            $currency = 'INR';
+        }
+
+        // Sanitize label
+        if (mb_strlen($label) > 100) $label = mb_substr($label, 0, 100);
+        if ($label === '') $label = 'Admission Fee';
+
+        $config = [
+            'enabled'    => $enabled,
+            'amount'     => round($amount, 2),
+            'currency'   => $currency,
+            'label'      => $label,
+            'updated_at' => date('Y-m-d H:i:s'),
+            'updated_by' => $this->admin_name ?? 'admin',
+        ];
+
+        $ok = $this->firebase->set("Schools/{$school}/Config/AdmissionFee", $config);
+        if ($ok === false) {
+            return $this->json_error('Failed to save configuration.');
+        }
+
+        log_audit('School Config', 'admission_payment', $school,
+            ($enabled ? "Enabled" : "Disabled") . " admission fee: {$currency} {$amount}"
+        );
+
+        return $this->json_success(['message' => 'Admission payment settings saved.', 'config' => $config]);
     }
 }

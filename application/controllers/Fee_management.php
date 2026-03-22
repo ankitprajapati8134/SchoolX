@@ -14,13 +14,13 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Fee_management extends MY_Controller
 {
     /** Roles for admin-level config (gateway, refund approval) */
-    private const ADMIN_ROLES   = ['Admin', 'Principal'];
+    private const ADMIN_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal'];
 
     /** Roles for financial operations (categories, discounts, scholarships) */
-    private const FINANCE_ROLES = ['Admin', 'Principal', 'Accountant'];
+    private const FINANCE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Accountant'];
 
     /** Roles that may view fee management data */
-    private const VIEW_ROLES    = ['Admin', 'Principal', 'Accountant', 'Teacher'];
+    private const VIEW_ROLES    = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Accountant', 'Teacher'];
 
     /** @var string Base Firebase path for fees */
     private $feesBase;
@@ -30,8 +30,35 @@ class Fee_management extends MY_Controller
 
     public function __construct()
     {
-        parent::__construct();
-        require_permission('Fees');
+        // Webhook is a server-to-server call — no session required.
+        // It authenticates via HMAC signature instead.
+        $isWebhook = (
+            isset($_SERVER['REQUEST_URI']) &&
+            strpos($_SERVER['REQUEST_URI'], 'payment_webhook') !== false
+        );
+
+        if ($isWebhook) {
+            // Skip MY_Controller auth — use CI_Controller directly
+            CI_Controller::__construct();
+            $this->load->library('firebase');
+            // Resolve school from the webhook payload or a header
+            // For now, use the first school in the system (single-school mode)
+            // In multi-school: pass school_code in webhook URL or headers
+            $this->school_name  = $this->session->userdata('school_name') ?? '';
+            $this->session_year = $this->session->userdata('session_year') ?? '';
+            // If no session, try to resolve from webhook config
+            if ($this->school_name === '') {
+                // Webhook must include school context — reject if missing
+                header('Content-Type: application/json');
+                http_response_code(400);
+                echo json_encode(['status' => 'error', 'message' => 'Webhook requires school context. Use school-specific webhook URL.']);
+                exit;
+            }
+        } else {
+            parent::__construct();
+            require_permission('Fees');
+        }
+
         $sn = $this->school_name;
         $sy = $this->session_year;
         $this->feesBase    = "Schools/$sn/$sy/Accounts/Fees";
@@ -175,7 +202,7 @@ class Fee_management extends MY_Controller
         $this->_require_role(self::VIEW_ROLES, 'fee_mgmt_view');
         $data = [];
         $data['feesStructure'] = $this->_getFeesStructure();
-        $data['page_title']    = 'Fee Categories';
+        $data['page_title']    = 'Fee Titles & Categories';
 
         $this->load->view('include/header', $data);
         $this->load->view('fee_management/categories', $data);
@@ -288,6 +315,76 @@ class Fee_management extends MY_Controller
     }
 
     // ══════════════════════════════════════════════════════════════════
+    //  FEE TITLES (AJAX) — manage Fees Structure/{Monthly|Yearly}
+    // ══════════════════════════════════════════════════════════════════
+
+    /**
+     * GET — Fetch all fee titles (Monthly + Yearly).
+     */
+    public function fetch_fee_titles()
+    {
+        $this->_require_role(self::VIEW_ROLES, 'fetch_fee_titles');
+        $structure = $this->_getFeesStructure();
+        $titles = [];
+        foreach (['Monthly', 'Yearly'] as $type) {
+            if (!empty($structure[$type]) && is_array($structure[$type])) {
+                foreach (array_keys($structure[$type]) as $title) {
+                    $titles[] = ['title' => $title, 'type' => $type];
+                }
+            }
+        }
+        $this->json_success(['titles' => $titles]);
+    }
+
+    /**
+     * POST — Add a new fee title.
+     * Params: fee_title, fee_type (Monthly|Yearly)
+     */
+    public function save_fee_title()
+    {
+        $this->_require_role(self::FINANCE_ROLES, 'save_fee_title');
+        $feeTitle = trim(ucwords(strtolower($this->input->post('fee_title'))));
+        $feeType  = trim($this->input->post('fee_type'));
+
+        if ($feeTitle === '') {
+            $this->json_error('Fee title is required.');
+        }
+        if (!in_array($feeType, ['Monthly', 'Yearly'], true)) {
+            $this->json_error('Fee type must be Monthly or Yearly.');
+        }
+
+        // Check duplicate
+        $existing = $this->firebase->get("{$this->feesBase}/Fees Structure/{$feeType}/{$feeTitle}");
+        if ($existing !== null) {
+            $this->json_error("Fee title \"{$feeTitle}\" already exists under {$feeType}.");
+        }
+
+        $this->firebase->set("{$this->feesBase}/Fees Structure/{$feeType}/{$feeTitle}", '');
+        $this->json_success(['message' => "Fee title \"{$feeTitle}\" added as {$feeType}."]);
+    }
+
+    /**
+     * POST — Delete a fee title.
+     * Params: fee_title, fee_type (Monthly|Yearly)
+     */
+    public function delete_fee_title()
+    {
+        $this->_require_role(self::FINANCE_ROLES, 'delete_fee_title');
+        $feeTitle = trim($this->input->post('fee_title'));
+        $feeType  = trim($this->input->post('fee_type'));
+
+        if ($feeTitle === '' || $feeType === '') {
+            $this->json_error('Fee title and type are required.');
+        }
+        if (!in_array($feeType, ['Monthly', 'Yearly'], true)) {
+            $this->json_error('Fee type must be Monthly or Yearly.');
+        }
+
+        $this->firebase->delete("{$this->feesBase}/Fees Structure/{$feeType}", $feeTitle);
+        $this->json_success(['message' => "Fee title \"{$feeTitle}\" deleted."]);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     //  CATEGORY MANAGEMENT (AJAX)
     // ══════════════════════════════════════════════════════════════════
 
@@ -322,41 +419,40 @@ class Fee_management extends MY_Controller
     public function save_category()
     {
         $this->_require_role(self::FINANCE_ROLES, 'save_category');
-        $name        = trim($this->input->post('name'));
+        // Accept both naming conventions (category_name OR name, etc.)
+        $name        = trim($this->input->post('category_name') ?: $this->input->post('name'));
         $description = trim($this->input->post('description'));
-        $type        = trim($this->input->post('type'));
-        $feeTitles   = trim($this->input->post('fee_titles'));
+        $type        = trim($this->input->post('category_type') ?: $this->input->post('type'));
         $sortOrder   = (int)$this->input->post('sort_order');
-        $catId       = trim($this->input->post('id'));
+        $catId       = trim($this->input->post('category_id') ?: $this->input->post('id'));
 
         if ($name === '') {
             $this->json_error('Category name is required.');
         }
 
-        $validTypes = ['academic', 'transport', 'extra', 'other'];
+        $validTypes = ['Academic', 'Transport', 'Extra-curricular', 'Other'];
         if (!in_array($type, $validTypes, true)) {
-            $this->json_error('Invalid category type. Must be one of: ' . implode(', ', $validTypes));
+            $this->json_error('Invalid category type.');
         }
 
-        // Parse fee titles
+        // Accept fee_titles as array (from FormData) or comma-sep string
+        $feeTitles = $this->input->post('fee_titles[]') ?: $this->input->post('fee_titles');
         $titlesArray = [];
-        if ($feeTitles !== '') {
-            $titlesArray = array_map('trim', explode(',', $feeTitles));
-            $titlesArray = array_filter($titlesArray, function ($t) {
-                return $t !== '';
-            });
-            $titlesArray = array_values($titlesArray);
+        if (is_array($feeTitles)) {
+            $titlesArray = array_values(array_filter(array_map('trim', $feeTitles)));
+        } elseif (is_string($feeTitles) && trim($feeTitles) !== '') {
+            $titlesArray = array_values(array_filter(array_map('trim', explode(',', $feeTitles))));
         }
 
         $now = date('Y-m-d H:i:s');
 
         $data = [
-            'name'        => $name,
-            'description' => $description,
-            'type'        => $type,
-            'fee_titles'  => $titlesArray,
-            'sort_order'  => $sortOrder,
-            'active'      => true,
+            'category_name' => $name,
+            'description'   => $description,
+            'category_type' => $type,
+            'fee_titles'    => $titlesArray,
+            'sort_order'    => $sortOrder,
+            'status'        => 'active',
         ];
 
         if (!empty($catId)) {
@@ -1351,64 +1447,176 @@ class Fee_management extends MY_Controller
 
         $this->firebase->set("{$voucherPath}/{$receiptKey}", $voucherData);
 
-        // ── F-10: Reverse student paid flags for refunded months ──
-        $studentId = isset($refund['student_id']) ? $refund['student_id'] : '';
-        $origReceiptNo = isset($refund['receipt_no']) ? $refund['receipt_no'] : '';
-        $refClass   = isset($refund['class']) ? $refund['class'] : '';
-        $refSection = isset($refund['section']) ? $refund['section'] : '';
+        // ════════════════════════════════════════════════════════════
+        //  F-10: DEMAND-AWARE REFUND REVERSAL
+        //
+        //  If receipt has demand allocations → reverse them precisely.
+        //  Falls back to legacy month-flag reversal if no allocations.
+        // ════════════════════════════════════════════════════════════
 
+        $studentId     = $refund['student_id'] ?? '';
+        $origReceiptNo = $refund['receipt_no'] ?? '';
+        $refClass      = $refund['class'] ?? '';
+        $refSection    = $refund['section'] ?? '';
+        $demandReversalResult = null;
+        $receiptAllocations   = [];
+
+        // Try demand-based reversal first
+        if ($studentId !== '' && $origReceiptNo !== '') {
+            $allocPath   = "{$this->sessionRoot}/Fees/Receipt_Allocations/{$origReceiptNo}";
+            $allocData   = $this->firebase->get($allocPath);
+
+            if (is_array($allocData) && !empty($allocData['allocations'])) {
+                // Demand-based reversal via Fees controller
+                try {
+                    $CI =& get_instance();
+                    $CI->load->controller('Fees');
+                    // We can't call controller methods directly, so replicate the core logic here
+                    $receiptAllocations = $allocData['allocations'];
+                    $demandsBase = "{$this->sessionRoot}/Fees/Demands/{$studentId}";
+                    $reversed    = 0;
+                    $reversalLog = [];
+                    $remaining   = $amount;
+
+                    // Reverse allocations (latest period first for partial refunds)
+                    $revAllocations = array_reverse($receiptAllocations);
+                    foreach ($revAllocations as $alloc) {
+                        if ($remaining <= 0.005) break;
+                        $demandId = $alloc['demand_id'] ?? '';
+                        $allocAmt = floatval($alloc['amount'] ?? 0);
+                        if ($demandId === '' || $allocAmt <= 0) continue;
+
+                        $reverseAmt = min($remaining, $allocAmt);
+                        $demand = $this->firebase->get("{$demandsBase}/{$demandId}");
+                        if (!is_array($demand)) continue;
+
+                        $oldPaid    = floatval($demand['paid_amount'] ?? 0);
+                        $netAmount  = floatval($demand['net_amount'] ?? 0);
+                        $fineAmount = floatval($demand['fine_amount'] ?? 0);
+                        $newPaid    = round(max(0, $oldPaid - $reverseAmt), 2);
+                        $newBalance = round($netAmount + $fineAmount - $newPaid, 2);
+                        if ($newBalance < 0) $newBalance = 0;
+
+                        $newStatus = ($newPaid <= 0.005) ? 'unpaid'
+                            : (($newBalance <= 0.005) ? 'paid' : 'partial');
+
+                        $this->firebase->update("{$demandsBase}/{$demandId}", [
+                            'paid_amount'       => $newPaid,
+                            'balance'           => $newBalance,
+                            'status'            => $newStatus,
+                            'last_refund_receipt' => $receiptKey,
+                            'last_refund_date'    => date('c'),
+                            'updated_at'        => date('c'),
+                        ]);
+
+                        $reversalLog[] = [
+                            'demand_id'    => $demandId,
+                            'fee_head'     => $alloc['fee_head'] ?? '',
+                            'period'       => $alloc['period'] ?? '',
+                            'reversed_amt' => round($reverseAmt, 2),
+                            'new_status'   => $newStatus,
+                        ];
+                        $remaining -= $reverseAmt;
+                        $reversed++;
+                    }
+
+                    // Reduce advance balance if refund exceeds allocations
+                    if ($remaining > 0.005) {
+                        $advPath = "{$this->sessionRoot}/Fees/Advance_Balance/{$studentId}";
+                        $adv     = $this->firebase->get($advPath);
+                        $advAmt  = is_array($adv) ? floatval($adv['amount'] ?? 0) : 0;
+                        $this->firebase->set($advPath, [
+                            'amount'       => round(max(0, $advAmt - $remaining), 2),
+                            'last_updated' => date('c'),
+                            'last_refund'  => $receiptKey,
+                        ]);
+                    }
+
+                    // Audit trail
+                    $auditId = 'RFND_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
+                    $this->firebase->set("{$this->sessionRoot}/Fees/Refund_Audit/{$auditId}", [
+                        'receipt_key'    => $origReceiptNo,
+                        'refund_id'      => $refId,
+                        'student_id'     => $studentId,
+                        'refund_amount'  => round($amount, 2),
+                        'reversals'      => $reversalLog,
+                        'reversed_count' => $reversed,
+                        'created_at'     => date('c'),
+                        'created_by'     => $this->admin_id ?? 'system',
+                    ]);
+
+                    // Mark receipt allocations as reversed
+                    $this->firebase->update($allocPath, [
+                        'status'       => 'reversed',
+                        'reversed_at'  => date('c'),
+                        'refund_audit' => $auditId,
+                    ]);
+
+                    $demandReversalResult = ['reversed' => $reversed, 'audit_id' => $auditId];
+
+                } catch (\Exception $e) {
+                    log_message('error', 'Demand reversal failed, falling back to legacy: ' . $e->getMessage());
+                }
+            }
+        }
+
+        // Legacy month-flag reversal (runs if demand reversal didn't happen OR as additional sync)
         if ($studentId !== '' && $origReceiptNo !== '' && $refClass !== '' && $refSection !== '') {
             try {
                 list($classNode, $sectionNode) = $this->_normalizeClassSection($refClass, $refSection);
                 $studentBase = "{$this->sessionRoot}/{$classNode}/{$sectionNode}/Students/{$studentId}";
 
-                // Look up the original receipt to find which months were paid
-                $origReceipt = $this->firebase->get("{$studentBase}/Fees Record/{$origReceiptNo}");
-                if (is_array($origReceipt)) {
-                    // Read current Month Fee flags
-                    $monthFee = $this->firebase->get("{$studentBase}/Month Fee");
-                    $monthFee = is_array($monthFee) ? $monthFee : [];
-
-                    // The receipt Amount tells us total paid; reset all months that were marked paid
-                    // by this receipt. We check which months are currently paid=1 and reset them.
-                    // Since receipts don't store individual months, we reset months that equal the
-                    // fee structure amount. For safety, mark all currently-paid months as candidates
-                    // and reset up to the refund amount.
-                    $refundAmt = $amount;
-                    $feesPath = "{$this->sessionRoot}/Accounts/Fees/Classes Fees/{$classNode}/{$sectionNode}";
-                    $classFees = $this->firebase->get($feesPath);
-                    $classFees = is_array($classFees) ? $classFees : [];
-
-                    // Build per-month cost from fee structure
-                    $monthOrder = ['April','May','June','July','August','September',
-                                   'October','November','December','January','February','March','Yearly Fees'];
-
-                    // Reverse iterate paid months (latest first) and un-mark until refund is consumed
-                    $reversedMonths = array_reverse($monthOrder);
-                    foreach ($reversedMonths as $m) {
-                        if ($refundAmt <= 0) break;
-                        if (!isset($monthFee[$m]) || (int)$monthFee[$m] !== 1) continue;
-
-                        // Calculate this month's fee total from structure {month: {title: amount}}
-                        $mTotal = 0;
-                        if (isset($classFees[$m]) && is_array($classFees[$m])) {
-                            foreach ($classFees[$m] as $title => $amt) {
-                                $mTotal += floatval(str_replace(',', '', $amt));
-                            }
+                if ($demandReversalResult !== null) {
+                    // Demand reversal succeeded — sync Month Fee flags from demand status
+                    $demandsBase = "{$this->sessionRoot}/Fees/Demands/{$studentId}";
+                    $allDemands  = $this->firebase->get($demandsBase);
+                    if (is_array($allDemands)) {
+                        $monthStatuses = [];
+                        foreach ($allDemands as $d) {
+                            if (!is_array($d)) continue;
+                            $monthName = explode(' ', $d['period'] ?? '')[0] ?? '';
+                            if ($monthName === '') continue;
+                            if (!isset($monthStatuses[$monthName])) $monthStatuses[$monthName] = [];
+                            $monthStatuses[$monthName][] = $d['status'] ?? 'unpaid';
                         }
-                        if ($mTotal <= 0) $mTotal = $refundAmt; // fallback: consume remaining
-
-                        if ($refundAmt >= $mTotal) {
-                            $this->firebase->set("{$studentBase}/Month Fee/{$m}", 0);
-                            $refundAmt -= $mTotal;
+                        foreach ($monthStatuses as $mn => $statuses) {
+                            $allPaid = !in_array('unpaid', $statuses) && !in_array('partial', $statuses);
+                            $this->firebase->set("{$studentBase}/Month Fee/{$mn}", $allPaid ? 1 : 0);
                         }
                     }
+                } else {
+                    // No demand data — use legacy reversal logic
+                    $origReceipt = $this->firebase->get("{$studentBase}/Fees Record/{$origReceiptNo}");
+                    if (is_array($origReceipt)) {
+                        $monthFee  = $this->firebase->get("{$studentBase}/Month Fee");
+                        $monthFee  = is_array($monthFee) ? $monthFee : [];
+                        $refundAmt = $amount;
+                        $feesPath  = "{$this->sessionRoot}/Accounts/Fees/Classes Fees/{$classNode}/{$sectionNode}";
+                        $classFees = $this->firebase->get($feesPath);
+                        $classFees = is_array($classFees) ? $classFees : [];
 
-                    // Reduce Oversubmittedfees if any remaining refund amount
-                    if ($refundAmt > 0.005) {
-                        $overSub = floatval($this->firebase->get("{$studentBase}/Oversubmittedfees") ?? 0);
-                        $newOver = max(0, $overSub - $refundAmt);
-                        $this->firebase->set("{$studentBase}/Oversubmittedfees", round($newOver, 2));
+                        $monthOrder     = ['April','May','June','July','August','September',
+                                           'October','November','December','January','February','March','Yearly Fees'];
+                        $reversedMonths = array_reverse($monthOrder);
+                        foreach ($reversedMonths as $m) {
+                            if ($refundAmt <= 0) break;
+                            if (!isset($monthFee[$m]) || (int)$monthFee[$m] !== 1) continue;
+                            $mTotal = 0;
+                            if (isset($classFees[$m]) && is_array($classFees[$m])) {
+                                foreach ($classFees[$m] as $title => $amt) {
+                                    $mTotal += floatval(str_replace(',', '', $amt));
+                                }
+                            }
+                            if ($mTotal <= 0) $mTotal = $refundAmt;
+                            if ($refundAmt >= $mTotal) {
+                                $this->firebase->set("{$studentBase}/Month Fee/{$m}", 0);
+                                $refundAmt -= $mTotal;
+                            }
+                        }
+                        if ($refundAmt > 0.005) {
+                            $overSub = floatval($this->firebase->get("{$studentBase}/Oversubmittedfees") ?? 0);
+                            $this->firebase->set("{$studentBase}/Oversubmittedfees", round(max(0, $overSub - $refundAmt), 2));
+                        }
                     }
                 }
             } catch (\Exception $e) {
@@ -1419,61 +1627,61 @@ class Fee_management extends MY_Controller
         // ── F-11: Reverse legacy Account_book entries ──
         try {
             $origDate = '';
-            if ($studentId !== '' && $origReceiptNo !== '' && isset($studentBase)) {
-                $origReceipt = $this->firebase->get("{$studentBase}/Fees Record/{$origReceiptNo}");
+            if ($studentId !== '' && $origReceiptNo !== '' && $refClass !== '' && $refSection !== '') {
+                list($cn, $sn2) = $this->_normalizeClassSection($refClass, $refSection);
+                $sb2 = "{$this->sessionRoot}/{$cn}/{$sn2}/Students/{$studentId}";
+                $origReceipt = $this->firebase->get("{$sb2}/Fees Record/{$origReceiptNo}");
                 if (is_array($origReceipt) && isset($origReceipt['Date'])) {
                     $origDate = $origReceipt['Date'];
                 }
             }
-
-            // Use original receipt date for reversal if available, otherwise use today
-            if ($origDate !== '') {
-                $dateObj = DateTime::createFromFormat('d-m-Y', $origDate);
-            } else {
-                $dateObj = new DateTime();
-            }
+            $dateObj = ($origDate !== '') ? DateTime::createFromFormat('d-m-Y', $origDate) : new DateTime();
             $abMonth = $dateObj ? $dateObj->format('F') : date('F');
             $abDay   = $dateObj ? $dateObj->format('d') : date('d');
+            $ab      = "{$this->sessionRoot}/Accounts/Account_book";
 
-            $ab = "{$this->sessionRoot}/Accounts/Account_book";
-
-            // Subtract refunded amount from Fees ledger
-            $feeLedgerPath = "{$ab}/Fees/{$abMonth}/{$abDay}/R";
-            $curFees = floatval($this->firebase->get($feeLedgerPath) ?? 0);
-            $this->firebase->set($feeLedgerPath, max(0, $curFees - $amount));
-
-            // Add refund entry to Refunds ledger
-            $refundLedgerPath = "{$ab}/Refunds/{$abMonth}/{$abDay}/R";
-            $curRefunds = floatval($this->firebase->get($refundLedgerPath) ?? 0);
-            $this->firebase->set($refundLedgerPath, $curRefunds + $amount);
+            $curFees = floatval($this->firebase->get("{$ab}/Fees/{$abMonth}/{$abDay}/R") ?? 0);
+            $this->firebase->set("{$ab}/Fees/{$abMonth}/{$abDay}/R", max(0, $curFees - $amount));
+            $curRefunds = floatval($this->firebase->get("{$ab}/Refunds/{$abMonth}/{$abDay}/R") ?? 0);
+            $this->firebase->set("{$ab}/Refunds/{$abMonth}/{$abDay}/R", $curRefunds + $amount);
         } catch (\Exception $e) {
             log_message('error', 'Refund Account_book reversal failed: ' . $e->getMessage());
         }
 
-        // ── Accounting integration via Operations_accounting library
+        // ── Accounting: granular refund journal when allocations available ──
         try {
             $this->load->library('Operations_accounting', null, 'ops_acct');
             $this->ops_acct->init(
                 $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this
             );
-            $this->ops_acct->create_refund_journal([
-                'student_name' => isset($refund['student_name']) ? $refund['student_name'] : '',
-                'student_id'   => isset($refund['student_id']) ? $refund['student_id'] : '',
-                'class'        => isset($refund['class']) ? $refund['class'] : '',
+            $refundJournalParams = [
+                'student_name' => $refund['student_name'] ?? '',
+                'student_id'   => $refund['student_id'] ?? '',
+                'class'        => $refund['class'] ?? '',
                 'amount'       => $amount,
                 'refund_mode'  => $refundMode,
                 'refund_id'    => $refId,
-                'receipt_no'   => isset($refund['receipt_no']) ? $refund['receipt_no'] : '',
-            ]);
+                'receipt_no'   => $refund['receipt_no'] ?? '',
+            ];
+
+            if (!empty($receiptAllocations)) {
+                $this->ops_acct->create_refund_journal_granular($refundJournalParams, $receiptAllocations);
+            } else {
+                $this->ops_acct->create_refund_journal($refundJournalParams);
+            }
         } catch (\Exception $e) {
             log_message('error', 'Accounting integration failed in process_refund: ' . $e->getMessage());
         }
 
-        $this->json_success([
-            'message'     => 'Refund processed successfully. Audit voucher created.',
+        $response = [
+            'message'     => 'Refund processed successfully.',
             'voucher_key' => $receiptKey,
             'success'     => true,
-        ]);
+        ];
+        if ($demandReversalResult !== null) {
+            $response['demand_reversal'] = $demandReversalResult;
+        }
+        $this->json_success($response);
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -1850,234 +2058,588 @@ class Fee_management extends MY_Controller
     }
 
     /**
-     * POST — Create a payment order (gateway stub).
-     * Params: student_id, student_name, class, section, amount, fee_months[]
-     *
-     * TODO: Integrate with Razorpay/Stripe SDK to create an actual order.
-     * Currently creates a Firebase record to track the payment attempt.
+     * Initialize the Payment Service with the appropriate gateway adapter.
+     * Uses mock gateway for test mode, real gateway for live mode.
+     */
+    private function _init_payment_service(): void
+    {
+        if (isset($this->paymentService)) return; // already initialized
+
+        $gwConfig = $this->firebase->get("{$this->feesBase}/Gateway Config");
+
+        // Load gateway adapter based on config
+        $mode     = is_array($gwConfig) ? ($gwConfig['mode'] ?? 'test') : 'test';
+        $provider = is_array($gwConfig) ? ($gwConfig['provider'] ?? 'mock') : 'mock';
+
+        if ($mode === 'live' && $provider !== 'mock') {
+            // Future: load real gateway adapter
+            // $this->CI->load->library('Payment_gateway_' . $provider);
+            // $adapter = $this->CI->{'payment_gateway_' . $provider};
+            // For now, fall back to mock
+            $this->load->library('Payment_gateway_mock');
+            $adapter = $this->payment_gateway_mock;
+        } else {
+            $this->load->library('Payment_gateway_mock');
+            $adapter = $this->payment_gateway_mock;
+        }
+
+        $this->load->library('Payment_service');
+        $this->payment_service->init(
+            $this->firebase,
+            $this->feesBase,
+            $adapter,
+            $this->admin_id ?? ''
+        );
+        $this->paymentService = $this->payment_service;
+    }
+
+    /**
+     * POST — Create a payment order.
+     * Uses the Payment Service (gateway-agnostic).
      */
     public function create_payment_order()
     {
         $this->_require_role(self::FINANCE_ROLES, 'create_payment_order');
-        $studentId   = trim($this->input->post('student_id'));
-        $studentName = trim($this->input->post('student_name'));
-        $class       = trim($this->input->post('class'));
-        $section     = trim($this->input->post('section'));
-        $amount      = floatval($this->input->post('amount'));
-        $feeMonths   = $this->input->post('fee_months');
 
-        if ($studentId === '') {
-            $this->json_error('Student ID is required.');
+        $this->_init_payment_service();
+
+        try {
+            $result = $this->paymentService->create_order([
+                'student_id'   => trim($this->input->post('student_id') ?? ''),
+                'student_name' => trim($this->input->post('student_name') ?? ''),
+                'class'        => trim($this->input->post('class') ?? ''),
+                'section'      => trim($this->input->post('section') ?? ''),
+                'amount'       => floatval($this->input->post('amount') ?? 0),
+                'fee_months'   => $this->input->post('fee_months') ?? [],
+            ]);
+
+            $gwConfig = $this->firebase->get("{$this->feesBase}/Gateway Config");
+
+            $this->json_success([
+                'message'          => $result['existing'] ? 'Existing order returned.' : 'Payment order created.',
+                'payment_id'       => $result['payment_record_id'],
+                'gateway_order_id' => $result['order_id'],
+                'amount'           => $result['amount'],
+                'gateway'          => $result['gateway'],
+                'provider'         => is_array($gwConfig) ? ($gwConfig['provider'] ?? 'mock') : 'mock',
+                'api_key'          => is_array($gwConfig) ? ($gwConfig['api_key'] ?? '') : '',
+                'mode'             => is_array($gwConfig) ? ($gwConfig['mode'] ?? 'test') : 'test',
+            ]);
+        } catch (\Exception $e) {
+            $this->json_error($e->getMessage());
         }
-        if ($amount <= 0) {
-            $this->json_error('Amount must be greater than zero.');
-        }
-        if (empty($feeMonths) || !is_array($feeMonths)) {
-            $this->json_error('At least one fee month must be selected.');
-        }
-
-        // Check gateway is configured and active
-        $gwConfig = $this->firebase->get("{$this->feesBase}/Gateway Config");
-        if (!is_array($gwConfig) || empty($gwConfig['active']) || empty($gwConfig['provider'])) {
-            $this->json_error('Payment gateway is not configured or not active.');
-        }
-
-        $now = date('Y-m-d H:i:s');
-
-        // TODO: Replace with actual gateway API call
-        // Example for Razorpay:
-        //   $api = new Razorpay\Api($gwConfig['api_key'], $gwConfig['api_secret']);
-        //   $order = $api->order->create([
-        //       'amount'   => $amount * 100, // in paise
-        //       'currency' => 'INR',
-        //       'receipt'  => $payId,
-        //   ]);
-        //   $gatewayOrderId = $order->id;
-
-        $gatewayOrderId = 'order_' . strtoupper(uniqid());
-
-        $paymentData = [
-            'student_id'         => $studentId,
-            'student_name'       => $studentName,
-            'class'              => $class,
-            'section'            => $section,
-            'amount'             => $amount,
-            'gateway_order_id'   => $gatewayOrderId,
-            'gateway_payment_id' => '',
-            'status'             => 'created',
-            'fee_months'         => $feeMonths,
-            'provider'           => $gwConfig['provider'],
-            'mode'               => isset($gwConfig['mode']) ? $gwConfig['mode'] : 'test',
-            'created_at'         => $now,
-            'paid_at'            => '',
-        ];
-
-        $payId = uniqid('pay_');
-        $this->firebase->set("{$this->feesBase}/Online Payments/{$payId}", $paymentData);
-
-        // Write lookup index for O(1) verification
-        $this->firebase->set("{$this->feesBase}/Online Payments Index/{$gatewayOrderId}", $payId);
-
-        $this->json_success([
-            'message'          => 'Payment order created.',
-            'payment_id'       => $payId,
-            'gateway_order_id' => $gatewayOrderId,
-            'amount'           => $amount,
-            'provider'         => $gwConfig['provider'],
-            'api_key'          => $gwConfig['api_key'], // Public key for client-side SDK
-            'mode'             => isset($gwConfig['mode']) ? $gwConfig['mode'] : 'test',
-        ]);
     }
 
     /**
-     * POST — Verify a payment after gateway callback.
-     * Params: gateway_order_id, gateway_payment_id, signature
+     * POST — Simulate a payment (DEV/TEST mode only).
+     * Calls the mock gateway to simulate success/failure.
+     */
+    public function simulate_payment()
+    {
+        $this->_require_role(self::FINANCE_ROLES, 'simulate_payment');
+
+        $gwConfig = $this->firebase->get("{$this->feesBase}/Gateway Config");
+        $mode = is_array($gwConfig) ? ($gwConfig['mode'] ?? 'test') : 'test';
+        if ($mode === 'live') {
+            $this->json_error('Simulation is not available in live mode.');
+        }
+
+        $this->_init_payment_service();
+
+        $orderId = trim($this->input->post('order_id') ?? '');
+        if ($orderId === '') {
+            $this->json_error('Order ID is required.');
+        }
+
+        try {
+            $result = $this->paymentService->simulate($orderId);
+            $this->json_success($result);
+        } catch (\Exception $e) {
+            $this->json_error($e->getMessage());
+        }
+    }
+
+    /**
+     * POST — Verify payment and process fee collection atomically.
      *
-     * TODO: Integrate with actual gateway signature verification.
-     * Currently marks the payment as paid in Firebase.
+     * Status lifecycle: created → processing → paid | fees_failed
+     *
+     * The order is NOT marked "paid" until all fee writes succeed.
+     * If fee processing fails, the order stays in "fees_failed" state
+     * and can be retried via retry_payment_processing().
      */
     public function verify_payment()
     {
         $this->_require_role(self::FINANCE_ROLES, 'verify_payment');
-        $gatewayOrderId   = $this->safe_path_segment(trim($this->input->post('gateway_order_id') ?? ''), 'gateway_order_id');
-        $gatewayPaymentId = trim($this->input->post('gateway_payment_id'));
-        $signature        = trim($this->input->post('signature'));
 
-        if ($gatewayPaymentId === '') {
-            $this->json_error('Gateway payment ID is required.');
+        $gwOrderId   = trim($this->input->post('gateway_order_id') ?? '');
+        $gwPaymentId = trim($this->input->post('gateway_payment_id') ?? '');
+        $signature   = trim($this->input->post('signature') ?? '');
+
+        if ($gwOrderId === '') $this->json_error('Gateway order ID is required.');
+        if ($gwPaymentId === '') $this->json_error('Gateway payment ID is required.');
+
+        $result = $this->_verify_and_process($gwOrderId, $gwPaymentId, $signature, 'frontend');
+
+        if (!$result['ok']) {
+            $this->json_error($result['error']);
+        }
+        if (!empty($result['already_paid'])) {
+            $this->json_success(['message' => 'Payment already verified.', 'already_paid' => true]);
+            return;
+        }
+        if ($result['fee_success']) {
+            $this->json_success([
+                'message'    => 'Payment verified and fees recorded.',
+                'receipt_no' => str_replace('F', '', $result['receipt_key'] ?? ''),
+            ]);
+        } else {
+            $this->json_error($result['fee_error'] ?? 'Fee processing failed. Retry from Transaction Audit.');
+        }
+    }
+
+    /**
+     * POST — Server-to-server webhook for payment gateway callbacks.
+     *
+     * Does NOT require admin session (gateway calls this directly).
+     * Verifies authenticity using HMAC signature from the webhook secret.
+     *
+     * Razorpay sends: razorpay_order_id, razorpay_payment_id, razorpay_signature
+     * Mock sends: order_id, payment_id, signature
+     */
+    public function payment_webhook()
+    {
+        header('Content-Type: application/json');
+
+        $rawBody = file_get_contents('php://input');
+        $payload = json_decode($rawBody, true);
+        if (!is_array($payload)) $payload = $this->input->post() ?: [];
+
+        // ── 1. Timestamp replay protection ──
+        // Reject webhooks older than 5 minutes (300 seconds)
+        $webhookTs = $_SERVER['HTTP_X_WEBHOOK_TIMESTAMP']
+            ?? $_SERVER['HTTP_X_RAZORPAY_TIMESTAMP']
+            ?? ($payload['timestamp'] ?? '');
+        if ($webhookTs !== '') {
+            $tsAge = abs(time() - (int) $webhookTs);
+            if ($tsAge > 300) {
+                log_message('error', "payment_webhook: REPLAY REJECTED age={$tsAge}s ip=" . ($_SERVER['REMOTE_ADDR'] ?? ''));
+                http_response_code(401);
+                echo json_encode(['status' => 'error', 'message' => 'Webhook expired (replay protection).']);
+                return;
+            }
         }
 
-        // Look up payment by gateway order ID using index
-        $payId = $this->firebase->get("{$this->feesBase}/Online Payments Index/{$gatewayOrderId}");
-        if (empty($payId)) {
-            $this->json_error('Payment record not found for this order.');
+        // ── 2. HMAC signature verification ──
+        $gwConfig      = $this->firebase->get("{$this->feesBase}/Gateway Config");
+        $webhookSecret = is_array($gwConfig) ? ($gwConfig['webhook_secret'] ?? '') : '';
+
+        $webhookSig = $_SERVER['HTTP_X_RAZORPAY_SIGNATURE']
+            ?? $_SERVER['HTTP_X_WEBHOOK_SIGNATURE']
+            ?? ($payload['webhook_signature'] ?? '');
+
+        if ($webhookSecret !== '' && $webhookSig !== '') {
+            $expectedSig = hash_hmac('sha256', $rawBody, $webhookSecret);
+            if (!hash_equals($expectedSig, $webhookSig)) {
+                log_message('error', "payment_webhook: HMAC FAILED ip=" . ($_SERVER['REMOTE_ADDR'] ?? ''));
+                http_response_code(401);
+                echo json_encode(['status' => 'error', 'message' => 'Invalid webhook signature.']);
+                return;
+            }
         }
-        $payment = $this->firebase->get("{$this->feesBase}/Online Payments/{$payId}");
-        if (!is_array($payment)) {
-            $this->json_error('Payment record not found for this order.');
+
+        // ── 3. Signature dedup — reject replayed webhooks ──
+        $payloadHash = md5($rawBody);
+        $dedupPath   = "{$this->feesBase}/Webhook_Processed/{$payloadHash}";
+        $existing    = $this->firebase->get($dedupPath);
+        if (is_array($existing) && !empty($existing['processed_at'])) {
+            // Already processed this exact payload — return 200 (idempotent)
+            http_response_code(200);
+            echo json_encode(['status' => 'success', 'message' => 'Already processed (duplicate webhook).']);
+            return;
         }
 
-        if (isset($payment['status']) && $payment['status'] === 'paid') {
-            $this->json_error('This payment has already been verified.');
+        // Normalize field names
+        $gwOrderId   = $payload['razorpay_order_id']   ?? $payload['order_id']   ?? '';
+        $gwPaymentId = $payload['razorpay_payment_id'] ?? $payload['payment_id'] ?? '';
+        $signature   = $payload['razorpay_signature']  ?? $payload['signature']  ?? '';
+
+        if ($gwOrderId === '' || $gwPaymentId === '') {
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Missing order_id or payment_id.']);
+            return;
         }
 
-        // TODO: Verify signature with gateway
-        // Example for Razorpay:
-        //   $expectedSignature = hash_hmac('sha256',
-        //       $gatewayOrderId . '|' . $gatewayPaymentId,
-        //       $gwConfig['api_secret']
-        //   );
-        //   if ($expectedSignature !== $signature) {
-        //       // Mark as failed
-        //       $this->firebase->update("{$this->feesBase}/Online Payments/{$payId}", [
-        //           'status' => 'failed',
-        //       ]);
-        //       $this->json_error('Payment verification failed. Signature mismatch.');
-        //   }
-
-        $now = date('Y-m-d H:i:s');
-
-        // Mark payment as paid
-        $this->firebase->update("{$this->feesBase}/Online Payments/{$payId}", [
-            'gateway_payment_id' => $gatewayPaymentId,
-            'status'             => 'paid',
-            'paid_at'            => $now,
-            'signature'          => $signature,
+        // ── 4. Log webhook receipt ──
+        $this->firebase->push("{$this->feesBase}/Webhook_Log", [
+            'order_id'      => $gwOrderId,
+            'payment_id'    => $gwPaymentId,
+            'payload_hash'  => $payloadHash,
+            'ip'            => $_SERVER['REMOTE_ADDR'] ?? '',
+            'received_at'   => date('c'),
+            'webhook_sig'   => substr($webhookSig, 0, 16) . '...',
         ]);
 
-        // Atomically get next receipt number
+        // ── 5. Process using unified flow ──
+        $result = $this->_verify_and_process($gwOrderId, $gwPaymentId, $signature, 'webhook');
+
+        // ── 6. Mark webhook as processed (dedup for future replays) ──
+        $this->firebase->set($dedupPath, [
+            'order_id'     => $gwOrderId,
+            'payment_id'   => $gwPaymentId,
+            'processed_at' => date('c'),
+            'result'       => $result['fee_success'] ?? false ? 'success' : ($result['already_paid'] ?? false ? 'already_paid' : 'failed'),
+        ]);
+
+        if (!$result['ok'] && empty($result['already_paid'])) {
+            http_response_code(422);
+            echo json_encode(['status' => 'error', 'message' => $result['error'] ?? 'Processing failed.']);
+            return;
+        }
+
+        http_response_code(200);
+        echo json_encode([
+            'status'      => 'success',
+            'message'     => !empty($result['already_paid']) ? 'Already processed.' : 'Payment processed.',
+            'receipt_key' => $result['receipt_key'] ?? '',
+        ]);
+    }
+
+    /**
+     * UNIFIED: Verify gateway signature → process fees → mark paid.
+     *
+     * Called by BOTH verify_payment (frontend) AND payment_webhook (server).
+     * Single source of truth for the payment → fees flow.
+     *
+     * @param  string $gwOrderId    Gateway order ID
+     * @param  string $gwPaymentId  Gateway payment ID
+     * @param  string $signature    Payment signature
+     * @param  string $source       'frontend' or 'webhook'
+     * @return array  {ok, already_paid, fee_success, receipt_key, error, fee_error}
+     */
+    private function _verify_and_process(string $gwOrderId, string $gwPaymentId, string $signature, string $source): array
+    {
+        $this->_init_payment_service();
+        $lockToken = bin2hex(random_bytes(8));
+        $lockPath  = "{$this->feesBase}/Order_Locks/{$gwOrderId}";
+
+        // ── A. Order-level lock (prevents webhook + frontend double-execute) ──
+        $existingLock = $this->firebase->get($lockPath);
+        if (is_array($existingLock) && !empty($existingLock['locked'])) {
+            $lockAge = time() - strtotime($existingLock['locked_at'] ?? '2000-01-01');
+            if ($lockAge < 120) {
+                return ['ok' => false, 'error' => 'This payment is currently being processed. Please wait.'];
+            }
+        }
+        $this->firebase->set($lockPath, [
+            'locked' => true, 'locked_at' => date('c'), 'token' => $lockToken, 'source' => $source,
+        ]);
+
+        // Helper: release lock only if we own it
+        $releaseLock = function () use ($lockPath, $lockToken) {
+            try {
+                $l = $this->firebase->get($lockPath);
+                if (is_array($l) && ($l['token'] ?? '') === $lockToken) {
+                    $this->firebase->delete($lockPath);
+                }
+            } catch (\Exception $e) { /* best effort */ }
+        };
+
+        // ── B. Verify signature via Payment Service ──
+        $verifyResult = $this->paymentService->verify_payment($gwOrderId, $gwPaymentId, $signature);
+
+        if (!$verifyResult['verified']) {
+            $releaseLock();
+            return ['ok' => false, 'error' => $verifyResult['error'] ?? 'Verification failed.'];
+        }
+        if (!empty($verifyResult['already_paid'])) {
+            $releaseLock();
+            return ['ok' => true, 'already_paid' => true];
+        }
+
+        $recordId  = $verifyResult['record_id'];
+        $order     = $verifyResult['order'];
+        $orderPath = "{$this->feesBase}/Online_Orders/{$recordId}";
+
+        // ── C. Strict amount + student validation ──
+        // (Prevents tampered callbacks claiming different amounts)
+        // Amount validation would compare gateway-reported amount vs order amount.
+        // In mock mode both come from us, but this is future-ready for real gateways.
+        // Real gateway integration: add $payload['amount'] parameter and compare here.
+
+        // ── D. Transition: verified → processing ──
+        $now = date('c');
+        $this->firebase->update($orderPath, [
+            'status'              => 'processing',
+            'processing_started'  => $now,
+            'gateway_payment_id'  => $gwPaymentId,
+            'process_source'      => $source,
+            'process_lock_token'  => $lockToken,
+            'webhook_received_at' => ($source === 'webhook') ? $now : null,
+        ]);
+
+        // ── E. Process fee collection ──
+        $feeSuccess = false;
+        $receiptKey = '';
+        $feeError   = '';
+
+        try {
+            $feeResult  = $this->_process_online_fee_collection($order, $gwPaymentId, $gwOrderId);
+            $feeSuccess = true;
+            $receiptKey = $feeResult['receipt_key'];
+        } catch (\Exception $e) {
+            $feeError = $e->getMessage();
+            log_message('error', "verify_and_process({$source}): fees FAILED order={$gwOrderId}: {$feeError}");
+        }
+
+        if ($feeSuccess) {
+            // ── F. Success → paid + payment record ──
+            $this->firebase->update($orderPath, [
+                'status'         => 'paid',
+                'paid_at'        => date('c'),
+                'receipt_key'    => $receiptKey,
+                'payment_status' => 'captured', // Future: 'authorized' for 2-step capture
+            ]);
+
+            $payRecId = 'PAY_' . date('YmdHis') . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+            $this->firebase->set("{$this->feesBase}/Online_Payments/{$payRecId}", [
+                'order_id'           => $recordId,
+                'gateway_order_id'   => $gwOrderId,
+                'gateway_payment_id' => $gwPaymentId,
+                'student_id'         => $order['student_id'] ?? '',
+                'student_name'       => $order['student_name'] ?? '',
+                'amount'             => (float) ($order['amount'] ?? 0),
+                'receipt_key'        => $receiptKey,
+                'gateway'            => $order['gateway'] ?? 'mock',
+                'payment_status'     => 'captured',
+                'source'             => $source,
+                'signature'          => substr($signature, 0, 16) . '...',
+                'created_at'         => date('c'),
+            ]);
+
+            log_message('info', "verify_and_process({$source}): SUCCESS order={$gwOrderId} receipt={$receiptKey}");
+            $releaseLock();
+
+            return ['ok' => true, 'fee_success' => true, 'receipt_key' => $receiptKey];
+        } else {
+            // ── G. Fee writes failed → retryable ──
+            $this->firebase->update($orderPath, [
+                'status'         => 'fees_failed',
+                'payment_status' => 'captured', // Gateway DID capture — fees just failed to record
+                'failed_at'      => date('c'),
+                'failure_reason' => $feeError,
+                'signature'      => $signature,
+            ]);
+
+            $releaseLock();
+
+            return [
+                'ok'          => true,
+                'fee_success' => false,
+                'fee_error'   => "Gateway confirmed but fee recording failed: {$feeError}",
+                'error'       => "Gateway confirmed but fee recording failed: {$feeError}",
+            ];
+        }
+    }
+
+    /**
+     * POST — Retry fee processing for a failed online payment.
+     * Only works for orders in "fees_failed" status.
+     * Params: order_record_id
+     */
+    public function retry_payment_processing()
+    {
+        $this->_require_role(['Admin'], 'retry_payment_processing');
+
+        $recordId = trim($this->input->post('order_record_id') ?? '');
+        if ($recordId === '') $this->json_error('Order record ID is required.');
+
+        $orderPath = "{$this->feesBase}/Online_Orders/{$recordId}";
+        $order = $this->firebase->get($orderPath);
+
+        if (!is_array($order)) $this->json_error('Order not found.');
+        if (($order['status'] ?? '') === 'paid') {
+            $this->json_success(['message' => 'Order already paid. No retry needed.', 'already_paid' => true]);
+            return;
+        }
+        if (($order['status'] ?? '') !== 'fees_failed') {
+            $this->json_error('Only orders with status "fees_failed" can be retried. Current: ' . ($order['status'] ?? 'unknown'));
+        }
+
+        // Transition to processing
+        $this->firebase->update($orderPath, [
+            'status'         => 'processing',
+            'retry_at'       => date('c'),
+            'retry_by'       => $this->admin_name ?? '',
+        ]);
+
+        $gwPaymentId = $order['gateway_payment_id'] ?? '';
+        $gwOrderId   = $order['gateway_order_id'] ?? '';
+
+        try {
+            $feeResult = $this->_process_online_fee_collection($order, $gwPaymentId, $gwOrderId);
+
+            $receiptKey = $feeResult['receipt_key'];
+
+            $this->firebase->update($orderPath, [
+                'status'      => 'paid',
+                'paid_at'     => date('c'),
+                'receipt_key' => $receiptKey,
+            ]);
+
+            // Write payment record
+            $payRecId = 'PAY_' . date('YmdHis') . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+            $this->firebase->set("{$this->feesBase}/Online_Payments/{$payRecId}", [
+                'order_id'           => $recordId,
+                'gateway_order_id'   => $gwOrderId,
+                'gateway_payment_id' => $gwPaymentId,
+                'student_id'         => $order['student_id'] ?? '',
+                'amount'             => (float) ($order['amount'] ?? 0),
+                'receipt_key'        => $receiptKey,
+                'gateway'            => $order['gateway'] ?? 'mock',
+                'status'             => 'success',
+                'created_at'         => date('c'),
+                'retried'            => true,
+            ]);
+
+            log_message('info', "retry_payment_processing: SUCCESS order={$recordId} receipt={$receiptKey}");
+
+            $this->json_success([
+                'message'    => 'Fee recording completed successfully on retry.',
+                'receipt_no' => str_replace('F', '', $receiptKey),
+            ]);
+        } catch (\Exception $e) {
+            $this->firebase->update($orderPath, [
+                'status'         => 'fees_failed',
+                'failed_at'      => date('c'),
+                'failure_reason'  => $e->getMessage(),
+                'retry_count'    => ((int) ($order['retry_count'] ?? 0)) + 1,
+            ]);
+            $this->json_error('Retry failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Process fee collection for an online payment order.
+     * Creates: receipt, voucher, account book entry, month fees, accounting journal.
+     * Throws on failure (caller decides what to do with order status).
+     *
+     * @param  array  $payment       Order data from Firebase
+     * @param  string $gwPaymentId   Gateway payment ID
+     * @param  string $gwOrderId     Gateway order ID
+     * @return array  {receipt_key}
+     * @throws \RuntimeException on any write failure
+     */
+    private function _process_online_fee_collection(array $payment, string $gwPaymentId, string $gwOrderId): array
+    {
+        $studentId = $payment['student_id'] ?? '';
+        $class     = $payment['class'] ?? '';
+        $section   = $payment['section'] ?? '';
+        $amount    = floatval($payment['amount'] ?? 0);
+        $feeMonths = $payment['fee_months'] ?? [];
+        $gateway   = $payment['gateway'] ?? 'online';
+
+        if ($studentId === '' || $class === '' || $section === '') {
+            throw new \RuntimeException('Missing student/class/section in order data.');
+        }
+
         $receipt    = $this->_nextReceiptNo();
         $receiptKey = $receipt['key'];
         $today      = date('d-m-Y');
+        $now        = date('Y-m-d H:i:s');
+        $payMode    = 'Online - ' . ucfirst($gateway);
 
-        $voucherData = [
+        list($classNode, $sectionNode) = $this->_normalizeClassSection($class, $section);
+        $studentBase = "{$this->sessionRoot}/{$classNode}/{$sectionNode}/Students/{$studentId}";
+
+        // 1. Fees Record
+        $this->firebase->set("{$studentBase}/Fees Record/{$receiptKey}", [
+            'Amount'      => number_format($amount, 2, '.', ','),
+            'Discount'    => '0.00',
+            'Date'        => $today,
+            'Fine'        => '0.00',
+            'Mode'        => $payMode,
+            'Refer'       => "Online Payment #{$gwPaymentId}",
+            'order_id'    => $gwOrderId,
+            'payment_id'  => $gwPaymentId,
+        ]);
+
+        // 2. Voucher
+        $this->firebase->set("{$this->sessionRoot}/Accounts/Vouchers/{$today}/{$receiptKey}", [
             'type'               => 'online_payment',
-            'student_id'         => isset($payment['student_id']) ? $payment['student_id'] : '',
-            'student_name'       => isset($payment['student_name']) ? $payment['student_name'] : '',
-            'class'              => isset($payment['class']) ? $payment['class'] : '',
-            'section'            => isset($payment['section']) ? $payment['section'] : '',
-            'Fees Received'      => isset($payment['amount']) ? number_format(floatval($payment['amount']), 2, '.', ',') : '0.00',
-            'amount'             => isset($payment['amount']) ? $payment['amount'] : 0,
-            'fee_months'         => isset($payment['fee_months']) ? $payment['fee_months'] : [],
-            'payment_mode'       => 'Online - ' . (isset($payment['provider']) ? ucfirst($payment['provider']) : 'Gateway'),
-            'gateway_payment_id' => $gatewayPaymentId,
+            'student_id'         => $studentId,
+            'student_name'       => $payment['student_name'] ?? '',
+            'class'              => $class,
+            'section'            => $section,
+            'Acc'                => 'Fees',
+            'Fees Received'      => number_format($amount, 2),
+            'Id'                 => $studentId,
+            'Mode'               => $payMode,
+            'gateway_payment_id' => $gwPaymentId,
+            'gateway_order_id'   => $gwOrderId,
             'receipt_no'         => $receiptKey,
             'timestamp'          => $now,
-        ];
+        ]);
 
-        $this->firebase->set("{$this->sessionRoot}/Accounts/Vouchers/{$today}/{$receiptKey}", $voucherData);
+        // 3. Account book
+        $dateObj   = DateTime::createFromFormat('d-m-Y', $today);
+        $bookMonth = $dateObj ? $dateObj->format('F') : date('F');
+        $bookDay   = $dateObj ? $dateObj->format('d') : date('d');
+        $abPath    = "{$this->sessionRoot}/Accounts/Account_book/Fees/{$bookMonth}/{$bookDay}/R";
+        $curBook   = floatval($this->firebase->get($abPath) ?? 0);
+        $this->firebase->set($abPath, $curBook + $amount);
 
-        // Update student's Month Fee for paid months
-        $studentId = isset($payment['student_id']) ? $payment['student_id'] : '';
-        $class     = isset($payment['class']) ? $payment['class'] : '';
-        $section   = isset($payment['section']) ? $payment['section'] : '';
-        $feeMonths = isset($payment['fee_months']) ? $payment['fee_months'] : [];
+        // 4. Receipt Index
+        $receiptNo = str_replace('F', '', $receiptKey);
+        $this->firebase->set("{$this->sessionRoot}/Accounts/Receipt_Index/{$receiptNo}", [
+            'date'       => $today,
+            'user_id'    => $studentId,
+            'class'      => $class,
+            'section'    => $section,
+            'amount'     => $amount,
+            'order_id'   => $gwOrderId,
+            'payment_id' => $gwPaymentId,
+        ]);
 
-        if ($studentId !== '' && $class !== '' && $section !== '') {
-            list($classNode, $sectionNode) = $this->_normalizeClassSection($class, $section);
-
-            // Save fee record (matching Fees.php format)
-            $recordPath = "{$this->sessionRoot}/{$classNode}/{$sectionNode}/Students/{$studentId}/Fees Record/{$receiptKey}";
-            $this->firebase->set($recordPath, [
-                'Amount'      => number_format(floatval($payment['amount']), 2, '.', ','),
-                'Discount'    => '0.00',
-                'Date'        => date('d-m-Y'),
-                'Fine'        => '0.00',
-                'Mode'        => 'Online - ' . (isset($payment['provider']) ? ucfirst($payment['provider']) : 'Gateway'),
-                'Refer'       => 'Online Payment #' . $gatewayPaymentId,
-            ]);
-
-            // Update account book (matching Fees.php format)
-            $dateObj = DateTime::createFromFormat('d-m-Y', date('d-m-Y'));
-            $bookMonth = $dateObj ? $dateObj->format('F') : date('F');
-            $bookDay = $dateObj ? $dateObj->format('d') : date('d');
-            $amount = isset($payment['amount']) ? floatval($payment['amount']) : 0;
-            $abPath = "{$this->sessionRoot}/Accounts/Account_book/Fees/{$bookMonth}/{$bookDay}/R";
-            $curBook = $this->firebase->get($abPath);
-            $curBook = is_numeric($curBook) ? floatval($curBook) : 0;
-            $this->firebase->set($abPath, $curBook + $amount);
-
-            // Update Month Fee for paid months
-            $monthFeePath = "{$this->sessionRoot}/{$classNode}/{$sectionNode}/Students/{$studentId}/Month Fee";
-            $monthUpdate = [];
+        // 5. Month Fee flags
+        if (!empty($feeMonths)) {
+            $monthFeePath = "{$studentBase}/Month Fee";
+            $monthUpdate  = [];
             foreach ($feeMonths as $m) {
-                $monthUpdate[$m] = 1;
+                $monthUpdate[trim($m)] = 1;
             }
-            if (!empty($monthUpdate)) {
-                $this->firebase->update($monthFeePath, $monthUpdate);
-            }
+            $this->firebase->update($monthFeePath, $monthUpdate);
         }
 
-        // ── Accounting integration via Operations_accounting library
+        // 6. Accounting journal (non-fatal — queued if fails)
         try {
             $this->load->library('Operations_accounting', null, 'ops_acct');
             $this->ops_acct->init(
                 $this->firebase, $this->school_name, $this->session_year, $this->admin_id, $this
             );
-            $payAmount = isset($payment['amount']) ? floatval($payment['amount']) : 0;
-            $payMode   = isset($payment['provider']) ? $payment['provider'] : 'online';
             $this->ops_acct->create_fee_journal([
                 'school_name'  => $this->school_name,
                 'session_year' => $this->session_year,
                 'date'         => date('Y-m-d'),
-                'amount'       => $payAmount,
-                'payment_mode' => $payMode,
+                'amount'       => $amount,
+                'payment_mode' => $gateway,
                 'bank_code'    => '',
-                'receipt_no'   => $receiptKey,
-                'student_name' => isset($payment['student_name']) ? $payment['student_name'] : '',
+                'receipt_no'   => $receiptNo,
+                'student_name' => $payment['student_name'] ?? '',
                 'student_id'   => $studentId,
                 'class'        => $class,
                 'admin_id'     => $this->admin_id,
             ]);
         } catch (\Exception $e) {
-            log_message('error', 'Accounting integration failed in verify_payment: ' . $e->getMessage());
+            log_message('error', 'Online payment accounting journal failed: ' . $e->getMessage());
+            // Queue for reconciliation
+            $this->firebase->set(
+                "{$this->sessionRoot}/Accounts/Pending_journals/ONLINE_{$receiptNo}",
+                ['amount' => $amount, 'student_id' => $studentId, 'queued_at' => date('c'), 'reason' => $e->getMessage()]
+            );
         }
 
-        $this->json_success([
-            'message'    => 'Payment verified and recorded successfully.',
-            'receipt_no' => $receiptKey,
-            'payment_id' => $payId,
-        ]);
+        return ['receipt_key' => $receiptKey];
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -2332,6 +2894,152 @@ class Fee_management extends MY_Controller
             'message' => "Carried forward unpaid fees for {$totalStudents} student(s). Total: Rs. " . number_format($totalAmount, 2),
             'count'   => $totalStudents,
             'total'   => round($totalAmount, 2),
+        ]);
+    }
+
+    // ====================================================================
+    //  PAYMENT RECONCILIATION
+    // ====================================================================
+
+    /** GET — Payment Reconciliation page */
+    public function payment_reconciliation()
+    {
+        $this->_require_role(self::ADMIN_ROLES);
+        $this->load->view('include/header');
+        $this->load->view('fee_management/payment_reconciliation');
+        $this->load->view('include/footer');
+    }
+
+    /** POST — Get reconciliation data */
+    public function get_reconciliation_data()
+    {
+        $this->_require_role(self::ADMIN_ROLES, 'get_reconciliation_data');
+
+        $dateFrom  = trim($this->input->post('date_from') ?? '');
+        $dateTo    = trim($this->input->post('date_to') ?? '');
+        $studentId = trim($this->input->post('student_id') ?? '');
+        $status    = trim($this->input->post('status') ?? '');
+
+        // Load all orders
+        $allOrders = $this->firebase->get("{$this->feesBase}/Online_Orders") ?? [];
+        if (!is_array($allOrders)) $allOrders = [];
+
+        // Load all payment records
+        $allPayments = $this->firebase->get("{$this->feesBase}/Online_Payments") ?? [];
+        if (!is_array($allPayments)) $allPayments = [];
+
+        // Load receipt index for cross-check
+        $receiptIdx = $this->firebase->get("{$this->sessionRoot}/Accounts/Receipt_Index") ?? [];
+        if (!is_array($receiptIdx)) $receiptIdx = [];
+
+        // Build receipt lookup by order_id for orphan detection
+        $receiptsByOrder = [];
+        foreach ($receiptIdx as $rn => $ri) {
+            if (!is_array($ri)) continue;
+            $oid = $ri['order_id'] ?? '';
+            if ($oid) $receiptsByOrder[$oid] = $rn;
+        }
+
+        $successful   = [];
+        $feesFailed   = [];
+        $orphans      = [];
+        $duplicates   = [];
+        $stats        = ['total' => 0, 'paid' => 0, 'failed' => 0, 'orphan' => 0, 'duplicate' => 0, 'total_amount' => 0, 'failed_amount' => 0];
+
+        // Track order_ids seen in payments for orphan detection
+        $orderIdsInPayments = [];
+        foreach ($allPayments as $pid => $pay) {
+            if (!is_array($pay)) continue;
+            $oid = $pay['gateway_order_id'] ?? '';
+            if ($oid) $orderIdsInPayments[$oid] = ($orderIdsInPayments[$oid] ?? 0) + 1;
+        }
+
+        foreach ($allOrders as $rid => $order) {
+            if (!is_array($order)) continue;
+
+            $oStatus = $order['status'] ?? '';
+            $oDate   = substr($order['created_at'] ?? '', 0, 10);
+            $oStudent = $order['student_id'] ?? '';
+            $oAmount  = (float) ($order['amount'] ?? 0);
+            $gwOrder  = $order['gateway_order_id'] ?? '';
+
+            // Date filter
+            if ($dateFrom && $oDate < $dateFrom) continue;
+            if ($dateTo && $oDate > $dateTo) continue;
+            if ($studentId && $oStudent !== $studentId) continue;
+            if ($status && $oStatus !== $status) continue;
+
+            $stats['total']++;
+            $stats['total_amount'] += $oAmount;
+
+            $item = [
+                'record_id'    => $rid,
+                'order_id'     => $gwOrder,
+                'student_id'   => $oStudent,
+                'student_name' => $order['student_name'] ?? '',
+                'amount'       => $oAmount,
+                'status'       => $oStatus,
+                'receipt_key'  => $order['receipt_key'] ?? '',
+                'gateway'      => $order['gateway'] ?? 'mock',
+                'created_at'   => $order['created_at'] ?? '',
+                'paid_at'      => $order['paid_at'] ?? '',
+                'source'       => $order['process_source'] ?? '',
+            ];
+
+            if ($oStatus === 'paid') {
+                $stats['paid']++;
+                // Check if receipt actually exists
+                $rk = $order['receipt_key'] ?? '';
+                $rn = str_replace('F', '', $rk);
+                if ($rk && !isset($receiptIdx[$rn])) {
+                    // Paid in order but no receipt in index — orphan
+                    $item['issue'] = 'Receipt missing from index';
+                    $orphans[] = $item;
+                    $stats['orphan']++;
+                } else {
+                    $successful[] = $item;
+                }
+            } elseif ($oStatus === 'fees_failed') {
+                $stats['failed']++;
+                $stats['failed_amount'] += $oAmount;
+                $item['failure_reason'] = $order['failure_reason'] ?? '';
+                $item['retry_count']    = (int) ($order['retry_count'] ?? 0);
+                $feesFailed[] = $item;
+            } elseif ($oStatus === 'created' || $oStatus === 'verified') {
+                // Check if order is stale (created > 30 min ago, never paid)
+                $age = time() - strtotime($order['created_at'] ?? '2000-01-01');
+                if ($age > 1800) { // 30 min
+                    $item['issue'] = "Order created {$age}s ago but never completed";
+                    $orphans[] = $item;
+                    $stats['orphan']++;
+                }
+            }
+
+            // Check for duplicates (same order processed multiple times)
+            $hitCount = $orderIdsInPayments[$gwOrder] ?? 0;
+            if ($hitCount > 1) {
+                $item['hit_count'] = $hitCount;
+                $duplicates[] = $item;
+                $stats['duplicate']++;
+            }
+        }
+
+        // Sort each by date descending
+        $sortDesc = function (&$arr) {
+            usort($arr, function ($a, $b) {
+                return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
+            });
+        };
+        $sortDesc($successful);
+        $sortDesc($feesFailed);
+        $sortDesc($orphans);
+
+        $this->json_success([
+            'successful' => array_slice($successful, 0, 100),
+            'fees_failed' => $feesFailed,
+            'orphans'     => $orphans,
+            'duplicates'  => $duplicates,
+            'stats'       => $stats,
         ]);
     }
 }

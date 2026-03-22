@@ -21,7 +21,7 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Notifications extends MY_Controller
 {
     /** Roles that see all operational tasks */
-    private const ADMIN_ROLES = ['Admin', 'Principal', 'Super Admin'];
+    private const ADMIN_ROLES = ['Admin', 'Principal', 'Super Admin', 'School Super Admin'];
 
     /** Max alerts per response */
     private const MAX_ALERTS = 15;

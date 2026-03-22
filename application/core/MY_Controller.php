@@ -90,11 +90,10 @@ class MY_Controller extends CI_Controller
         $this->available_sessions  = $this->session->userdata('available_sessions') ?? [];
 
         // For Users/Parents/ and Users/Admin/ paths:
-        // Legacy schools store data under the login code (e.g. "10004"),
-        // new SCH_ schools store under the school_id (e.g. "SCH_XXXXXX").
-        $this->parent_db_key = (strpos($this->school_id ?? '', 'SCH_') === 0)
-            ? $this->school_id
-            : ($this->school_code ?: $this->school_id);
+        // school_code holds the login code (e.g. "10005") which is the Firebase
+        // path key for Users/Admin/{code}/ and Users/Parents/{code}/.
+        // Falls back to school_id for legacy schools without school_code.
+        $this->parent_db_key = $this->school_code ?: $this->school_id;
 
         // ── Determine current route ───────────────────────────────────────
         $controller = strtolower($this->router->fetch_class());
@@ -524,8 +523,9 @@ class MY_Controller extends CI_Controller
     {
         $role = $this->admin_role ?? '';
 
-        // Super Admin always passes
+        // Super Admin and School Super Admin always pass
         if (strcasecmp($role, 'Super Admin') === 0) return;
+        if (strcasecmp($role, 'School Super Admin') === 0) return;
 
         // Case-insensitive role match (Firebase role values may vary in casing)
         foreach ($allowed as $a) {

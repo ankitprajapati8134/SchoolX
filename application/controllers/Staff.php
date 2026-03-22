@@ -27,8 +27,8 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Staff extends MY_Controller
 {
-    private const MANAGE_ROLES = ['Admin', 'Principal'];
-    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+    private const MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'HR Manager'];
+    private const VIEW_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'HR Manager', 'Teacher'];
 
     // ── Default staff role definitions (seeded on first access) ────────────
     private const DEFAULT_STAFF_ROLES = [
@@ -475,10 +475,11 @@ class Staff extends MY_Controller
             unset($sheetData[0]);
             $sheetData = array_values($sheetData);
 
-            $count = $this->CM->get_data("Users/Teachers/{$school_id}/Count") ?? 1;
+            $this->load->library('auth_client');
 
             $success = 0;
             $error   = 0;
+            $skipped = [];
 
             foreach ($sheetData as $row) {
 
@@ -492,7 +493,13 @@ class Staff extends MY_Controller
 
                 $rowData = array_combine($headers, $row);
 
-                $staffId = 'STA' . str_pad($count, 4, '0', STR_PAD_LEFT);
+                // Generate globally unique TEA ID from Auth API
+                $staffId = $this->auth_client->generate_id('TEA');
+                if (!$staffId) {
+                    $skipped[] = "Row " . ($success + $error + count($skipped) + 1) . ": ID generation failed";
+                    $error++;
+                    continue;
+                }
 
                 $name  = trim($rowData['Name']);
                 $phone = trim($rowData['Phone Number']);
@@ -597,13 +604,37 @@ class Staff extends MY_Controller
                 $this->CM->addKey_pair_data('Exits/', [$phone => $school_id]);
                 $this->CM->addKey_pair_data('User_ids_pno/', [$phone => $staffId]);
 
-                $count++;
+                // Sync to MongoDB (best-effort)
+                try {
+                    $this->auth_client->sync_admin([
+                        'adminId'            => $staffId,
+                        'name'               => $name,
+                        'email'              => trim($rowData['Email'] ?? ''),
+                        'phone'              => $phone,
+                        'role'               => 'TEA',
+                        'passwordHash'       => $hashedPassword,
+                        'schoolId'           => $this->school_code,
+                        'schoolCode'         => $this->school_name,
+                        'parentDbKey'        => $this->parent_db_key,
+                        'createdBy'          => $this->session->userdata('admin_id') ?: 'system',
+                        'position'           => trim($rowData['Position'] ?? ''),
+                        'department'         => trim($rowData['Department'] ?? ''),
+                        'gender'             => trim($rowData['Gender'] ?? ''),
+                        'deviceBindingMethod'=> 'otp',
+                        'schoolDisplayName'  => $this->school_display_name ?? '',
+                    ]);
+                } catch (Exception $e) {
+                    log_message('error', "Staff import MongoDB sync failed for {$staffId}: " . $e->getMessage());
+                }
+
                 $success++;
             }
 
-            $this->CM->addKey_pair_data("Users/Teachers/{$school_id}/", ['Count' => $count]);
-
-            $this->session->set_flashdata('import_result', "Staff Imported: {$success} | Failed: {$error}");
+            $msg = "Staff Imported: {$success} | Failed: {$error}";
+            if (!empty($skipped)) {
+                $msg .= " | Skipped: " . implode('; ', $skipped);
+            }
+            $this->session->set_flashdata('import_result', $msg);
             redirect('staff/all_staff');
         } catch (Exception $e) {
 
@@ -690,12 +721,30 @@ class Staff extends MY_Controller
                 $normalizedPostData[str_replace('%20', ' ', urldecode($key))] = $value;
             }
 
-            $staffId   = $normalizedPostData['user_id']    ?? '';
-            $staffName = $normalizedPostData['Name']       ?? '';
-            $phoneNumber = $normalizedPostData['phone_number'] ?? '';
+            $staffName   = $normalizedPostData['Name']         ?? '';
+            $phoneNumber = $normalizedPostData['phone_number']  ?? '';
+            $emailAddr   = $normalizedPostData['email']         ?? '';
 
-            if (empty($staffId) || empty($staffName)) {
+            if (empty($staffName)) {
                 $this->json_error('Missing required fields.', 400);
+            }
+
+            // Generate TEA ID from Auth API (race-safe sequential ID)
+            $this->load->library('auth_client');
+            $generatedId = $this->auth_client->generate_id('TEA');
+
+            if (!empty($generatedId)) {
+                $staffId = $generatedId;
+                $mongoSynced = false; // Record not yet created — only ID reserved
+            } else {
+                // Fallback: use local counter if Auth API is unavailable
+                $staffId = $normalizedPostData['user_id'] ?? $staffIdCount;
+                $mongoSynced = false;
+                log_message('error', 'Staff: Auth API generate_id failed — using local ID.');
+            }
+
+            if (empty($staffId)) {
+                $this->json_error('Failed to generate staff ID.', 500);
             }
 
             // [FIX-3] Validate phone
@@ -791,11 +840,12 @@ class Staff extends MY_Controller
                 'Net Salary'  => $basicSalary + $allowances,
             ];
 
-            // [FIX-2] Hash the password
+            // [FIX-2] Hash the password (bcrypt cost 12 — matches admin pattern)
             $rawPassword = $normalizedPostData['password'] ?? '';
             if (empty($rawPassword)) {
                 $rawPassword = substr(ucfirst($staffName), 0, 3) . '123@';
             }
+            $hashedPassword = password_hash($rawPassword, PASSWORD_BCRYPT, ['cost' => 12]);
 
             // ── Staff roles (multi-role support) ─────────────────────────
             $rawRoles = $normalizedPostData['staff_roles'] ?? '';
@@ -841,7 +891,7 @@ class Staff extends MY_Controller
                 'staff_roles'     => $roleIds,
                 'primary_role'    => $primaryRole,
                 // [FIX-2] Hashed password stored under Credentials
-                'Credentials'     => ['Password' => password_hash($rawPassword, PASSWORD_DEFAULT)],
+                'Credentials'     => ['Id' => $staffId, 'Password' => $hashedPassword],
             ];
 
             // [FIX-4] Use session school_id instead of undefined $schoolId
@@ -863,6 +913,33 @@ class Staff extends MY_Controller
 
                 // Auto-create salary structure for payroll
                 $this->_sync_salary_structure($staffId, $basicSalary, $allowances);
+
+                // ── Create teacher record in MongoDB (Firebase succeeded) ──
+                $syncResult = $this->auth_client->sync_admin([
+                    'adminId'            => $staffId,
+                    'name'               => $staffName,
+                    'email'              => $emailAddr,
+                    'phone'              => $phoneNumber,
+                    'role'               => 'TEA',
+                    'passwordHash'       => $hashedPassword,
+                    'schoolId'           => $this->school_code,
+                    'schoolCode'         => $this->school_name,
+                    'parentDbKey'        => $this->parent_db_key,
+                    'createdBy'          => $this->admin_id ?? 'system',
+                    'profilePic'         => $docData['Photo']['url'] ?? null,
+                    'position'           => $normalizedPostData['staff_position'] ?? '',
+                    'department'         => $normalizedPostData['department']     ?? '',
+                    'gender'             => $normalizedPostData['gender']         ?? '',
+                    'staffRoles'         => $roleIds,
+                    'primaryRole'        => $primaryRole,
+                    'classesAssigned'    => [],
+                    'subjects'           => [],
+                    'deviceBindingMethod'=> 'otp',
+                    'schoolDisplayName'  => $this->school_display_name ?? '',
+                ]);
+                if (empty($syncResult['success'])) {
+                    log_message('error', 'Staff: MongoDB sync failed for ' . $staffId . ': ' . json_encode($syncResult));
+                }
 
                 $this->json_success(['message' => 'Staff added successfully.', 'staff_id' => $staffId]);
             } else {
@@ -900,6 +977,17 @@ class Staff extends MY_Controller
             // Remove legacy global indexes
             $this->CM->delete_data('Exits', $phoneNumber);
             $this->CM->delete_data('User_ids_pno', $phoneNumber);
+        }
+
+        // Delete from Firebase profile
+        $this->firebase->delete("Users/Teachers/{$school_id}", $id);
+
+        // Delete from MongoDB (best-effort)
+        try {
+            $this->load->library('auth_client');
+            $this->auth_client->delete_admin($id, $this->school_code, 'teacher');
+        } catch (Exception $e) {
+            log_message('error', "Staff delete MongoDB failed for {$id}: " . $e->getMessage());
         }
 
         redirect(base_url() . 'staff/all_staff/');
@@ -1090,6 +1178,32 @@ class Staff extends MY_Controller
                     $this->firebase->set("Schools/{$school_name}/{$session_year}/Teachers/{$user_id}", $rosterUpdate);
                 }
 
+                // ── Sync updated profile to MongoDB (best-effort) ──
+                $this->load->library('auth_client');
+                $mongoUpdate = [
+                    'adminId'    => $user_id,
+                    'role'       => 'TEA',
+                    'schoolId'   => $this->school_code,
+                    'schoolCode' => $this->school_name,
+                    'parentDbKey'=> $this->parent_db_key,
+                ];
+                if ($teacherName)                                $mongoUpdate['name']       = $teacherName;
+                if (!empty($formattedData['Email']))             $mongoUpdate['email']      = $formattedData['Email'];
+                if (!empty($formattedData['Phone Number']))      $mongoUpdate['phone']      = $formattedData['Phone Number'];
+                if (!empty($formattedData['Gender']))            $mongoUpdate['gender']     = $formattedData['Gender'];
+                if (isset($postData['staff_position']) || isset($postData['position']))
+                    $mongoUpdate['position'] = $postData['staff_position'] ?? $postData['position'] ?? '';
+                if (isset($postData['department']))              $mongoUpdate['department'] = $postData['department'];
+                if (isset($formattedData['staff_roles']))        $mongoUpdate['staffRoles'] = $formattedData['staff_roles'];
+                if (isset($formattedData['primary_role']))       $mongoUpdate['primaryRole'] = $formattedData['primary_role'];
+                // ProfilePic — only if photo was re-uploaded
+                if (!empty($docUpdates['Photo']['url']))         $mongoUpdate['profilePic'] = $docUpdates['Photo']['url'];
+
+                $editSync = $this->auth_client->sync_admin($mongoUpdate);
+                if (empty($editSync['success'])) {
+                    log_message('error', 'Staff: MongoDB sync failed on edit_staff for ' . $user_id . ': ' . json_encode($editSync));
+                }
+
                 $this->json_success();
             } else {
                 $this->json_error('Update failed.', 500);
@@ -1235,7 +1349,7 @@ class Staff extends MY_Controller
             $this->json_error('Invalid class section format.', 400);
         }
 
-        if (!preg_match('/^(\d+)\s-\s(.+)$/', $teacherName, $matches)) {
+        if (!preg_match('/^([A-Za-z0-9]+)\s-\s(.+)$/', $teacherName, $matches)) {
             $this->json_error('Invalid teacher format.', 400);
         }
 
@@ -1253,6 +1367,33 @@ class Staff extends MY_Controller
 
         if ($dutyType === 'ClassTeacher') {
             $this->firebase->set("Schools/{$school_name}/{$session_year}/{$classSection}/ClassTeacher", $teacherOnlyName);
+        }
+
+        // ── Sync classesAssigned + subjects to MongoDB for mobile app ──
+        $dutyData = $this->firebase->get("Schools/{$school_name}/{$session_year}/Teachers/{$teacherID}/Duties");
+        if (is_array($dutyData)) {
+            $allClasses  = [];
+            $allSubjects = [];
+            foreach ($dutyData as $type => $classes) {
+                if (!is_array($classes)) continue;
+                foreach ($classes as $cls => $subjs) {
+                    $allClasses[] = $cls;
+                    if (is_array($subjs)) {
+                        $allSubjects = array_merge($allSubjects, array_keys($subjs));
+                    }
+                }
+            }
+            $this->load->library('auth_client');
+            $this->auth_client->sync_admin([
+                'adminId'           => $teacherID,
+                'role'              => 'TEA',
+                'schoolId'          => $this->school_code,
+                'schoolCode'        => $this->school_name,
+                'parentDbKey'       => $this->parent_db_key,
+                'classesAssigned'   => array_values(array_unique($allClasses)),
+                'subjects'          => array_values(array_unique($allSubjects)),
+                'schoolDisplayName' => $this->school_display_name ?? '',
+            ]);
         }
 
         $this->json_success([

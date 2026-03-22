@@ -324,7 +324,7 @@
 
     <div class="hr-sub-tabs">
       <button class="hr-sub-tab active" data-sub="myPayslips">My Payslips</button>
-      <?php if (isset($admin_role) && in_array($admin_role, ['Admin', 'Principal', 'Super Admin'], true)): ?>
+      <?php if (isset($admin_role) && in_array($admin_role, ['Admin', 'Principal', 'Super Admin', 'School Super Admin'], true)): ?>
       <button class="hr-sub-tab" data-sub="salaryStructures">Salary Structures</button>
       <button class="hr-sub-tab" data-sub="payrollRuns">Payroll Runs</button>
       <button class="hr-sub-tab" data-sub="payslips">Payslips</button>

@@ -60,16 +60,75 @@ $route['delete_account/(:any)'] = 'Account/delete_account/$1';
 $route['calculate_balances'] = 'Account/calculate_balances';
 $route['account/populateTable'] = 'account/populateTable';
 $route['accounts/get'] = 'AccountController/getAccounts';
-$route['fees/lookup_student']      = 'fees/lookup_student';
-$route['fees/fetch_fee_details']   = 'fees/fetch_fee_details';
-$route['fees/print_receipt/(:any)'] = 'Fees/print_receipt/$1';
-$route['fees/get_receipt_no']       = 'Fees/get_receipt_no';
+$route['fees/dashboard']                    = 'Fees/fees_dashboard';
+$route['fees/get_dashboard_data']           = 'Fees/get_dashboard_data';
+$route['fees/lookup_student']               = 'fees/lookup_student';
+$route['fees/fetch_fee_details']            = 'fees/fetch_fee_details';
+$route['fees/print_receipt/(:any)']         = 'Fees/print_receipt/$1';
+$route['fees/get_receipt_no']               = 'Fees/get_receipt_no';
+// Audit & Recovery
+$route['fees/transaction_audit']           = 'Fees/transaction_audit';
+$route['fees/search_transaction']          = 'Fees/search_transaction';
+$route['fees/get_stale_transactions']      = 'Fees/get_stale_transactions';
+$route['fees/resolve_stale']               = 'Fees/resolve_stale';
+$route['fees/diagnose_transaction']        = 'Fees/diagnose_transaction';
+$route['fees/recalculate_advance']         = 'Fees/recalculate_advance';
+
+// Fee Demand Engine
+$route['fees/generate_demands_for_student'] = 'Fees/generate_demands_for_student';
+$route['fees/generate_monthly_demands']     = 'Fees/generate_monthly_demands';
+$route['fees/get_student_demands']          = 'Fees/get_student_demands';
+$route['fees/get_demand_status']            = 'Fees/get_demand_status';
+$route['fees/recalculate_demands']          = 'Fees/recalculate_demands';
+$route['fees/auto_compute_fines']           = 'Fees/auto_compute_fines';
+$route['fees/student_ledger']               = 'Fees/student_ledger';
+$route['fees/defaulter_report']             = 'Fees/defaulter_report';
+$route['fees/get_defaulter_data']           = 'Fees/get_defaulter_data';
+$route['fees/get_collection_analytics']     = 'Fees/get_collection_analytics';
+$route['fees/get_student_allocations']     = 'Fees/get_student_allocations';
+$route['fees/get_fee_account_map']          = 'Fees/get_fee_account_map';
+$route['fees/save_fee_account_map']         = 'Fees/save_fee_account_map';
+// Simulation (Admin only)
+$route['fee_simulation']                   = 'Fee_simulation/index';
+$route['fee_simulation/run']               = 'Fee_simulation/run';
+$route['fee_simulation/run_parallel']      = 'Fee_simulation/run_parallel';
+$route['fee_simulation/run_school']        = 'Fee_simulation/run_school';
+$route['fee_simulation/cleanup']           = 'Fee_simulation/cleanup';
+// Pages (GET)
+$route['fees/fees_counter']                = 'Fees/fees_counter';
+$route['fees/fees_chart']                  = 'Fees/fees_chart';
+$route['fees/fees_records']                = 'Fees/fees_records';
+$route['fees/fees_structure']              = 'Fees/fees_structure';
+$route['fees/student_fees']                = 'Fees/student_fees';
+$route['fees/class_fees']                  = 'Fees/class_fees';
+// Data endpoints (POST)
+$route['fees/submit_fees']                 = 'Fees/submit_fees';
+$route['fees/fetch_months']                = 'Fees/fetch_months';
+$route['fees/fetch_fee_receipts']          = 'Fees/fetch_fee_receipts';
+$route['fees/search_student']              = 'Fees/search_student';
+$route['fees/due_fees_table']              = 'Fees/due_fees_table';
+$route['fees/save_updated_fees']           = 'Fees/save_updated_fees';
+$route['fees/submit_discount']             = 'Fees/submit_discount';
+$route['fees/delete_fees_structure/(:any)'] = 'Fees/delete_fees_structure/$1';
 
 // ─── Super Admin SaaS Control Panel ──────────────────────────────────────────
 // Auth
+$route['admin_login/forgot_password']                    = 'Admin_login/forgot_password';
+$route['admin_login/send_otp']                          = 'Admin_login/send_otp';
+$route['admin_login/verify_otp']                        = 'Admin_login/verify_otp';
+$route['admin_login/reset_password']                    = 'Admin_login/reset_password';
+$route['admin_login/student_forgot_password']            = 'Admin_login/student_forgot_password';
+$route['admin_login/student_send_otp']                  = 'Admin_login/student_send_otp';
+$route['admin_login/student_verify_otp']                = 'Admin_login/student_verify_otp';
+$route['admin_login/student_reset_password']             = 'Admin_login/student_reset_password';
+
 $route['superadmin/login']                              = 'Superadmin_login/index';
 $route['superadmin/login/authenticate']                 = 'Superadmin_login/authenticate';
 $route['superadmin/login/logout']                       = 'Superadmin_login/logout';
+$route['superadmin/login/forgot_password']              = 'Superadmin_login/forgot_password';
+$route['superadmin/login/send_otp']                     = 'Superadmin_login/send_otp';
+$route['superadmin/login/verify_otp']                   = 'Superadmin_login/verify_otp';
+$route['superadmin/login/reset_password']               = 'Superadmin_login/reset_password';
 $route['superadmin/logout']                             = 'Superadmin_login/logout';
 $route['superadmin/csrf_token']                         = 'Superadmin_login/csrf_token';
 
@@ -164,6 +223,15 @@ $route['superadmin/debug/clear_debug_logs']             = 'Superadmin_debug/clea
 $route['superadmin/debug/schema_check']                 = 'Superadmin_debug/schema_check';
 $route['superadmin/debug/log_ajax_error']               = 'Superadmin_debug/log_ajax_error';
 
+// ─── Super Admin Management (developer only)
+$route['superadmin/admins']                             = 'Superadmin_admins/index';
+$route['superadmin/admins/fetch']                       = 'Superadmin_admins/fetch';
+$route['superadmin/admins/create']                      = 'Superadmin_admins/create';
+$route['superadmin/admins/toggle_status']               = 'Superadmin_admins/toggle_status';
+$route['superadmin/admins/reset_password']              = 'Superadmin_admins/reset_password';
+$route['superadmin/admins/update_profile']              = 'Superadmin_admins/update_profile';
+$route['superadmin/admins/delete']                      = 'Superadmin_admins/delete';
+
 // ─── School Configuration
 $route['school_config']                                 = 'School_config/index';
 $route['school_config/get_config']                      = 'School_config/get_config';
@@ -199,6 +267,8 @@ $route['school_config/restore_class']                   = 'School_config/restore
 $route['school_config/seed_streams']                    = 'School_config/seed_streams';
 $route['school_config/upload_document']                 = 'School_config/upload_document';
 $route['school_config/save_report_card_template']       = 'School_config/save_report_card_template';
+$route['school_config/admission_payment']               = 'School_config/admission_payment_config';
+$route['school_config/save_admission_payment_config']   = 'School_config/save_admission_payment_config';
 
 // ─── Academic Management
 $route['academic']                              = 'Academic/index';
@@ -297,7 +367,7 @@ $route['sis/rebuild_index']                     = 'Sis/rebuild_index';
 
 // ─── SIS: Student methods (merged from Student.php) ─────────────────────────
 $route['sis/all_student']                       = 'Sis/students';
-$route['sis/master_student']                    = 'Sis/students';
+$route['sis/master_student']                    = 'Sis/master_student'; // FIXED: was pointing to Sis/students instead of import page
 $route['sis/import_students']                   = 'Sis/import_students';
 $route['sis/studentAdmission']                  = 'Sis/admission';
 $route['sis/get_sections_by_class']             = 'Sis/get_sections_by_class';
@@ -338,6 +408,13 @@ $route['sis/get_crm_settings']                  = 'Sis/get_crm_settings';
 $route['sis/online_form']                       = 'Sis/online_form';
 $route['sis/submit_online_form']                = 'Sis/submit_online_form';
 $route['sis/fetch_analytics']                   = 'Sis/fetch_analytics';
+// ─── Lead System ────
+$route['sis/admission_leads']                   = 'Sis/admission_leads';
+$route['sis/fetch_leads']                       = 'Sis/fetch_leads';
+$route['sis/admission_lead']                    = 'Sis/admission_lead';
+$route['sis/update_lead_status']                = 'Sis/update_lead_status';
+$route['sis/get_lead_data']                     = 'Sis/get_lead_data';
+$route['sis/admission_analytics']               = 'Sis/admission_analytics';
 
 // ─── Backward-compatible routes (old student/* and admission_crm/* URLs) ────
 // These map legacy URLs to consolidated SIS methods so existing views/links work
@@ -383,6 +460,14 @@ $route['admission_crm/get_settings']            = 'Sis/get_crm_settings';
 $route['admission_crm/online_form']             = 'Sis/online_form';
 $route['admission_crm/submit_online_form']      = 'Sis/submit_online_form';
 $route['admission_crm/fetch_analytics']         = 'Sis/fetch_analytics';
+
+// ─── Public Admission (no login required) ────────────────────────────────────
+$route['admission/form/(:any)']                 = 'Admission_public/form/$1';
+$route['admission/submit/(:any)']               = 'Admission_public/submit/$1';
+$route['admission/pay/(:any)']                  = 'Admission_public/initiate_payment/$1';
+$route['admission/payment_callback/(:any)']     = 'Admission_public/payment_callback/$1';
+$route['admission/payment_status/(:any)']       = 'Admission_public/payment_status/$1';
+
 // ─── Attendance Management ───
 $route['attendance']                         = 'Attendance/index';
 $route['attendance/student']                 = 'Attendance/student_attendance';
@@ -579,6 +664,10 @@ $route['fee_management/refunds']                         = 'Fee_management/refun
 $route['fee_management/reminders']                       = 'Fee_management/reminders';
 $route['fee_management/gateway']                         = 'Fee_management/gateway';
 $route['fee_management/online_payments']                 = 'Fee_management/online_payments';
+// Fee Titles AJAX
+$route['fee_management/fetch_fee_titles']                = 'Fee_management/fetch_fee_titles';
+$route['fee_management/save_fee_title']                  = 'Fee_management/save_fee_title';
+$route['fee_management/delete_fee_title']                = 'Fee_management/delete_fee_title';
 // Categories AJAX
 $route['fee_management/fetch_categories']                = 'Fee_management/fetch_categories';
 $route['fee_management/save_category']                   = 'Fee_management/save_category';
@@ -614,7 +703,12 @@ $route['fee_management/get_gateway_config']              = 'Fee_management/get_g
 $route['fee_management/save_gateway_config']             = 'Fee_management/save_gateway_config';
 $route['fee_management/fetch_online_payments']           = 'Fee_management/fetch_online_payments';
 $route['fee_management/create_payment_order']            = 'Fee_management/create_payment_order';
+$route['fee_management/simulate_payment']                = 'Fee_management/simulate_payment';
 $route['fee_management/verify_payment']                  = 'Fee_management/verify_payment';
+$route['fee_management/payment_webhook']                 = 'Fee_management/payment_webhook';
+$route['fee_management/retry_payment_processing']        = 'Fee_management/retry_payment_processing';
+$route['fee_management/payment_reconciliation']          = 'Fee_management/payment_reconciliation';
+$route['fee_management/get_reconciliation_data']         = 'Fee_management/get_reconciliation_data';
 // Summary
 $route['fee_management/get_fee_summary']                 = 'Fee_management/get_fee_summary';
 // Carry-forward (F-15)

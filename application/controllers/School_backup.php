@@ -31,7 +31,7 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class School_backup extends MY_Controller
 {
     /** Roles allowed to access the backup module (case-insensitive check via _check_role) */
-    const ALLOWED_ROLES = ['Admin', 'Principal'];
+    const ALLOWED_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal'];
 
     /** Maximum retention days a school admin can set */
     const MAX_RETENTION = 14;

@@ -15,7 +15,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  */
 class Health_check extends MY_Controller
 {
-    private const ADMIN_ROLES = ['Admin'];
+    private const ADMIN_ROLES = ['Super Admin', 'School Super Admin', 'Admin'];
 
     public function __construct()
     {

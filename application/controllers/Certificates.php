@@ -36,10 +36,10 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Certificates extends MY_Controller
 {
     /** Roles that can manage (create/issue/revoke) certificates */
-    const MANAGE_ROLES = ['Admin', 'Principal'];
+    const MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal'];
 
     /** All roles that can view certificates */
-    const VIEW_ROLES = ['Admin', 'Principal', 'Teacher'];
+    const VIEW_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
     /** Allowed certificate types */
     const CERT_TYPES = ['bonafide', 'transfer', 'character', 'custom'];
@@ -86,7 +86,8 @@ class Certificates extends MY_Controller
         $data['admin_name']    = $this->session->userdata('admin_name') ?? '';
         $data['active_tab']    = $tab;
         $data['can_manage']    = in_array($this->admin_role, self::MANAGE_ROLES, true)
-                                  || $this->admin_role === 'Super Admin';
+                                  || $this->admin_role === 'Super Admin'
+                                  || $this->admin_role === 'School Super Admin';
 
         $this->load->view('include/header');
         $this->load->view('certificates/index', $data);

@@ -1,5 +1,6 @@
 <?php defined('BASEPATH') or exit('No direct script access allowed');
-
+// FIXED: guard against undefined $school_profile (controller must pass it)
+$school_profile = $school_profile ?? [];
 $schoolN    = $school_profile['school_name'] ?? $school_name ?? '';
 $schoolAddr = $school_profile['address'] ?? '';
 $schoolLogo = $school_profile['logo'] ?? base_url('tools/image/default-school.jpeg');
@@ -109,8 +110,9 @@ html { font-size: 16px !important; }
                         <?php if (!empty($s['DOB'])): ?>
                         <span>DOB:</span> <?= htmlspecialchars($s['DOB']) ?><br>
                         <?php endif; ?>
-                        <?php if (!empty($s['Phone'])): ?>
-                        <span>Ph:</span> <?= htmlspecialchars($s['Phone']) ?><br>
+                        <?php $phone = $s['Phone Number'] ?? $s['Phone'] ?? ''; // FIXED: correct key is 'Phone Number' ?>
+                        <?php if (!empty($phone)): ?>
+                        <span>Ph:</span> <?= htmlspecialchars($phone) ?><br>
                         <?php endif; ?>
                     </div>
                 </div>

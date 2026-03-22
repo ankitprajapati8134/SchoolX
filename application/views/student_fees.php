@@ -521,7 +521,7 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
 .sfr-page-hd { margin-bottom: 26px; }
 
 .sfr-page-title {
-    font-size: 1.35rem;
+    font-size: 1.6rem;
     font-weight: 800;
     color: var(--sfr-text);
     margin: 0 0 6px;
@@ -580,7 +580,7 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
 .ico-red   { background: #fef2f2; color: var(--sfr-red); }
 .ico-amber { background: #fffbeb; color: var(--sfr-amber); }
 .sfr-stat-label {
-    font-size: .68rem; font-weight: 700; color: var(--sfr-muted);
+    font-size: .8rem; font-weight: 700; color: var(--sfr-muted);
     text-transform: uppercase; letter-spacing: .6px; margin-bottom: 4px;
 }
 .sfr-stat-val {
@@ -618,7 +618,7 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
 }
 .sfr-field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 220px; }
 .sfr-field-lbl {
-    font-size: .68rem; font-weight: 700; color: var(--sfr-text2);
+    font-size: .8rem; font-weight: 700; color: var(--sfr-text2);
     text-transform: uppercase; letter-spacing: .55px;
 }
 .sfr-field-lbl span { color: var(--sfr-red); }
@@ -711,7 +711,7 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
 .sfr-bf:first-child { padding-left: 0; }
 .sfr-bf:last-child  { border-right: none; }
 .sfr-bf-lbl {
-    font-size: .62rem; color: rgba(255,255,255,.5);
+    font-size: .85rem; color: rgba(255,255,255,.5);
     text-transform: uppercase; letter-spacing: .7px; font-weight: 600; margin-bottom: 5px;
 }
 .sfr-bf-val { font-size: .88rem; font-weight: 700; color: #fff; white-space: nowrap; }
@@ -737,7 +737,7 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
     outline: none; transition: border-color .18s; min-width: 240px;
 }
 .sfr-filter-inp:focus { border-color: var(--sfr-teal); }
-.sfr-count { font-size: .75rem; color: var(--sfr-muted); font-weight: 600; white-space: nowrap; }
+.sfr-count { font-size: .85rem; color: var(--sfr-muted); font-weight: 600; white-space: nowrap; }
 
 /* ── TABLE ── */
 .sfr-tbl-wr { overflow-x: auto; }
@@ -746,7 +746,7 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
 .sfr-tbl thead tr { background: var(--sfr-navy); }
 .sfr-tbl thead th {
     padding: 13px 16px;
-    font-size: .68rem; font-weight: 700; color: #fff;
+    font-size: .8rem; font-weight: 700; color: #fff;
     text-transform: uppercase; letter-spacing: .65px;
     white-space: nowrap; border: none; text-align: left;
 }
@@ -757,20 +757,20 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
 .sfr-tbl td { padding: 13px 16px; vertical-align: middle; color: var(--sfr-text2); font-size: .8rem; }
 
 /* JS-generated cell classes (replaces inline styles) */
-.sfr-td-num  { color: var(--sfr-muted); font-weight: 600; font-size: .75rem; }
+.sfr-td-num  { color: var(--sfr-muted); font-weight: 600; font-size: .85rem; }
 .sfr-td-date { white-space: nowrap; color: var(--sfr-text2); }
-.sfr-td-date-ico { color: var(--sfr-muted); margin-right: 5px; font-size: .68rem; }
-.sfr-td-class { font-size: .75rem; color: var(--sfr-text2); white-space: nowrap; }
-.sfr-td-ref  { color: var(--sfr-muted); font-size: .75rem; max-width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sfr-td-date-ico { color: var(--sfr-muted); margin-right: 5px; font-size: .8rem; }
+.sfr-td-class { font-size: .85rem; color: var(--sfr-text2); white-space: nowrap; }
+.sfr-td-ref  { color: var(--sfr-muted); font-size: .85rem; max-width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .sfr-sname  { font-weight: 700; color: var(--sfr-text); font-size: .84rem; line-height: 1.3; }
-.sfr-sname  span { display: block; font-size: .72rem; color: var(--sfr-muted); font-weight: 400; margin-top: 2px; }
+.sfr-sname  span { display: block; font-size: .82rem; color: var(--sfr-muted); font-weight: 400; margin-top: 2px; }
 
 .sfr-ico-cell {
     width: 36px; height: 36px; border-radius: 10px;
     background: var(--sfr-teal); color: #fff;
     display: inline-flex; align-items: center; justify-content: center;
-    font-size: .75rem; font-weight: 800;
+    font-size: .85rem; font-weight: 800;
     flex-shrink: 0; margin-right: 10px; vertical-align: middle;
 }
 
@@ -781,7 +781,7 @@ document.getElementById('sfUserId').addEventListener('keydown', function(e) {
     font-size: .7rem; font-weight: 800;
     border: 1px solid rgba(13,148,136,.18); white-space: nowrap;
 }
-.sfr-pill i { font-size: .56rem; }
+.sfr-pill i { font-size: .82rem; }
 
 .sfr-mode {
     display: inline-block; padding: 3px 10px; border-radius: 20px;

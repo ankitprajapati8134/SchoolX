@@ -14,8 +14,8 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  */
 class Admin extends MY_Controller
 {
-    private const ADMIN_ROLES = ['Admin'];
-    private const VIEW_ROLES  = ['Admin', 'Principal', 'Teacher'];
+    private const ADMIN_ROLES = ['Super Admin', 'School Super Admin', 'Admin'];
+    private const VIEW_ROLES  = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
     public function __construct()
     {
@@ -27,6 +27,24 @@ class Admin extends MY_Controller
     {
         // Dashboard is the landing page — any authenticated admin can see it.
         // MY_Controller __construct already enforces authentication.
+
+        // Role-specific dashboard redirects
+        // Non-bypass roles get redirected to their primary module dashboard
+        $role = $this->admin_role ?? '';
+        $role_redirects = [
+            'HR Manager'           => 'hr',
+            'Accountant'           => 'accounting',
+            'Academic Coordinator' => 'academic',
+            'Librarian'            => 'library',
+            'Transport Manager'    => 'transport',
+            'Operations Manager'   => 'operations',
+        ];
+
+        if (isset($role_redirects[$role])) {
+            redirect($role_redirects[$role]);
+            return;
+        }
+
         $school_id    = $this->school_id;
         $school_name  = $this->school_name;
         $session_year = $this->session_year;

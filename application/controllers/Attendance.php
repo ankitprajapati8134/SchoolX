@@ -10,13 +10,13 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Attendance extends MY_Controller
 {
     /** Roles for attendance settings and device management */
-    private const MANAGE_ROLES = ['Admin', 'Principal'];
+    private const MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal'];
 
     /** Roles that may mark attendance */
-    private const MARK_ROLES   = ['Admin', 'Principal', 'Teacher'];
+    private const MARK_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
 
     /** Roles that may view attendance data */
-    private const VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+    private const VIEW_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
 
     /** Routes that skip session auth (use API-key auth instead) */
     protected $public_routes = [

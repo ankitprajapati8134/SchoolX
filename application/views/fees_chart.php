@@ -641,7 +641,7 @@ function saveUpdatedFees() {
 }
 .fm-page-title {
     font-family: 'Lora', serif;
-    font-size: 1.35rem; font-weight: 700;
+    font-size: 1.6rem; font-weight: 700;
     color: var(--fm-navy);
     display: flex; align-items: center; gap: 10px;
     margin: 0 0 6px;
@@ -723,7 +723,7 @@ function saveUpdatedFees() {
 .fm-select-arrow {
     position: absolute; right: 10px; top: 50%;
     transform: translateY(-50%);
-    color: var(--fm-muted); font-size: 11px;
+    color: var(--fm-muted); font-size: 12.5px;
     pointer-events: none;
 }
 
@@ -774,7 +774,7 @@ function saveUpdatedFees() {
 }
 .fm-table thead th {
     padding: 10px 10px;
-    font-size: 11px; font-weight: 700;
+    font-size: 12.5px; font-weight: 700;
     text-transform: uppercase; letter-spacing: .5px;
     color: rgba(255,255,255,.85);
     white-space: nowrap; border: none;
@@ -848,13 +848,13 @@ function saveUpdatedFees() {
 }
 .fm-total-bar-left { display: flex; flex-direction: column; gap: 4px; }
 .fm-total-bar-label {
-    font-size: 11px; font-weight: 700;
+    font-size: 12.5px; font-weight: 700;
     letter-spacing: .7px; text-transform: uppercase;
     color: rgba(255,255,255,.55);
 }
 .fm-total-bar-value {
     font-family: 'Lora', serif;
-    font-size: 1.35rem; font-weight: 700;
+    font-size: 1.6rem; font-weight: 700;
     color: #fff;
 }
 

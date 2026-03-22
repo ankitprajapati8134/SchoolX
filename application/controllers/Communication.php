@@ -21,17 +21,17 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Communication extends MY_Controller
 {
     /** Roles for system-level ops (triggers, queue, bulk) */
-    private const RBAC_ADMIN_ROLES  = ['Admin', 'Principal'];
+    private const RBAC_ADMIN_ROLES  = ['Super Admin', 'School Super Admin', 'Admin', 'Principal'];
 
     /** Roles for content management (notices, circulars, templates) */
-    private const RBAC_MANAGE_ROLES = ['Admin', 'Principal', 'Teacher'];
+    private const RBAC_MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
     /** Roles that may view communication data */
-    private const RBAC_VIEW_ROLES   = ['Admin', 'Principal', 'Teacher'];
+    private const RBAC_VIEW_ROLES   = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Teacher'];
 
-    const ADMIN_ROLES   = ['Super Admin', 'Principal', 'Vice Principal', 'Admin'];
-    const TEACHER_ROLES = ['Super Admin', 'Principal', 'Vice Principal', 'Admin', 'Teacher'];
-    const VIEW_ROLES    = ['Super Admin', 'Principal', 'Vice Principal', 'Admin', 'Teacher', 'Accountant', 'HR Manager', 'Operations Manager'];
+    const ADMIN_ROLES   = ['Super Admin', 'School Super Admin', 'Principal', 'Vice Principal', 'Admin'];
+    const TEACHER_ROLES = ['Super Admin', 'School Super Admin', 'Principal', 'Vice Principal', 'Admin', 'Teacher'];
+    const VIEW_ROLES    = ['Super Admin', 'School Super Admin', 'Principal', 'Vice Principal', 'Admin', 'Teacher', 'Accountant', 'HR Manager', 'Operations Manager'];
 
     const ALLOWED_CHANNELS       = ['push', 'sms', 'email', 'in_app'];
     const ALLOWED_PRIORITIES     = ['High', 'Normal', 'Low'];
@@ -331,7 +331,7 @@ class Communication extends MY_Controller
 
     private function _inbox_role(): string
     {
-        if (in_array($this->admin_role, ['Super Admin', 'Principal', 'Vice Principal', 'Admin'], true))
+        if (in_array($this->admin_role, ['Super Admin', 'School Super Admin', 'Principal', 'Vice Principal', 'Admin'], true))
             return 'Admin';
         if ($this->admin_role === 'Teacher') return 'Teacher';
         if ($this->admin_role === 'HR Manager') return 'HR';

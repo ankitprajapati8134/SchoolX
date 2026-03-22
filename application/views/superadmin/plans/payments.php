@@ -712,7 +712,11 @@ $('#addPaymentBtn').on('click',function(){
     $('#newInvModal').modal('show');
 });
 
-$('#niStatus').on('change',function(){$('#niPaidRow').toggle($(this).val()==='paid');});
+$('#niStatus').on('change',function(){
+    var isPaid=$(this).val()==='paid';
+    $('#niPaidRow').toggle(isPaid);
+    if(isPaid){var invDate=$('[name=invoice_date]').val();$('[name=paid_date]').val(invDate||new Date().toISOString().slice(0,10)).attr('min',invDate||'');}
+});
 
 $('#niSchool').on('change',function(){
     var uid=$(this).val();
@@ -747,9 +751,13 @@ function niCheck(){
     $('#niSubmit').prop('disabled',!ok);
 }
 $('#niSchool,#niAmount,#niDueDate').on('change input',niCheck);
+$('[name=invoice_date]').on('change',function(){var v=$(this).val();$('[name=paid_date]').attr('min',v);if($('[name=paid_date]').val()<v)$('[name=paid_date]').val(v);});
 
 $('#newInvForm').on('submit',function(e){
     e.preventDefault();
+    var invDate=$('[name=invoice_date]').val(), paidDate=$('[name=paid_date]').val(), status=$('#niStatus').val();
+    if(status==='paid'&&paidDate&&invDate&&paidDate<invDate){saToast('Paid date cannot be before invoice date.','error');return;}
+    if(paidDate&&$('#niDueDate').val()&&paidDate>$('#niDueDate').val()){saToast('Paid date cannot be after due date.','error');return;}
     var $b=$('#niSubmit').prop('disabled',true).html('<i class="fa fa-spinner fa-spin"></i>');
     $.post(B+'add_payment',$(this).serialize(),function(r){
         $b.prop('disabled',false).html('<i class="fa fa-save"></i> Create Invoice');

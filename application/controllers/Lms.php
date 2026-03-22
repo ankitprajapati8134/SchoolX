@@ -22,10 +22,10 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 class Lms extends MY_Controller
 {
     /** Roles that can manage (create/edit/delete) LMS content */
-    const MANAGE_ROLES = ['Admin', 'Principal', 'Teacher'];
+    const MANAGE_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
 
     /** All roles that can view LMS content */
-    const VIEW_ROLES = ['Admin', 'Principal', 'Teacher'];
+    const VIEW_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
 
     private $_lmsBase;
 

@@ -31,10 +31,10 @@ defined('BASEPATH') or exit('No direct script access allowed');
 class Examination extends MY_Controller
 {
     /** Roles allowed to bulk-compute and export. */
-    const ADMIN_ROLES = ['Super Admin', 'Admin', 'Principal'];
+    const ADMIN_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Academic Coordinator'];
 
     /** Roles allowed to view examination data (read-only). */
-    const VIEW_ROLES = ['Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
+    const VIEW_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
 
     public function __construct()
     {

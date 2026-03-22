@@ -28,10 +28,10 @@ class Exam extends MY_Controller
     const ALLOWED_STATUSES = ['Draft', 'Published', 'Completed'];
 
     /** Roles allowed to create, edit, delete exams and change status. */
-    private const ADMIN_ROLES = ['Super Admin', 'Admin', 'Principal', 'Academic Coordinator'];
+    private const ADMIN_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Academic Coordinator'];
 
     /** Roles allowed to view exam data. */
-    private const VIEW_ROLES = ['Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
+    private const VIEW_ROLES = ['Super Admin', 'School Super Admin', 'Admin', 'Principal', 'Academic Coordinator', 'Teacher'];
 
     public function __construct()
     {

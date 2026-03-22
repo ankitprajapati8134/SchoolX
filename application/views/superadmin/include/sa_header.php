@@ -674,6 +674,15 @@ var BASE_URL = '<?= base_url() ?>';
                 </a>
             </li>
 
+            <?php if (($sa_role ?? '') === 'developer'): ?>
+            <li class="g-sec">Admin Access</li>
+            <li class="<?= ($this->router->fetch_class() === 'superadmin_admins') ? 'active' : '' ?>">
+                <a href="<?= base_url('superadmin/admins') ?>">
+                    <i class="fa fa-user-secret"></i><span>Super Admins</span>
+                </a>
+            </li>
+            <?php endif; ?>
+
             <li class="g-sec">System</li>
             <li class="<?= ($this->router->fetch_class() === 'superadmin_monitor') ? 'active' : '' ?>">
                 <a href="<?= base_url('superadmin/monitor') ?>">

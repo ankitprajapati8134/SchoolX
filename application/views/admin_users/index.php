@@ -117,7 +117,7 @@
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
             <input type="text" id="adminSearch" placeholder="Search by name, email, role..." class="form-control"
                 style="width:260px;font-size:12.5px;height:34px;">
-            <?php if (in_array($admin_role, ['Super Admin', 'Admin'])): ?>
+            <?php if (in_array($admin_role, ['Super Admin', 'School Super Admin', 'Admin', 'Principal'])): ?>
             <div style="margin-left:auto;">
                 <button class="au-btn au-btn-p" id="addAdminBtn"><i class="fa fa-plus"></i> Add Admin</button>
             </div>
@@ -146,7 +146,7 @@
                 <div class="au-box">
                     <div class="au-box-head">
                         <i class="fa fa-shield" style="color:var(--gold);"></i> Roles
-                        <?php if (in_array($admin_role, ['Super Admin', 'Admin'])): ?>
+                        <?php if (in_array($admin_role, ['Super Admin', 'School Super Admin', 'Admin'])): ?>
                         <button class="au-btn au-btn-p au-btn-sm" style="margin-left:auto;" id="addRoleBtn"><i class="fa fa-plus"></i> New Role</button>
                         <?php endif; ?>
                     </div>
@@ -240,11 +240,9 @@
             <form id="adminForm" autocomplete="off">
                 <div class="modal-body" style="padding:20px;">
                     <input type="hidden" id="editAdminId" value="">
-                    <div class="row" id="loginIdRow">
-                        <div class="col-sm-6"><div class="au-fg"><label>Login ID *</label><input type="text" id="aLoginId" maxlength="32" pattern="[A-Za-z0-9_\-]+" placeholder="e.g. admin, john_doe" required></div></div>
-                        <div class="col-sm-6" style="display:flex;align-items:flex-end;padding-bottom:12px;">
-                            <span style="font-size:11px;color:var(--t3);">Used for login. Letters, numbers, hyphens, underscores only.</span>
-                        </div>
+                    <div style="padding:8px 12px;background:var(--gold-dim);border:1px solid var(--gold-ring);border-radius:7px;margin-bottom:14px;font-size:11.5px;color:var(--t2);" id="autoIdNotice">
+                        <i class="fa fa-info-circle" style="color:var(--gold);margin-right:4px;"></i>
+                        Admin ID (ADM0001, ADM0002...) will be auto-generated.
                     </div>
                     <div class="row">
                         <div class="col-sm-6"><div class="au-fg"><label>Full Name *</label><input type="text" id="aName" maxlength="60" required></div></div>
@@ -298,13 +296,53 @@
 </div>
 </div>
 
+<!-- ═══════════════════════════════════ CREDENTIALS SUCCESS MODAL ═══ -->
+<div class="modal fade" id="credentialsModal" tabindex="-1" data-backdrop="static">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;">
+            <div class="modal-header" style="border-color:var(--border);background:rgba(16,185,129,.08);">
+                <h4 class="modal-title" style="font-family:var(--font-b);color:var(--t1);font-size:14px;">
+                    <i class="fa fa-check-circle" style="color:#10b981;margin-right:8px;"></i>Admin Created Successfully
+                </h4>
+            </div>
+            <div class="modal-body" style="padding:20px;">
+                <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px;">
+                    <div style="margin-bottom:10px;">
+                        <span style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;">Admin ID</span>
+                        <div style="font-size:16px;font-weight:700;color:var(--gold);font-family:var(--font-m);" id="credAdminId"></div>
+                    </div>
+                    <div style="margin-bottom:10px;">
+                        <span style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;">Name</span>
+                        <div style="font-size:13px;color:var(--t1);font-weight:600;" id="credName"></div>
+                    </div>
+                    <div style="margin-bottom:10px;">
+                        <span style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;">Role</span>
+                        <div style="font-size:13px;color:var(--t1);" id="credRole"></div>
+                    </div>
+                    <div>
+                        <span style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;">Password</span>
+                        <div style="font-size:14px;font-weight:700;color:#dc2626;font-family:var(--font-m);letter-spacing:.5px;" id="credPassword"></div>
+                    </div>
+                </div>
+                <p style="font-size:11.5px;color:var(--t3);margin:0;line-height:1.5;">
+                    <i class="fa fa-exclamation-triangle" style="color:#f59e0b;margin-right:4px;"></i>
+                    Share these credentials securely. The password cannot be retrieved later.
+                </p>
+            </div>
+            <div class="modal-footer" style="border-color:var(--border);">
+                <button type="button" class="au-btn au-btn-p" data-dismiss="modal"><i class="fa fa-check"></i> Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function(){
 'use strict';
 var B = typeof BASE_URL !== 'undefined' ? BASE_URL : <?= json_encode(base_url()) ?>;
 var CURRENT_ADMIN = <?= json_encode($admin_id ?? '') ?>;
 var CURRENT_ROLE  = <?= json_encode($admin_role ?? '') ?>;
-var isAdmin = (CURRENT_ROLE === 'Super Admin' || CURRENT_ROLE === 'Admin') || <?= json_encode(has_permission('Admin Users')) ?>;
+var isAdmin = (CURRENT_ROLE === 'Super Admin' || CURRENT_ROLE === 'School Super Admin' || CURRENT_ROLE === 'Admin') || <?= json_encode(has_permission('Admin Users')) ?>;
 var MODULES = <?= json_encode($available_modules ?? []) ?>;
 
 function esc(s){ return $('<div>').text(s||'').html(); }
@@ -377,12 +415,14 @@ function renderAdmins(){
         var aname = esc(a.name);
         var acts = '<div style="display:flex;gap:4px;flex-wrap:wrap;">';
         acts += '<button class="au-btn au-btn-sm au-btn-s act-edit" data-id="'+aid+'"><i class="fa fa-pencil"></i></button>';
-        if(isAdmin && !isSelf){
-            var toggleSt = (a.status||'active')==='active' ? 'disabled' : 'active';
-            var toggleIc = toggleSt==='disabled' ? 'fa-ban' : 'fa-check';
-            acts += '<button class="au-btn au-btn-sm au-btn-s act-toggle" data-id="'+aid+'" data-status="'+toggleSt+'" title="'+(toggleSt==='disabled'?'Disable':'Enable')+'"><i class="fa '+toggleIc+'"></i></button>';
+        if(isAdmin){
             acts += '<button class="au-btn au-btn-sm au-btn-s act-resetpw" data-id="'+aid+'" data-name="'+aname+'" title="Reset Password"><i class="fa fa-key"></i></button>';
-            acts += '<button class="au-btn au-btn-sm au-btn-d act-delete" data-id="'+aid+'" data-name="'+aname+'" title="Delete"><i class="fa fa-trash"></i></button>';
+            if(!isSelf){
+                var toggleSt = (a.status||'active')==='active' ? 'disabled' : 'active';
+                var toggleIc = toggleSt==='disabled' ? 'fa-ban' : 'fa-check';
+                acts += '<button class="au-btn au-btn-sm au-btn-s act-toggle" data-id="'+aid+'" data-status="'+toggleSt+'" title="'+(toggleSt==='disabled'?'Disable':'Enable')+'"><i class="fa '+toggleIc+'"></i></button>';
+                acts += '<button class="au-btn au-btn-sm au-btn-d act-delete" data-id="'+aid+'" data-name="'+aname+'" title="Delete"><i class="fa fa-trash"></i></button>';
+            }
         }
         acts += '</div>';
         return '<tr>'
@@ -405,8 +445,7 @@ $('#addAdminBtn').on('click', function(){
     if(!isAdmin){ alert('Only Admin role can create administrators.'); return; }
     $('#editAdminId').val('');
     $('#adminForm')[0].reset();
-    $('#loginIdRow').show();
-    $('#aLoginId').prop('disabled', false).prop('required', true);
+    $('#autoIdNotice').show();
     $('#passwordRow').show();
     $('#adminModalTitle').html('<i class="fa fa-user-plus" style="color:var(--gold);margin-right:8px;"></i>Add Admin');
     loadRoleOptions();
@@ -430,8 +469,7 @@ $(document).on('click', '.act-edit', function(){
     if(!a) return;
     $('#editAdminId').val(id);
     $('#aName').val(a.name); $('#aEmail').val(a.email); $('#aPhone').val(a.phone||'');
-    $('#loginIdRow').hide();
-    $('#aLoginId').prop('disabled', true).prop('required', false);
+    $('#autoIdNotice').hide();
     $('#passwordRow').hide();
     $('#adminModalTitle').html('<i class="fa fa-pencil" style="color:var(--gold);margin-right:8px;"></i>Edit Admin');
     loadRoleOptions(a.role);
@@ -446,14 +484,23 @@ $('#adminForm').on('submit', function(e){
     var url = isEdit ? B+'admin_users/update_admin' : B+'admin_users/create_admin';
     var payload = { name:$('#aName').val(), email:$('#aEmail').val(), phone:$('#aPhone').val(), role:$('#aRole').val() };
     if(isEdit) payload.admin_id = id;
-    else { payload.admin_id = $('#aLoginId').val(); payload.password = $('#aPassword').val(); }
+    else { payload.password = $('#aPassword').val(); }
 
     var $btn = $('#saveAdminBtn').prop('disabled',true);
     $.post(url, csrf(payload), function(r){
         $btn.prop('disabled',false);
         if(r.status==='success'){
             $('#adminModal').modal('hide');
-            toast(r.message,true);
+            if(!isEdit && r.admin_id){
+                // Show credentials dialog for newly created admin
+                $('#credAdminId').text(r.admin_id);
+                $('#credName').text(r.name||payload.name);
+                $('#credRole').text(r.role||payload.role);
+                $('#credPassword').text(r.password||'********');
+                $('#credentialsModal').modal('show');
+            } else {
+                toast(r.message,true);
+            }
             loadAdmins();
             loadDashboard();
         } else {

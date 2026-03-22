@@ -75,6 +75,13 @@
                                 </select>
                             </div>
 
+                            <!-- FIXED: roll_no field was missing → backend always stored empty string -->
+                            <div class="sa-field">
+                                <label>Roll No</label>
+                                <input type="text" name="roll_no" id="roll_no"
+                                       class="sa-input" placeholder="Optional">
+                            </div>
+
                             <div class="sa-field">
                                 <label>Date of Birth <span class="req">*</span></label>
                                 <input type="date" name="dob" id="dob" class="sa-input" required>
@@ -480,6 +487,7 @@
                 <span class="sa-prev-badge" id="previewClass"></span>
                 <span class="sa-prev-badge" id="previewSection"></span>
                 <span class="sa-prev-badge" id="previewAdmissionDate"></span>
+                <span class="sa-prev-badge" id="previewRollNo"></span>
             </div>
         </div>
     </div>
@@ -753,6 +761,8 @@ function fillPreviewData() {
     setText('previewClass',   'Class: ' + getValue('class_name'));
     setText('previewSection', 'Section: ' + getValue('section'));
     setText('previewAdmissionDate', getValue('admission_date'));
+    var rollNo = getValue('roll_no');
+    setText('previewRollNo', rollNo ? 'Roll: ' + rollNo : '');
 
     /* Academic */
     setText('previewDob',        getValue('dob'));
@@ -955,6 +965,96 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+
+    // LEAD SYSTEM — prefill form from lead data if lead_id is present
+    var leadId = '<?= htmlspecialchars($lead_id ?? '', ENT_QUOTES, 'UTF-8') ?>';
+    if (leadId) {
+        fetch('<?= base_url("sis/get_lead_data") ?>?lead_id=' + encodeURIComponent(leadId), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.status !== 'success' || !data.lead) return;
+            var L = data.lead;
+
+            // Basic fields
+            if (L.student_name) document.getElementById('sname').value = L.student_name;
+            if (L.phone)        document.getElementById('phone_number').value = L.phone;
+            if (L.email)        document.getElementById('email_user').value = L.email;
+            if (L.father_name)  document.getElementById('father_name').value = L.father_name;
+            if (L.mother_name)  document.getElementById('mother_name').value = L.mother_name;
+            if (L.parent_name && !L.father_name) document.getElementById('father_name').value = L.parent_name;
+            if (L.guardian_phone || L.phone) document.getElementById('guard_contact').value = L.guardian_phone || L.phone;
+            if (L.dob) {
+                var dobField = document.getElementById('dob');
+                // Convert dd-mm-yyyy or yyyy-mm-dd
+                var parsed = new Date(L.dob);
+                if (!isNaN(parsed)) dobField.value = parsed.toISOString().slice(0, 10);
+            }
+            if (L.gender) {
+                var gSel = document.getElementById('gender');
+                if (gSel) { for (var i = 0; i < gSel.options.length; i++) {
+                    if (gSel.options[i].value === L.gender) { gSel.selectedIndex = i; break; }
+                }}
+            }
+            if (L.address) document.getElementById('street') && (document.getElementById('street').value = L.address);
+            if (L.city) document.getElementById('city') && (document.getElementById('city').value = L.city);
+            if (L.state) {
+                var stEl = document.getElementById('state');
+                if (stEl) { for (var j = 0; j < stEl.options.length; j++) {
+                    if (stEl.options[j].value === L.state) { stEl.selectedIndex = j; stEl.dispatchEvent(new Event('change')); break; }
+                }}
+            }
+            if (L.pincode) document.getElementById('postal_code') && (document.getElementById('postal_code').value = L.pincode);
+            if (L.religion) {
+                var relSel = document.getElementById('religion');
+                if (relSel) { for (var k = 0; k < relSel.options.length; k++) {
+                    if (relSel.options[k].value === L.religion) { relSel.selectedIndex = k; break; }
+                }}
+            }
+            if (L.nationality) {
+                var natSel = document.getElementById('nationality');
+                if (natSel) { for (var n = 0; n < natSel.options.length; n++) {
+                    if (natSel.options[n].value === L.nationality) { natSel.selectedIndex = n; break; }
+                }}
+            }
+
+            // Class — trigger change to load sections
+            if (L['class']) {
+                var cls = L['class'].replace(/^Class\s+/i, '');
+                for (var c = 0; c < classSelect.options.length; c++) {
+                    if (classSelect.options[c].value === cls) {
+                        classSelect.selectedIndex = c;
+                        classSelect.dispatchEvent(new Event('change'));
+                        // Section (set after sections populate)
+                        if (L.section) {
+                            setTimeout(function() {
+                                for (var s = 0; s < sectionSelect.options.length; s++) {
+                                    if (sectionSelect.options[s].value === L.section) {
+                                        sectionSelect.selectedIndex = s; break;
+                                    }
+                                }
+                            }, 200);
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // Store lead_id in hidden field for save_admission
+            var hid = document.createElement('input');
+            hid.type = 'hidden'; hid.name = 'lead_id'; hid.value = leadId;
+            document.querySelector('form') && document.querySelector('form').appendChild(hid);
+
+            // Show info banner
+            var banner = document.createElement('div');
+            banner.style.cssText = 'background:#dcfce7;color:#166534;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-size:13px;border:1px solid #bbf7d0;';
+            banner.innerHTML = '<i class="fa fa-info-circle"></i> Prefilled from lead <strong>' + (L.id || leadId) + '</strong> — ' + (L.student_name || '') + '. Review and complete the admission.';
+            var formTop = document.getElementById('sec-basic');
+            if (formTop) formTop.parentNode.insertBefore(banner, formTop);
+        })
+        .catch(function(err) { console.warn('Lead prefill failed:', err); });
+    }
 
 });
 </script>
